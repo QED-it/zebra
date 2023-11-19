@@ -1,4 +1,4 @@
-name: Multi-OS Unit Tests
+name: CI OSes
 
 # Ensures that only one workflow task will run at a time. Previous builds, if
 # already in process, will get cancelled. Only the latest commit will be allowed
@@ -9,26 +9,7 @@ concurrency:
 
 on:
   workflow_dispatch:
-
-  pull_request:
-    paths:
-      # code and tests
-      - '**/*.rs'
-      # hard-coded checkpoints and proptest regressions
-      - '**/*.txt'
-      # test data snapshots
-      - '**/*.snap'
-      # dependencies
-      - '**/Cargo.toml'
-      - '**/Cargo.lock'
-      - '**/deny.toml'
-      # configuration files
-      - '.cargo/config.toml'
-      - '**/clippy.toml'
-      # workflow definitions
-      - '.github/workflows/ci-unit-tests-os.yml'
-
-  # we build Rust caches on main,
+  # we build Rust and Zcash parameter caches on main,
   # so they can be shared by all branches:
   # https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#restrictions-for-accessing-a-cache
   push:
@@ -50,7 +31,24 @@ on:
       - '.cargo/config.toml'
       - '**/clippy.toml'
       # workflow definitions
-      - '.github/workflows/ci-unit-tests-os.yml'
+      - '.github/workflows/continous-integration-os.yml'
+  pull_request:
+    paths:
+      # code and tests
+      - '**/*.rs'
+      # hard-coded checkpoints and proptest regressions
+      - '**/*.txt'
+      # test data snapshots
+      - '**/*.snap'
+      # dependencies
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - '**/deny.toml'
+      # configuration files
+      - '.cargo/config.toml'
+      - '**/clippy.toml'
+      # workflow definitions
+      - '.github/workflows/continous-integration-os.yml'
 
 env:
   CARGO_INCREMENTAL: ${{ vars.CARGO_INCREMENTAL }}
@@ -60,42 +58,44 @@ env:
   COLORBT_SHOW_HIDDEN: ${{ vars.COLORBT_SHOW_HIDDEN }}
 
 jobs:
-  ########################################
-  ### Build and test Zebra on all OSes ###
-  ########################################
   test:
     name: Test ${{ matrix.rust }} on ${{ matrix.os }}${{ matrix.features }}
     # The large timeout is to accommodate:
-    # - macOS and Windows builds (typically 50-90 minutes), and
-    timeout-minutes: 120
+    # - macOS and Windows builds (90 minutes, typically 30-70 minutes), and
+    # - parameter downloads (an extra 100 minutes, but only when the cache expires)
+    timeout-minutes: 190
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         # TODO: Windows was removed for now, see https://github.com/ZcashFoundation/zebra/issues/3801
-        os: [ubuntu-latest, macos-latest]
+        # TODO: macOS tests were removed for now, see https://github.com/ZcashFoundation/zebra/issues/6824
+        os: [ubuntu-latest]
         rust: [stable, beta]
-        # TODO: When vars.EXPERIMENTAL_FEATURES has features in it, add it here.
-        #       Or work out a way to trim the space from the variable: GitHub doesn't allow empty variables.
-        #       Or use `default` for the empty feature set and EXPERIMENTAL_FEATURES, and update the branch protection rules.
-        #features: ${{ fromJSON(format('["", "{0}"]', vars.EXPERIMENTAL_FEATURES)) }}
-        features: [""]
+        features: ["", " --features getblocktemplate-rpcs"]
         exclude:
-        # We're excluding macOS beta for the following reasons:
+        # We're excluding macOS for the following reasons:
         # - the concurrent macOS runner limit is much lower than the Linux limit
         # - macOS is slower than Linux, and shouldn't have a build or test difference with Linux
         # - macOS is a second-tier Zebra support platform
           - os: macos-latest
             rust: beta
+          - os: macos-latest
+            features: " --features getblocktemplate-rpcs"
+        # getblocktemplate-rpcs is an experimental feature, so we just need to test it on stable Rust
+        # beta is unlikely to fail just for this feature, and if it does, we can fix it when it reaches stable.
+          - os: ubuntu-latest
+            rust: beta
+            features: " --features getblocktemplate-rpcs"
 
     steps:
-      - uses: actions/checkout@v4.1.1
+      - uses: actions/checkout@v3.6.0
         with:
           persist-credentials: false
       - uses: r7kamura/rust-problem-matchers@v1.4.0
 
       - name: Install last version of Protoc
-        uses: arduino/setup-protoc@v2.1.0
+        uses: arduino/setup-protoc@v2.0.0
         with:
           # TODO: increase to latest version after https://github.com/arduino/setup-protoc/issues/33 is fixed
           version: '23.x'
@@ -107,13 +107,13 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain=${{ matrix.rust }} --profile=minimal
 
 
-      - uses: Swatinem/rust-cache@v2.7.1
+      - uses: Swatinem/rust-cache@v2.6.2
         # TODO: change Rust cache target directory on Windows,
         #       or remove this workaround once the build is more efficient (#3005).
         #with:
         #  workspaces: ". -> C:\\zebra-target"
         with:
-          # Split the experimental features cache from the regular cache, to avoid linker errors.
+          # Split the getblocktemplate-rpcs cache from the regular cache, to avoid linker errors.
           # (These might be "disk full" errors, or they might be dependency resolution issues.)
           key: ${{ matrix.features }}
 
@@ -156,20 +156,45 @@ jobs:
           echo "PROPTEST_CASES=1" >> $GITHUB_ENV
           echo "PROPTEST_MAX_SHRINK_ITERS=1024" >> $GITHUB_ENV
 
+      # Modified from:
+      # https://github.com/zcash/librustzcash/blob/c48bb4def2e122289843ddb3cb2984c325c03ca0/.github/workflows/ci.yml#L20-L33
+      #
+      # TODO:
+      # - split Fetch/Cache Zcash parameters into their own job,
+      #   and use `concurrency:` to limit it to one job per OS
+      # - split get-params-path and download-params examples into their own crate,
+      #   to speed up compilation
+      - name: Fetch path to Zcash parameters
+        working-directory: ./zebra-consensus
+        shell: bash
+        run: echo "ZCASH_PARAMS=$(cargo run --release --example get-params-path)" >> $GITHUB_ENV
+      - name: Cache Zcash parameters
+        id: cache-params
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.ZCASH_PARAMS }}
+          key: ${{ runner.os }}-sprout-and-sapling-params
+      - name: Fetch Zcash parameters
+        if: steps.cache-params.outputs.cache-hit != 'true'
+        working-directory: ./zebra-consensus
+        run: cargo run --release --example download-params
+
       # Run unit and basic acceptance tests, only showing command output if the test fails.
       #
       # If some tests hang, add "-- --nocapture" for just that test, or for all the tests.
       - name: Run tests${{ matrix.features }}
         run: |
-          cargo test --features "${{ matrix.features }}" --release --verbose --workspace
+          cargo test ${{ matrix.features }} --release --verbose --workspace
 
       # Explicitly run any tests that are usually #[ignored]
 
       - name: Run zebrad large sync tests${{ matrix.features }}
         # Skip the entire step on Ubuntu and Windows, because the test would be skipped anyway due to ZEBRA_SKIP_NETWORK_TESTS
+        # Currently, this also skips large sync with `getblocktemplate-rpcs`,
+        # but that is already covered by the Docker tests.
         if: matrix.os == 'macos-latest'
         run: |
-          cargo test --features "${{ matrix.features }}" --release --verbose --package zebrad --test acceptance -- --nocapture --include-ignored sync_large_checkpoints_
+          cargo test ${{ matrix.features }} --release --verbose --package zebrad --test acceptance -- --nocapture --include-ignored sync_large_checkpoints_
 
   # Install Zebra with lockfile dependencies, with no caching and default features
   install-from-lockfile-no-cache:
@@ -178,7 +203,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4.1.1
+      - uses: actions/checkout@v3.6.0
         with:
           persist-credentials: false
       - uses: r7kamura/rust-problem-matchers@v1.4.0
@@ -200,14 +225,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4.1.1
+      - uses: actions/checkout@v3.6.0
         with:
           persist-credentials: false
       - uses: r7kamura/rust-problem-matchers@v1.4.0
 
       - name: Install last version of Protoc
-        uses: arduino/setup-protoc@v2.1.0
+        uses: arduino/setup-protoc@v2.0.0
         with:
+          # TODO: increase to latest version after https://github.com/arduino/setup-protoc/issues/33 is fixed
           version: '23.x'
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -216,7 +242,7 @@ jobs:
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain=stable --profile=minimal
 
-      - uses: Swatinem/rust-cache@v2.7.1
+      - uses: Swatinem/rust-cache@v2.6.2
         with:
           shared-key: "clippy-cargo-lock"
 
@@ -243,7 +269,7 @@ jobs:
     continue-on-error: ${{ matrix.checks == 'advisories' }}
 
     steps:
-      - uses: actions/checkout@v4.1.1
+      - uses: actions/checkout@v3.6.0
         with:
           persist-credentials: false
       - uses: r7kamura/rust-problem-matchers@v1.4.0
@@ -264,7 +290,7 @@ jobs:
 
     steps:
       - name: Checkout git repository
-        uses: actions/checkout@v4.1.1
+        uses: actions/checkout@v3.6.0
         with:
           persist-credentials: false
       - uses: r7kamura/rust-problem-matchers@v1.4.0
@@ -275,7 +301,7 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain=stable --profile=minimal
 
       - name: Install cargo-machete
-        uses: baptiste0928/cargo-install@v2.2.0
+        uses: baptiste0928/cargo-install@v2.1.0
         with:
           crate: cargo-machete
 
@@ -286,29 +312,10 @@ jobs:
           echo "-- full cargo machete output, including ignored dependencies --"
           cargo machete --skip-target-dir || true
           echo "-- unused dependencies are below this line, full output is above --"
-          if cargo machete --skip-target-dir 2>/dev/null | \
-          grep --extended-regexp -e '^\\t' | \
-          grep -v -e gumdrop -e humantime-serde -e tinyvec -e zebra-utils; then
+          if (cargo machete --skip-target-dir 2>/dev/null || true) | \
+          grep -v -e gumdrop -e humantime-serde -e tinyvec -e zebra-utils -e "found the following" -e Cargo.toml -e Done; then
               echo "New unused dependencies were found, please remove them!"
               exit 1
           else
               echo "No unused dependencies found."
           fi
-
-  failure-issue:
-    name: Open or update issues for OS integration failures
-    # When a new job is added to this workflow, add it to this list.
-    needs: [ test,  install-from-lockfile-no-cache, check-cargo-lock, cargo-deny, unused-deps ]
-    # Only open tickets for failed or cancelled jobs that are not coming from PRs.
-    # (PR statuses are already reported in the PR jobs list, and checked by Mergify.)
-    if: (failure() && github.event.pull_request == null) || (cancelled() && github.event.pull_request == null)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: jayqi/failed-build-issue-action@v1
-        with:
-          title-template: "{{refname}} branch CI failed: {{eventName}} in {{workflow}}"
-          # New failures open an issue with this label.
-          label-name: S-ci-fail-os-integration-auto-issue
-          # If there is already an open issue with this label, any failures become comments on that issue.
-          always-create-new-issue: false
-          github-token: ${{ secrets.GITHUB_TOKEN }}

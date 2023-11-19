@@ -1,4 +1,4 @@
-name: Multi-OS Unit Tests
+name: CI OSes
 
 on:
   pull_request:
@@ -11,7 +11,7 @@ on:
       - '**/deny.toml'
       - '.cargo/config.toml'
       - '**/clippy.toml'
-      - '.github/workflows/ci-unit-tests-os.yml'
+      - '.github/workflows/continous-integration-os.yml'
 
 jobs:
   test:
@@ -21,12 +21,19 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        # TODO: Windows was removed for now, see https://github.com/ZcashFoundation/zebra/issues/3801
+        # TODO: macOS tests were removed for now, see https://github.com/ZcashFoundation/zebra/issues/6824
+        os: [ubuntu-latest]
         rust: [stable, beta]
-        features: [""]
+        features: ["", " --features getblocktemplate-rpcs"]
         exclude:
           - os: macos-latest
             rust: beta
+          - os: macos-latest
+            features: " --features getblocktemplate-rpcs"
+          - os: ubuntu-latest
+            rust: beta
+            features: " --features getblocktemplate-rpcs"
 
     steps:
       - run: 'echo "No build required"'
