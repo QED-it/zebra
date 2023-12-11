@@ -423,7 +423,7 @@ impl<V: OrchardFlavour> ZcashDeserialize for Option<orchard::ShieldedData<V>> {
         // SpendAuthSig^{Orchard}.Signature, i.e.
         // B^Y^{[ceiling(ℓ_G/8) + ceiling(bitlength(𝑟_G)/8)]} i.e. 64 bytes
         // See [`Signature::zcash_deserialize`].
-        let sigs: Vec<Signature<SpendAuth>> =
+        let sigs: Vec<orchard::SpendAuthSig<V>> =
             zcash_deserialize_external_count(actions.len(), &mut reader)?;
 
         // Denoted as `bindingSigOrchard` in the spec.
@@ -434,7 +434,7 @@ impl<V: OrchardFlavour> ZcashDeserialize for Option<orchard::ShieldedData<V>> {
             .into_iter()
             .zip(sigs)
             .map(|(action, spend_auth_sig)| {
-                orchard::AuthorizedAction::from_parts(action, spend_auth_sig)
+                orchard::AuthorizedAction::from_parts(action, spend_auth_sig.into())
             })
             .collect();
 

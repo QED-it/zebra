@@ -238,18 +238,29 @@ impl<V: OrchardFlavour> TrustedPreallocate for Action<V> {
     }
 }
 
-impl TrustedPreallocate for Signature<SpendAuth> {
+pub(crate) struct SpendAuthSig<V: OrchardFlavour>(
+    Signature<SpendAuth>,
+    std::marker::PhantomData<V>,
+);
+
+impl<V: OrchardFlavour> From<SpendAuthSig<V>> for Signature<SpendAuth> {
+    fn from(spend_auth_sig: SpendAuthSig<V>) -> Self {
+        spend_auth_sig.0
+    }
+}
+
+impl<V: OrchardFlavour> ZcashDeserialize for SpendAuthSig<V> {
+    fn zcash_deserialize<R: io::Read>(reader: R) -> Result<Self, SerializationError> {
+        Ok(Self(
+            Signature::<SpendAuth>::zcash_deserialize(reader)?,
+            std::marker::PhantomData,
+        ))
+    }
+}
+
+impl<V: OrchardFlavour> TrustedPreallocate for SpendAuthSig<V> {
     fn max_allocation() -> u64 {
-        // Each signature must have a corresponding action.
-        #[cfg(not(feature = "tx-v6"))]
-        let result = Action::<super::Orchard>::max_allocation();
-
-        // TODO: FIXME: Check this: V6 is used as it provides the max size of the action.
-        // So it's used even for V5 - is this correct?
-        #[cfg(feature = "tx-v6")]
-        let result = Action::<super::OrchardZSA>::max_allocation();
-
-        result
+        Action::<V>::max_allocation()
     }
 }
 
