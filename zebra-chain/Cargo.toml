@@ -16,6 +16,8 @@ categories = ["asynchronous", "cryptography::cryptocurrencies", "encoding"]
 
 [features]
 
+#default = ["tx-v6"]
+
 # Production features that activate extra functionality
 
 # Consensus-critical conversion from JSON to Zcash types
@@ -50,7 +52,10 @@ proptest-impl = [
 bench = ["zebra-test"]
 
 # Support for transaction version 6
-tx-v6 = ["orchard_zsa"]
+tx-v6 = [
+    "orchard_zsa",
+    "nonempty"
+]
 
 [dependencies]
 
@@ -132,6 +137,7 @@ zebra-test = { path = "../zebra-test/", version = "1.0.0-beta.31", optional = tr
 
 # ZSA deps
 orchard_zsa = { package = "orchard", version = "0.5", git = "https://github.com/QED-it/orchard", branch = "zsa1", optional = true }
+nonempty = { version = "0.7", optional = true }
 
 [dev-dependencies]
 # Benchmarks

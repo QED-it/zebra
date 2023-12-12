@@ -171,6 +171,17 @@ impl<V: OrchardFlavour> AuthorizedAction<V> {
     // a valid max allocation can never exceed this size
     pub const ACTION_MAX_ALLOCATION: u64 = (MAX_BLOCK_BYTES - 1) / Self::AUTHORIZED_ACTION_SIZE;
 
+    // To be but we ensure ACTION_MAX_ALLOCATION is less than 2^16 on compile time
+    // (this is a workaround, as static_assertions::const_assert! doesn't work for generics,
+    // see TrustedPreallocate for Action<V>)
+    const _ACTION_MAX_ALLOCATION_OK: u64 = (1 << 16) - Self::ACTION_MAX_ALLOCATION;
+    /* FIXME: remove this
+    const ACTION_MAX_ALLOCATION_OK: () = assert!(
+        Self::ACTION_MAX_ALLOCATION < 1, //(1 << 16),
+        "must be less than 2^16"
+    );
+    */
+
     /// Split out the action and the signature for V5 transaction
     /// serialization.
     pub fn into_parts(self) -> (Action<V>, Signature<SpendAuth>) {
@@ -217,6 +228,14 @@ impl<V: OrchardFlavour> From<&Action<V>> for ActionCopy {
     }
 }
 
+/*
+struct AssertBlockSizeLimit<const N: u64>;
+
+impl<const N: u64> AssertBlockSizeLimit<N> {
+    const OK: () = assert!(N < (1 << 16), "must be less than 2^16");
+}
+*/
+
 /// The maximum number of orchard actions in a valid Zcash on-chain transaction V5.
 ///
 /// If a transaction contains more actions than can fit in maximally large block, it might be
@@ -233,7 +252,12 @@ impl<V: OrchardFlavour> TrustedPreallocate for Action<V> {
         // This acts as nActionsOrchard and is therefore subject to the rule.
         // The maximum value is actually smaller due to the block size limit,
         // but we ensure the 2^16 limit with a static assertion.
-        // TODO: FIXME: find a way to use it: static_assertions::const_assert!(Self::MAX_ALLOCATION < (1 << 16));
+        //
+        // TODO: FIXME: find a better way to use static check (see https://github.com/nvzqz/static-assertions/issues/40,
+        // https://users.rust-lang.org/t/how-do-i-static-assert-a-property-of-a-generic-u32-parameter/76307)?
+        // The following expression doesn't work for generics, so a workaround with _ACTION_MAX_ALLOCATION_OK in
+        // AuthorizedAction impl is used instead:
+        // static_assertions::const_assert!(AuthorizedAction::<V>::ACTION_MAX_ALLOCATION < (1 << 16));
         AuthorizedAction::<V>::ACTION_MAX_ALLOCATION
     }
 }
