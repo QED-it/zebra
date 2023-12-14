@@ -1,3 +1,5 @@
+//! Serialization implementation for selected types from the 'orchard_zsa' crate used in this module.
+
 use std::io;
 
 use crate::serialization::{ReadZcashExt, SerializationError, ZcashDeserialize, ZcashSerialize};
