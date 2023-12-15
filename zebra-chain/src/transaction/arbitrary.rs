@@ -189,6 +189,54 @@ impl Transaction {
             .boxed()
     }
 
+    /// TODO Generate a proptest strategy for V6 Transactions
+    pub fn v6_strategy(ledger_state: LedgerState) -> BoxedStrategy<Self> {
+        (
+            NetworkUpgrade::branch_id_strategy(),
+            any::<LockTime>(),
+            any::<block::Height>(),
+            transparent::Input::vec_strategy(ledger_state, MAX_ARBITRARY_ITEMS),
+            vec(any::<transparent::Output>(), 0..MAX_ARBITRARY_ITEMS),
+            option::of(any::<sapling::ShieldedData<sapling::SharedAnchor>>()),
+            option::of(any::<orchard::ShieldedData>()),
+        )
+            .prop_map(
+                move |(
+                          network_upgrade,
+                          lock_time,
+                          expiry_height,
+                          inputs,
+                          outputs,
+                          sapling_shielded_data,
+                          orchard_shielded_data,
+                      )| {
+                    Transaction::V5 {
+                        network_upgrade: if ledger_state.transaction_has_valid_network_upgrade() {
+                            ledger_state.network_upgrade()
+                        } else {
+                            network_upgrade
+                        },
+                        lock_time,
+                        expiry_height,
+                        inputs,
+                        outputs,
+                        sapling_shielded_data: if ledger_state.height.is_min() {
+                            // The genesis block should not contain any shielded data.
+                            None
+                        } else {
+                            sapling_shielded_data
+                        },
+                        orchard_shielded_data: if ledger_state.height.is_min() {
+                            // The genesis block should not contain any shielded data.
+                            None
+                        } else {
+                            orchard_shielded_data
+                        },
+                    }
+                },
+            )
+            .boxed()
+    }
     /// Proptest Strategy for creating a Vector of transactions where the first
     /// transaction is always the only coinbase transaction
     pub fn vec_strategy(
@@ -791,6 +839,9 @@ impl Arbitrary for Transaction {
                 Self::v5_strategy(ledger_state)
             ]
             .boxed(),
+            NetworkUpgrade::V6 => {
+                Self::v6_strategy(ledger_state)
+            }
         }
     }
 

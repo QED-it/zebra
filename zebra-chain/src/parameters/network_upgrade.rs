@@ -48,6 +48,8 @@ pub enum NetworkUpgrade {
     /// Note: Network Upgrade 5 includes the Orchard Shielded Protocol, and
     /// other changes. The Nu5 code name has not been chosen yet.
     Nu5,
+    /// The Zcash protocol after the V6 upgrade.
+    V6,
 }
 
 impl fmt::Display for NetworkUpgrade {
@@ -76,6 +78,7 @@ pub(super) const MAINNET_ACTIVATION_HEIGHTS: &[(block::Height, NetworkUpgrade)] 
     (block::Height(903_000), Heartwood),
     (block::Height(1_046_400), Canopy),
     (block::Height(1_687_104), Nu5),
+    (block::Height(1_687_105), V6),
 ];
 
 /// Fake mainnet network upgrade activation heights, used in tests.
@@ -89,6 +92,7 @@ const FAKE_MAINNET_ACTIVATION_HEIGHTS: &[(block::Height, NetworkUpgrade)] = &[
     (block::Height(25), Heartwood),
     (block::Height(30), Canopy),
     (block::Height(35), Nu5),
+    (block::Height(40), V6),
 ];
 
 /// Testnet network upgrade activation heights.
@@ -110,6 +114,7 @@ pub(super) const TESTNET_ACTIVATION_HEIGHTS: &[(block::Height, NetworkUpgrade)] 
     (block::Height(903_800), Heartwood),
     (block::Height(1_028_500), Canopy),
     (block::Height(1_842_420), Nu5),
+    (block::Height(1_842_421), V6),
 ];
 
 /// Fake testnet network upgrade activation heights, used in tests.
@@ -123,6 +128,7 @@ const FAKE_TESTNET_ACTIVATION_HEIGHTS: &[(block::Height, NetworkUpgrade)] = &[
     (block::Height(25), Heartwood),
     (block::Height(30), Canopy),
     (block::Height(35), Nu5),
+    (block::Height(40), V6),
 ];
 
 /// The Consensus Branch Id, used to bind transactions and blocks to a
@@ -198,6 +204,7 @@ pub(crate) const CONSENSUS_BRANCH_IDS: &[(NetworkUpgrade, ConsensusBranchId)] = 
     (Heartwood, ConsensusBranchId(0xf5b9230b)),
     (Canopy, ConsensusBranchId(0xe9ff75a6)),
     (Nu5, ConsensusBranchId(0xc2d6d0b4)),
+    (V6, ConsensusBranchId(0x12345678)),
 ];
 
 /// The target block spacing before Blossom.
@@ -344,7 +351,7 @@ impl NetworkUpgrade {
     pub fn target_spacing(&self) -> Duration {
         let spacing_seconds = match self {
             Genesis | BeforeOverwinter | Overwinter | Sapling => PRE_BLOSSOM_POW_TARGET_SPACING,
-            Blossom | Heartwood | Canopy | Nu5 => POST_BLOSSOM_POW_TARGET_SPACING.into(),
+            Blossom | Heartwood | Canopy | Nu5 | V6 => POST_BLOSSOM_POW_TARGET_SPACING.into(),
         };
 
         Duration::seconds(spacing_seconds)

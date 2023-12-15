@@ -70,7 +70,7 @@ impl<'a> SigHasher<'a> {
 
         match self.network_upgrade {
             Genesis | BeforeOverwinter => unreachable!("{}", ZIP143_EXPLANATION),
-            Overwinter | Sapling | Blossom | Heartwood | Canopy | Nu5 => {
+            Overwinter | Sapling | Blossom | Heartwood | Canopy | Nu5 | V6 => {
                 self.hash_sighash_librustzcash()
             }
         }

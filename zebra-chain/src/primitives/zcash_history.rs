@@ -273,7 +273,7 @@ impl Version for zcash_history::V1 {
             }
             // Nu5 is included because this function is called by the V2 implementation
             // since the V1::NodeData is included inside the V2::NodeData.
-            NetworkUpgrade::Heartwood | NetworkUpgrade::Canopy | NetworkUpgrade::Nu5 => {
+            NetworkUpgrade::Heartwood | NetworkUpgrade::Canopy | NetworkUpgrade::Nu5 | NetworkUpgrade::V6 => {
                 zcash_history::NodeData {
                     consensus_branch_id: branch_id.into(),
                     subtree_commitment: block_hash,

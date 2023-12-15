@@ -1192,6 +1192,7 @@ fn sync_to_mandatory_checkpoint_mainnet() -> Result<()> {
 /// Sync to the mandatory checkpoint height testnet and stop.
 #[allow(dead_code)]
 #[cfg_attr(feature = "test_sync_to_mandatory_checkpoint_testnet", test)]
+// #[test]
 fn sync_to_mandatory_checkpoint_testnet() -> Result<()> {
     let _init_guard = zebra_test::init();
     let network = Testnet;

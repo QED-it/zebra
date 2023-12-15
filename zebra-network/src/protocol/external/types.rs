@@ -112,6 +112,8 @@ impl Version {
             (Mainnet, Canopy) => 170_013,
             (Testnet, Nu5) => 170_050,
             (Mainnet, Nu5) => 170_100,
+            (Testnet, V6) => 170_200,
+            (Mainnet, V6) => 170_300
         })
     }
 }

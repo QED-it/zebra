@@ -123,7 +123,7 @@ impl Commitment {
                 }
             }
             Heartwood | Canopy => Ok(ChainHistoryRoot(ChainHistoryMmrRootHash(bytes))),
-            Nu5 => Ok(ChainHistoryBlockTxAuthCommitment(
+            Nu5 | V6 => Ok(ChainHistoryBlockTxAuthCommitment(
                 ChainHistoryBlockTxAuthCommitmentHash(bytes),
             )),
         }
