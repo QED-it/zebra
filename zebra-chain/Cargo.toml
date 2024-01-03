@@ -17,6 +17,7 @@ categories = ["asynchronous", "cryptography::cryptocurrencies", "encoding"]
 [features]
 
 #default = ["tx-v6"]
+default = ["txid-v5v6"]
 
 # Production features that activate extra functionality
 
@@ -56,6 +57,10 @@ tx-v6 = [
     "orchard_zsa",
     "nonempty"
 ]
+
+# Use direct Zebra implementation of txid computation for transaction versions 5 and 6
+# (i.e., don't use librustzcash for that, if enabled)
+txid-v5v6 = []
 
 [dependencies]
 
