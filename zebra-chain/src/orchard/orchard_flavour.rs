@@ -27,6 +27,13 @@ pub trait OrchardFlavour: Clone + Debug {
     /// The size of the encrypted note for this protocol version.
     const ENCRYPTED_NOTE_SIZE: usize;
 
+    /// The size of the part of the encrypted note included in the compact format of Orchard Action.
+    /// For detailed information, refer to ZIP 244 ("T.4a: orchard_actions_compact_digest" section)
+    /// and ZIP 0307 ("Output Compression" section).
+    /// Here it is utilized for the calculation of txid.
+    #[cfg(feature = "txid-v5v6")]
+    const ENCRYPTED_NOTE_COMPACT_SIZE: usize;
+
     /// A type representing an encrypted note for this protocol version.
     type EncryptedNote: Clone
         + Debug
@@ -35,7 +42,8 @@ pub trait OrchardFlavour: Clone + Debug {
         + DeserializeOwned
         + Serialize
         + ZcashDeserialize
-        + ZcashSerialize;
+        + ZcashSerialize
+        + AsRef<[u8]>;
 
     /// A type representing a burn field for this protocol version.
     type BurnType: Clone + Debug + Default + ZcashDeserialize + ZcashSerialize;
@@ -71,8 +79,26 @@ impl ZcashDeserialize for NoBurn {
     }
 }
 
+// The following implementations of the `AsRef<[u8]>` trait are required for the direct
+// implementation of transaction ID calculation for Orchard ShieldedData of transactions
+// `V5` and `V6`.
+impl AsRef<[u8]> for note::EncryptedNote<ENCRYPTED_NOTE_SIZE_V5> {
+    fn as_ref(&self) -> &[u8] {
+        &self.0[..]
+    }
+}
+
+#[cfg(feature = "tx-v6")]
+impl AsRef<[u8]> for note::EncryptedNote<ENCRYPTED_NOTE_SIZE_V6> {
+    fn as_ref(&self) -> &[u8] {
+        &self.0[..]
+    }
+}
+
 impl OrchardFlavour for Orchard {
     const ENCRYPTED_NOTE_SIZE: usize = ENCRYPTED_NOTE_SIZE_V5;
+    #[cfg(feature = "txid-v5v6")]
+    const ENCRYPTED_NOTE_COMPACT_SIZE: usize = 52;
     type EncryptedNote = note::EncryptedNote<ENCRYPTED_NOTE_SIZE_V5>;
     type BurnType = NoBurn;
 }
@@ -80,6 +106,8 @@ impl OrchardFlavour for Orchard {
 #[cfg(feature = "tx-v6")]
 impl OrchardFlavour for OrchardZSA {
     const ENCRYPTED_NOTE_SIZE: usize = ENCRYPTED_NOTE_SIZE_V6;
+    #[cfg(feature = "txid-v5v6")]
+    const ENCRYPTED_NOTE_COMPACT_SIZE: usize = 84;
     type EncryptedNote = note::EncryptedNote<ENCRYPTED_NOTE_SIZE_V6>;
     type BurnType = Vec<BurnItem>;
 }

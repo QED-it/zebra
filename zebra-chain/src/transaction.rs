@@ -14,6 +14,9 @@ mod sighash;
 mod txid;
 mod unmined;
 
+#[cfg(feature = "txid-v5v6")]
+mod txid_v5v6;
+
 #[cfg(feature = "getblocktemplate-rpcs")]
 pub mod builder;
 

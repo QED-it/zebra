@@ -1,6 +1,9 @@
 //! Transaction ID computation. Contains code for generating the Transaction ID
 //! from the transaction.
-use std::{convert::TryInto, io};
+use std::io;
+
+#[cfg(not(feature = "txid-v5v6"))]
+use std::convert::TryInto;
 
 use super::{Hash, Transaction};
 use crate::serialization::{sha256d, ZcashSerialize};
@@ -49,11 +52,22 @@ impl<'a> TxIdBuilder<'a> {
     /// Compute the Transaction ID for a V5 transaction in the given network upgrade.
     /// In this case it's the hash of a tree of hashes of specific parts of the
     /// transaction, as specified in ZIP-244 and ZIP-225.
+    #[allow(clippy::unwrap_in_result)]
     fn txid_v5(self) -> Result<Hash, io::Error> {
         // The v5 txid (from ZIP-244) is computed using librustzcash. Convert the zebra
         // transaction to a librustzcash transaction.
-        let alt_tx: zcash_primitives::transaction::Transaction = self.trans.try_into()?;
-        Ok(Hash(*alt_tx.txid().as_ref()))
+        #[cfg(not(feature = "txid-v5v6"))]
+        {
+            let alt_tx: zcash_primitives::transaction::Transaction = self.trans.try_into()?;
+            Ok(Hash(*alt_tx.txid().as_ref()))
+        }
+
+        // FIXME: add a proper comment
+        #[cfg(feature = "txid-v5v6")]
+        {
+            Ok(super::txid_v5v6::calculate_txid(self.trans)?
+                .expect("txid_v5 method can be called only for transaction V5"))
+        }
     }
 
     /// Compute the Transaction ID for a V6 transaction in the given network upgrade.
