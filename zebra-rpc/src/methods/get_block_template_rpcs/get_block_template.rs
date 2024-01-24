@@ -113,7 +113,7 @@ where
     Tip: ChainTip + Clone + Send + Sync + 'static,
     SyncStatus: ChainSyncStatus + Clone + Send + Sync + 'static,
 {
-    check_synced_to_tip(&network, latest_chain_tip, sync_status)?;
+   // check_synced_to_tip(&network, latest_chain_tip, sync_status)?;
 
     let block: Block = match block_proposal_bytes.zcash_deserialize_into() {
         Ok(block) => block,
