@@ -72,35 +72,37 @@ impl Transaction {
             "invalid coinbase transaction: must have at least one output"
         );
 
-        Transaction::V5 {
-            // > The transaction version number MUST be 4 or 5. ...
-            // > If the transaction version number is 5 then the version group ID
-            // > MUST be 0x26A7270A.
-            // > If effectiveVersion ≥ 5, the nConsensusBranchId field MUST match the consensus
-            // > branch ID used for SIGHASH transaction hashes, as specified in [ZIP-244].
-            network_upgrade: NetworkUpgrade::current(network, height),
+        // FIXME: correct?
+        Transaction::V5
+            | Transaction::V6 {
+                // > The transaction version number MUST be 4 or 5. ...
+                // > If the transaction version number is 5 then the version group ID
+                // > MUST be 0x26A7270A.
+                // > If effectiveVersion ≥ 5, the nConsensusBranchId field MUST match the consensus
+                // > branch ID used for SIGHASH transaction hashes, as specified in [ZIP-244].
+                network_upgrade: NetworkUpgrade::current(network, height),
 
-            // There is no documented consensus rule for the lock time field in coinbase
-            // transactions, so we just leave it unlocked. (We could also set it to `height`.)
-            lock_time: LockTime::unlocked(),
+                // There is no documented consensus rule for the lock time field in coinbase
+                // transactions, so we just leave it unlocked. (We could also set it to `height`.)
+                lock_time: LockTime::unlocked(),
 
-            // > The nExpiryHeight field of a coinbase transaction MUST be equal to its
-            // > block height.
-            expiry_height: height,
+                // > The nExpiryHeight field of a coinbase transaction MUST be equal to its
+                // > block height.
+                expiry_height: height,
 
-            inputs,
-            outputs,
+                inputs,
+                outputs,
 
-            // Zebra does not support shielded coinbase yet.
-            //
-            // > In a version 5 coinbase transaction, the enableSpendsOrchard flag MUST be 0.
-            // > In a version 5 transaction, the reserved bits 2 .. 7 of the flagsOrchard field
-            // > MUST be zero.
-            //
-            // See the Zcash spec for additional shielded coinbase consensus rules.
-            sapling_shielded_data: None,
-            orchard_shielded_data: None,
-        }
+                // Zebra does not support shielded coinbase yet.
+                //
+                // > In a version 5 coinbase transaction, the enableSpendsOrchard flag MUST be 0.
+                // > In a version 5 transaction, the reserved bits 2 .. 7 of the flagsOrchard field
+                // > MUST be zero.
+                //
+                // See the Zcash spec for additional shielded coinbase consensus rules.
+                sapling_shielded_data: None,
+                orchard_shielded_data: None,
+            }
     }
 
     /// Returns a new version 4 coinbase transaction for `network` and `height`,

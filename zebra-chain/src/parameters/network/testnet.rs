@@ -18,6 +18,12 @@ use super::magic::Magic;
 #[cfg(any(test, feature = "proptest-impl"))]
 pub const REGTEST_NU5_ACTIVATION_HEIGHT: u32 = 100;
 
+// FIXME: Use correct value!!!
+/// The Regtest NU6 activation height in tests
+// TODO: Serialize testnet parameters in Config then remove this and use a configured NU6 activation height.
+#[cfg(any(test, feature = "proptest-impl"))]
+pub const REGTEST_NU6_ACTIVATION_HEIGHT: u32 = 100;
+
 /// Reserved network names that should not be allowed for configured Testnets.
 pub const RESERVED_NETWORK_NAMES: [&str; 6] = [
     "Mainnet",
@@ -61,6 +67,9 @@ pub struct ConfiguredActivationHeights {
     /// Activation height for `NU5` network upgrade.
     #[serde(rename = "NU5")]
     pub nu5: Option<u32>,
+    /// Activation height for `NU6` network upgrade.
+    #[serde(rename = "NU6")]
+    pub nu6: Option<u32>,
 }
 
 /// Builder for the [`Parameters`] struct.
@@ -174,6 +183,7 @@ impl ParametersBuilder {
             heartwood,
             canopy,
             nu5,
+            nu6,
         }: ConfiguredActivationHeights,
     ) -> Self {
         use NetworkUpgrade::*;
@@ -191,6 +201,7 @@ impl ParametersBuilder {
             .chain(heartwood.into_iter().map(|h| (h, Heartwood)))
             .chain(canopy.into_iter().map(|h| (h, Canopy)))
             .chain(nu5.into_iter().map(|h| (h, Nu5)))
+            .chain(nu6.into_iter().map(|h| (h, Nu6)))
             .map(|(h, nu)| (h.try_into().expect("activation height must be valid"), nu))
             .collect();
 
@@ -340,6 +351,7 @@ impl Parameters {
         ParametersBuilder::default()
     }
 
+    // FIXME: the same for nu6?
     /// Accepts a [`ConfiguredActivationHeights`].
     ///
     /// Creates an instance of [`Parameters`] with `Regtest` values.

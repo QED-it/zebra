@@ -28,7 +28,8 @@ impl<'a> TxIdBuilder<'a> {
             | Transaction::V2 { .. }
             | Transaction::V3 { .. }
             | Transaction::V4 { .. } => self.txid_v1_to_v4(),
-            Transaction::V5 { .. } => self.txid_v5(),
+            // FIXME: is this correct (use txid_v5 for V6 too)?
+            Transaction::V5 { .. } | Transaction::V6 { .. } => self.txid_v5(),
         }
     }
 

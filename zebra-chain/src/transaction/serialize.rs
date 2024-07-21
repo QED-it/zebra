@@ -11,7 +11,10 @@ use reddsa::{orchard::Binding, orchard::SpendAuth, Signature};
 use crate::{
     amount,
     block::MAX_BLOCK_BYTES,
-    parameters::{OVERWINTER_VERSION_GROUP_ID, SAPLING_VERSION_GROUP_ID, TX_V5_VERSION_GROUP_ID},
+    parameters::{
+        OVERWINTER_VERSION_GROUP_ID, SAPLING_VERSION_GROUP_ID, TX_V5_VERSION_GROUP_ID,
+        TX_V6_VERSION_GROUP_ID,
+    },
     primitives::{Halo2Proof, ZkSnarkProof},
     serialization::{
         zcash_deserialize_external_count, zcash_serialize_empty_list,
@@ -106,7 +109,7 @@ where
     }
 }
 
-// Transaction::V5 serializes sapling ShieldedData in a single continuous byte
+// Transaction::V5/V6 serializes sapling ShieldedData in a single continuous byte
 // range, so we can implement its serialization and deserialization separately.
 // (Unlike V4, where it must be serialized as part of the transaction.)
 
@@ -628,6 +631,7 @@ impl ZcashSerialize for Transaction {
                 }
             }
 
+            // FIXME: add support of V6 in another way?
             Transaction::V5 {
                 network_upgrade,
                 lock_time,
@@ -636,9 +640,32 @@ impl ZcashSerialize for Transaction {
                 outputs,
                 sapling_shielded_data,
                 orchard_shielded_data,
+            }
+            | Transaction::V6 {
+                network_upgrade,
+                lock_time,
+                expiry_height,
+                inputs,
+                outputs,
+                sapling_shielded_data,
+                orchard_shielded_data,
             } => {
+                // FIXME: refer to a proper spec for V6
                 // Transaction V5 spec:
                 // https://zips.z.cash/protocol/protocol.pdf#txnencoding
+
+                // FIXME: is this correct?
+                match self {
+                    Transaction::V5 { .. } => {
+                        // Denoted as `nVersionGroupId` in the spec.
+                        writer.write_u32::<LittleEndian>(TX_V5_VERSION_GROUP_ID)?;
+                    }
+                    Transaction::V6 { .. } => {
+                        // Denoted as `nVersionGroupId` in the spec.
+                        writer.write_u32::<LittleEndian>(TX_V6_VERSION_GROUP_ID)?;
+                    }
+                    _ => panic!("Unexpected version value"),
+                }
 
                 // Denoted as `nVersionGroupId` in the spec.
                 writer.write_u32::<LittleEndian>(TX_V5_VERSION_GROUP_ID)?;
@@ -877,15 +904,33 @@ impl ZcashDeserialize for Transaction {
                     joinsplit_data,
                 })
             }
-            (5, true) => {
+            // FIXME: add support for V6
+            (5, true) | (6, true) => {
                 // Transaction V5 spec:
                 // https://zips.z.cash/protocol/protocol.pdf#txnencoding
 
                 // Denoted as `nVersionGroupId` in the spec.
                 let id = limited_reader.read_u32::<LittleEndian>()?;
-                if id != TX_V5_VERSION_GROUP_ID {
-                    return Err(SerializationError::Parse("expected TX_V5_VERSION_GROUP_ID"));
+
+                // FIXME: is this correct?
+                match version {
+                    5 => {
+                        if id != TX_V5_VERSION_GROUP_ID {
+                            return Err(SerializationError::Parse(
+                                "expected TX_V5_VERSION_GROUP_ID",
+                            ));
+                        }
+                    }
+                    6 => {
+                        if id != TX_V6_VERSION_GROUP_ID {
+                            return Err(SerializationError::Parse(
+                                "expected TX_V6_VERSION_GROUP_ID",
+                            ));
+                        }
+                    }
+                    _ => panic!("Unexpected version value"),
                 }
+
                 // Denoted as `nConsensusBranchId` in the spec.
                 // Convert it to a NetworkUpgrade
                 let network_upgrade =
@@ -919,15 +964,28 @@ impl ZcashDeserialize for Transaction {
                 // `proofsOrchard`, `vSpendAuthSigsOrchard`, and `bindingSigOrchard`.
                 let orchard_shielded_data = (&mut limited_reader).zcash_deserialize_into()?;
 
-                Ok(Transaction::V5 {
-                    network_upgrade,
-                    lock_time,
-                    expiry_height,
-                    inputs,
-                    outputs,
-                    sapling_shielded_data,
-                    orchard_shielded_data,
-                })
+                // FIXME: is this correct?
+                match version {
+                    5 => Ok(Transaction::V5 {
+                        network_upgrade,
+                        lock_time,
+                        expiry_height,
+                        inputs,
+                        outputs,
+                        sapling_shielded_data,
+                        orchard_shielded_data,
+                    }),
+                    6 => Ok(Transaction::V5 {
+                        network_upgrade,
+                        lock_time,
+                        expiry_height,
+                        inputs,
+                        outputs,
+                        sapling_shielded_data,
+                        orchard_shielded_data,
+                    }),
+                    _ => panic!("Unexpected version value"),
+                }
             }
             (_, _) => Err(SerializationError::Parse("bad tx header")),
         }
@@ -975,6 +1033,9 @@ pub const MIN_TRANSPARENT_TX_V4_SIZE: u64 = MIN_TRANSPARENT_TX_SIZE + 4;
 ///
 /// v5 transactions also have an expiry height and a consensus branch ID.
 pub const MIN_TRANSPARENT_TX_V5_SIZE: u64 = MIN_TRANSPARENT_TX_SIZE + 4 + 4;
+
+// FIXME: add a proper value and doc
+pub const MIN_TRANSPARENT_TX_V6_SIZE: u64 = MIN_TRANSPARENT_TX_SIZE + 4 + 4;
 
 /// No valid Zcash message contains more transactions than can fit in a single block
 ///

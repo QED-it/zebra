@@ -32,6 +32,18 @@ lazy_static! {
     };
 }
 
+lazy_static! {
+    pub static ref EMPTY_V6_TX: Transaction = Transaction::V6 {
+        network_upgrade: NetworkUpgrade::Nu6,
+        lock_time: LockTime::min_lock_time_timestamp(),
+        expiry_height: block::Height(0),
+        inputs: Vec::new(),
+        outputs: Vec::new(),
+        sapling_shielded_data: None,
+        orchard_shielded_data: None,
+    };
+}
+
 /// Build a mock output list for pre-V5 transactions, with (index+1)
 /// copies of `output`, which is used to computed the sighash.
 ///
@@ -283,6 +295,33 @@ fn empty_v5_round_trip() {
     assert_eq!(data, data2, "data must be equal if structs are equal");
 }
 
+// FIXME: correct?
+// Transaction V6 test vectors
+
+/// An empty transaction v6, with no Orchard, Sapling, or Transparent data
+///
+/// empty transaction are invalid, but Zebra only checks this rule in
+/// zebra_consensus::transaction::Verifier
+#[test]
+fn empty_v6_round_trip() {
+    let _init_guard = zebra_test::init();
+
+    let tx: &Transaction = &EMPTY_V6_TX;
+
+    let data = tx.zcash_serialize_to_vec().expect("tx should serialize");
+    let tx2: &Transaction = &data
+        .zcash_deserialize_into()
+        .expect("tx should deserialize");
+
+    assert_eq!(tx, tx2);
+
+    let data2 = tx2
+        .zcash_serialize_to_vec()
+        .expect("vec serialization is infallible");
+
+    assert_eq!(data, data2, "data must be equal if structs are equal");
+}
+
 /// An empty transaction v4, with no Sapling, Sprout, or Transparent data
 ///
 /// empty transaction are invalid, but Zebra only checks this rule in
@@ -326,6 +365,19 @@ fn empty_v5_librustzcash_round_trip() {
     );
 }
 
+// FIXME: correct?
+/// Check if an empty V6 transaction can be deserialized by librustzcash too.
+#[test]
+fn empty_v6_librustzcash_round_trip() {
+    let _init_guard = zebra_test::init();
+
+    let tx: &Transaction = &EMPTY_V6_TX;
+    let _alt_tx: zcash_primitives::transaction::Transaction = tx.try_into().expect(
+        "librustzcash deserialization might work for empty zebra serialized transactions. \
+        Hint: if empty transactions fail, but other transactions work, delete this test",
+    );
+}
+
 /// Do a round-trip test on fake v5 transactions created from v4 transactions
 /// in the block test vectors.
 ///
@@ -356,6 +408,7 @@ fn fake_v5_round_trip_for_network(network: Network) {
             .zcash_deserialize_into::<Block>()
             .expect("block is structurally valid");
 
+        // FIXME: what about v6?
         // skip this block if it only contains v5 transactions,
         // the block round-trip test covers it already
         if original_block
@@ -989,6 +1042,10 @@ fn binding_signatures_for_network(network: Network) {
                     }
                 }
                 Transaction::V5 {
+                    sapling_shielded_data,
+                    ..
+                }
+                | Transaction::V6 {
                     sapling_shielded_data,
                     ..
                 } => {

@@ -14,6 +14,7 @@ impl NetworkUpgrade {
             Just(NetworkUpgrade::Heartwood),
             Just(NetworkUpgrade::Canopy),
             Just(NetworkUpgrade::Nu5),
+            Just(NetworkUpgrade::Nu6),
             // TODO: add future network upgrades (#1974)
         ]
         .boxed()

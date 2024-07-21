@@ -280,6 +280,7 @@ impl Default for LedgerStateOverride {
     fn default() -> Self {
         let default_network = Network::default();
 
+        // FIXME: what about nu6?
         // TODO: dynamically select any future network upgrade (#1974)
         let nu5_activation_height = Nu5.activation_height(&default_network);
         let nu5_override = if nu5_activation_height.is_some() {
@@ -468,6 +469,7 @@ impl Block {
                     let heartwood_height = NetworkUpgrade::Heartwood
                         .activation_height(&current.network)
                         .unwrap();
+                    // FIXME: what about nu6?
                     let nu5_height = NetworkUpgrade::Nu5.activation_height(&current.network);
 
                     match current_height.cmp(&heartwood_height) {

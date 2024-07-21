@@ -25,6 +25,7 @@ fn check_parameters_impl() {
         zp_consensus::NetworkUpgrade::Heartwood,
         zp_consensus::NetworkUpgrade::Canopy,
         zp_consensus::NetworkUpgrade::Nu5,
+        zp_consensus::NetworkUpgrade::Nu6,
     ];
 
     for (network, zp_network) in [
@@ -101,6 +102,7 @@ fn check_parameters_impl() {
 #[test]
 fn activates_network_upgrades_correctly() {
     let expected_activation_height = 1;
+    // FIXME: what about nu6?
     let network = testnet::Parameters::build()
         .with_activation_heights(ConfiguredActivationHeights {
             nu5: Some(expected_activation_height),
@@ -135,6 +137,9 @@ fn activates_network_upgrades_correctly() {
         (Height(1), NetworkUpgrade::Canopy),
         // TODO: Remove this once the testnet parameters are being serialized.
         (Height(100), NetworkUpgrade::Nu5),
+        // FIXME: correct? Use correct height!!!
+        // TODO: Remove this once the testnet parameters are being serialized.
+        (Height(100), NetworkUpgrade::Nu6),
     ];
 
     for (network, expected_activation_heights) in [
