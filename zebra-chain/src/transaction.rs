@@ -267,7 +267,7 @@ impl Transaction {
             | Transaction::V2 { .. }
             | Transaction::V3 { .. }
             | Transaction::V4 { .. } => None,
-            Transaction::V5 | Transaction::V6 { .. } => Some(AuthDigest::from(self)),
+            Transaction::V5 { .. } | Transaction::V6 { .. } => Some(AuthDigest::from(self)),
         }
     }
 

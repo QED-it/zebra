@@ -432,6 +432,7 @@ enum SpendConflictTestInput {
         conflict: SpendConflictForTransactionV4,
     },
 
+    // FIXME: V6?
     /// Test V5 transactions to include Orchard nullifier conflicts.
     V5 {
         #[proptest(

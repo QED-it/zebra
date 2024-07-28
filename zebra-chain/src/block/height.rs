@@ -72,7 +72,7 @@ impl Height {
     /// alias instead.
     pub const MAX_AS_U32: u32 = Self::MAX.0;
 
-    // FIXME: what baout NU6?
+    // FIXME: what about NU6?
     /// The maximum expiration [`Height`] that is allowed in all transactions
     /// previous to Nu5 and in non-coinbase transactions from Nu5 activation
     /// height and above.

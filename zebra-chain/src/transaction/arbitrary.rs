@@ -901,6 +901,7 @@ impl Arbitrary for VerifiedUnminedTx {
 
 // Utility functions
 
+// FIXME: what about v6?
 /// Convert `trans` into a fake v5 transaction,
 /// converting sapling shielded data from v4 to v5 if possible.
 pub fn transaction_to_fake_v5(

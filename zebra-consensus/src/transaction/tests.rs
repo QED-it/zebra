@@ -2,6 +2,8 @@
 //
 // TODO: split fixed test vectors into a `vectors` module?
 
+// FIXME: should we use v5 functions for v6?
+
 use std::{collections::HashMap, sync::Arc};
 
 use chrono::{DateTime, TimeZone, Utc};

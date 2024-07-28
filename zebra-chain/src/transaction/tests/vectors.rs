@@ -642,6 +642,7 @@ fn zip244_auth_digest() -> Result<()> {
     for test in zip0244::TEST_VECTORS.iter() {
         let transaction = test.tx.zcash_deserialize_into::<Transaction>()?;
         let auth_digest = transaction.auth_digest();
+        // FIXME: V6?
         assert_eq!(
             auth_digest
                 .expect("must have auth_digest since it must be a V5 transaction")
@@ -689,10 +690,8 @@ fn test_vec143_2() -> Result<()> {
     let value = hex::decode("2f6e04963b4c0100")?.zcash_deserialize_into::<Amount<_>>()?;
     let lock_script = Script::new(&hex::decode("53")?);
     let input_ind = 1;
-    let output = transparent::Output {
-        value,
-        lock_script: lock_script.clone(),
-    };
+    let output = transparent::Output { value, lock_script };
+    // FIXME: v6?
     let all_previous_outputs = mock_pre_v5_output_list(output, input_ind);
 
     let hasher = SigHasher::new(
@@ -766,10 +765,8 @@ fn test_vec243_2() -> Result<()> {
     let value = hex::decode("adedf02996510200")?.zcash_deserialize_into::<Amount<_>>()?;
     let lock_script = Script::new(&[]);
     let input_ind = 1;
-    let output = transparent::Output {
-        value,
-        lock_script: lock_script.clone(),
-    };
+    let output = transparent::Output { value, lock_script };
+    // FIXME: v6
     let all_previous_outputs = mock_pre_v5_output_list(output, input_ind);
 
     let hasher = SigHasher::new(
@@ -799,6 +796,7 @@ fn test_vec243_2() -> Result<()> {
         lock_script: lock_script.clone(),
     };
     let index = input_ind;
+    // FIXME: v6
     let all_previous_outputs = mock_pre_v5_output_list(prevout, input_ind);
 
     let precomputed_tx_data = PrecomputedTxData::new(
@@ -897,6 +895,7 @@ fn zip143_sighash() -> Result<()> {
             None => (None, None),
         };
         let all_previous_outputs: Vec<_> = match output.clone() {
+            // FIXME: v6?
             Some(output) => mock_pre_v5_output_list(output, input_index.unwrap()),
             None => vec![],
         };
@@ -935,6 +934,7 @@ fn zip243_sighash() -> Result<()> {
             None => (None, None),
         };
         let all_previous_outputs: Vec<_> = match output.clone() {
+            // FIXME: v6
             Some(output) => mock_pre_v5_output_list(output, input_index.unwrap()),
             None => vec![],
         };
