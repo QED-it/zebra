@@ -988,10 +988,10 @@ fn binding_signatures_for_network(network: Network) {
                         .expect("must pass verification");
                     }
                 }
-                Transaction::V5 {
+                tx_v5_and_v6!({
                     sapling_shielded_data,
                     ..
-                } => {
+                }) => {
                     if let Some(sapling_shielded_data) = sapling_shielded_data {
                         let shielded_sighash =
                             tx.sighash(upgrade.branch_id().unwrap(), HashType::ALL, &[], None);

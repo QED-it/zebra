@@ -10,7 +10,7 @@ use crate::{
     amount::{Amount, NonNegative},
     parameters::{ConsensusBranchId, Network},
     serialization::ZcashSerialize,
-    transaction::{AuthDigest, HashType, SigHash, Transaction},
+    transaction::{tx_v5_and_v6, AuthDigest, HashType, SigHash, Transaction},
     transparent::{self, Script},
 };
 
@@ -153,13 +153,16 @@ impl TryFrom<&Transaction> for zp_tx::Transaction {
     #[allow(clippy::unwrap_in_result)]
     fn try_from(trans: &Transaction) -> Result<Self, Self::Error> {
         let network_upgrade = match trans {
-            Transaction::V5 {
-                network_upgrade, ..
-            } => network_upgrade,
+            tx_v5_and_v6!({
+                network_upgrade,
+                ..
+            }) => network_upgrade,
             Transaction::V1 { .. }
             | Transaction::V2 { .. }
             | Transaction::V3 { .. }
-            | Transaction::V4 { .. } => panic!("Zebra only uses librustzcash for V5 transactions"),
+            | Transaction::V4 { .. } => {
+                panic!("Zebra only uses librustzcash for V5 and V6 transactions")
+            }
         };
 
         convert_tx_to_librustzcash(
