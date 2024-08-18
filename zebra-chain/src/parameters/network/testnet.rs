@@ -666,6 +666,8 @@ impl Parameters {
             post_nu6_funding_streams,
             target_difficulty_limit,
             disable_pow,
+            pre_blossom_halving_interval,
+            post_blossom_halving_interval,
         } = Self::new_regtest(None, None, None);
 
         self.network_name == network_name
