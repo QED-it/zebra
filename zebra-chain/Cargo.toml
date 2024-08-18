@@ -193,4 +193,6 @@ harness = false
 
 # FIXME: remove this and all zcash_unstable usage in the code after updating librustzcash
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(zcash_unstable, values("nu6"))'] }
+# TODO: Remove this once it's no longer needed for NU6.
+# FIXME: TODO: What about NU7?
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(zcash_unstable, values("nu6", "nu7"))'] }
