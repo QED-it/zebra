@@ -1,7 +1,6 @@
 name: Basic checks
 
-#on: [push, pull_request]
-on: [push]
+on: [push, pull_request]
 
 jobs:
   test:
@@ -9,28 +8,29 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-24.04]
-
-    env:
-      # Use system-installed RocksDB library instead of building from scratch
-      ROCKSDB_LIB_DIR: /usr/lib
-      # Use system-installed Snappy library for compression in RocksDB
-      SNAPPY_LIB_DIR: /usr/lib/x86_64-linux-gnu
-      # FIXME: remove the following commented lines
-      # Enable the `nu6` feature in `zcash_protocol`
-      #RUSTFLAGS: '--cfg zcash_unstable="nu6"'
-      #RUSTDOCFLAGS: '--cfg zcash_unstable="nu6"'
+        os: [ubuntu-latest]
 
     steps:
       - uses: actions/checkout@v4
-      - name: Install dependencies on Ubuntu
-        #run: sudo apt-get update && sudo apt-get install -y protobuf-compiler build-essential librocksdb-dev
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler librocksdb-dev
       - name: Run tests
         run: cargo test --verbose
       - name: Verify working directory is clean
         run: git diff --exit-code
-      - name: Run doc check
+
+  doc-links:
+    name: Intra-doc links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo fetch
+      # Requires #![deny(rustdoc::broken_intra_doc_links)] in crates.
+      - name: Check intra-doc links
         run: cargo doc --all-features --document-private-items
-      - name: Run format check
-        run: cargo fmt -- --check
+
+  fmt:
+    name: Rustfmt
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo fmt -- --check
