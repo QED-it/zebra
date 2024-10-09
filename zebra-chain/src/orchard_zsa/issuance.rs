@@ -26,12 +26,18 @@ use orchard::{
     Address, Note,
 };
 
-use super::serialize::ASSET_BASE_SIZE;
+use super::common::ASSET_BASE_SIZE;
 
 /// Wrapper for `IssueBundle` used in the context of Transaction V6. This allows the implementation of
 /// a Serde serializer for unit tests within this crate.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IssueData(IssueBundle<Signed>);
+
+impl From<IssueBundle<Signed>> for IssueData {
+    fn from(inner: IssueBundle<Signed>) -> Self {
+        Self(inner)
+    }
+}
 
 // Sizes of the serialized values for types in bytes (used for TrustedPreallocate impls)
 // FIXME: are those values correct (43, 32 etc.)?
