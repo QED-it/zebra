@@ -132,10 +132,9 @@ pub(super) const TESTNET_ACTIVATION_HEIGHTS: &[(block::Height, NetworkUpgrade)] 
     (block::Height(903_800), Heartwood),
     (block::Height(1_028_500), Canopy),
     (block::Height(1_842_420), Nu5),
-    // TODO: Add NU6
-    // (block::Height(2_942_000), Nu6),
-    // FIXME: TODO: Add NU7 with a correct value
-    // (block::Height(2_942_001), Nu7),
+    (block::Height(2_976_000), Nu6),
+    // FIXME: TODO: Set a correct value for NU7
+    (block::Height(2_942_001), Nu7),
 ];
 
 /// Fake testnet network upgrade activation heights, used in tests.
