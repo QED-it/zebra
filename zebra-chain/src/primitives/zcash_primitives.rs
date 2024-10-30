@@ -10,7 +10,7 @@ use crate::{
     amount::{Amount, NonNegative},
     parameters::{ConsensusBranchId, Network},
     serialization::ZcashSerialize,
-    transaction::{AuthDigest, HashType, SigHash, Transaction},
+    transaction::{tx_v5_and_v6, AuthDigest, HashType, SigHash, Transaction},
     transparent::{self, Script},
 };
 
@@ -138,7 +138,8 @@ impl zp_tx::components::orchard::MapAuth<orchard::bundle::Authorized, orchard::b
 }
 
 // FIXME: is this implemetation correct?
-#[cfg(zcash_unstable = "nu6")]
+// FIXME: remove this cfg
+//#[cfg(zcash_unstable = "nu6")]
 impl zp_tx::components::issuance::MapIssueAuth<orchard::issuance::Signed, orchard::issuance::Signed>
     for IdentityMap
 {
@@ -158,11 +159,13 @@ impl<'a> zp_tx::Authorization for PrecomputedAuth<'a> {
     type OrchardAuth = orchard::bundle::Authorized;
 
     // FIXME: is this correct?
-    #[cfg(zcash_unstable = "nu6")]
+    // FIXME: remove this cfg
+    //#[cfg(zcash_unstable = "nu6")]
     type OrchardZsaAuth = orchard::bundle::Authorized;
 
     // FIXME: is this correct?
-    #[cfg(zcash_unstable = "nu6")]
+    // FIXME: remove this cfg
+    //#[cfg(zcash_unstable = "nu6")]
     type IssueAuth = orchard::issuance::Signed;
 }
 
@@ -180,10 +183,7 @@ impl TryFrom<&Transaction> for zp_tx::Transaction {
     #[allow(clippy::unwrap_in_result)]
     fn try_from(trans: &Transaction) -> Result<Self, Self::Error> {
         let network_upgrade = match trans {
-            Transaction::V5 {
-                network_upgrade, ..
-            }
-            | Transaction::V6 {
+            tx_v5_and_v6! {
                 network_upgrade, ..
             } => network_upgrade,
             Transaction::V1 { .. }
