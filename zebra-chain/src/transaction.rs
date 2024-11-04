@@ -40,7 +40,7 @@ pub use unmined::{
 
 use crate::{
     amount::{Amount, Error as AmountError, NegativeAllowed, NonNegative},
-    block, orchard,
+    block, orchard, orchard_zsa,
     parameters::{ConsensusBranchId, NetworkUpgrade},
     primitives::{ed25519, Bctv14Proof, Groth16Proof},
     sapling,
@@ -235,7 +235,7 @@ pub enum Transaction {
         orchard_shielded_data: Option<orchard::ShieldedData<orchard::OrchardZSA>>,
         /// The ZSA issuance data for this transaction, if any.
         #[cfg(feature = "tx-v6")]
-        orchard_zsa_issue_data: Option<orchard::IssueData>,
+        orchard_zsa_issue_data: Option<orchard_zsa::IssueData>,
     },
 }
 
@@ -1036,8 +1036,39 @@ impl Transaction {
 
     /// Access the note commitments in this transaction, if there are any,
     /// regardless of version.
-    pub fn orchard_note_commitments(&self) -> Box<dyn Iterator<Item = &pallas::Base> + '_> {
-        orchard_shielded_data_iter!(self, orchard::ShieldedData::note_commitments)
+    pub fn orchard_note_commitments(&self) -> Box<dyn Iterator<Item = pallas::Base> + '_> {
+        match self {
+            Transaction::V1 { .. }
+            | Transaction::V2 { .. }
+            | Transaction::V3 { .. }
+            | Transaction::V4 { .. } => Box::new(std::iter::empty()),
+
+            Transaction::V5 {
+                orchard_shielded_data,
+                ..
+            } => Box::new(
+                orchard_shielded_data
+                    .iter()
+                    .flat_map(orchard::ShieldedData::note_commitments)
+                    .cloned(),
+            ),
+            #[cfg(feature = "tx-v6")]
+            Transaction::V6 {
+                orchard_shielded_data,
+                orchard_zsa_issue_data,
+                ..
+            } => Box::new(
+                orchard_shielded_data
+                    .iter()
+                    .flat_map(orchard::ShieldedData::note_commitments)
+                    .cloned()
+                    .chain(
+                        orchard_zsa_issue_data
+                            .iter()
+                            .flat_map(orchard_zsa::IssueData::note_commitments),
+                    ),
+            ),
+        }
     }
 
     /// Access the [`orchard::Flags`] in this transaction, if there is any,
