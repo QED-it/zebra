@@ -417,11 +417,18 @@ where
                 // FIXME: implement proper V6 verification
                 #[cfg(feature = "tx-v6")]
                 Transaction::V6 {
+                    sapling_shielded_data,
+                    orchard_shielded_data,
                     ..
-                } =>  {
-                    tracing::debug!(?tx, "V6 transaction verification is not supported for now");
-                    return Err(TransactionError::WrongVersion);
                 }
+                => Self::verify_v6_transaction(
+                    &req,
+                    &network,
+                    script_verifier,
+                    cached_ffi_transaction.clone(),
+                    sapling_shielded_data,
+                    orchard_shielded_data,
+                )?,
             };
 
             if let Some(unmined_tx) = req.mempool_transaction() {
@@ -699,6 +706,48 @@ where
             )),
         }
     }
+
+
+    /// Verify a V5 transaction in a VERY VERY demo manner
+    #[allow(clippy::unwrap_in_result)]
+    fn verify_v6_transaction(
+        request: &Request,
+        network: &Network,
+        script_verifier: script::Verifier,
+        cached_ffi_transaction: Arc<CachedFfiTransaction>,
+        sapling_shielded_data: &Option<sapling::ShieldedData<sapling::SharedAnchor>>,
+        orchard_shielded_data: &Option<orchard::ShieldedData<orchard::OrchardZSA>>,
+    ) -> Result<AsyncChecks, TransactionError> {
+        let transaction = request.transaction();
+        let upgrade = request.upgrade(network);
+
+        Self::verify_v5_transaction_network_upgrade(&transaction, upgrade)?;
+
+        let shielded_sighash = transaction.sighash(
+            upgrade
+                .branch_id()
+                .expect("Overwinter-onwards must have branch ID, and we checkpoint on Canopy"),
+            HashType::ALL,
+            cached_ffi_transaction.all_previous_outputs(),
+            None,
+        );
+
+        Ok(Self::verify_transparent_inputs_and_outputs(
+            request,
+            network,
+            script_verifier,
+            cached_ffi_transaction,
+        )?
+            .and(Self::verify_sapling_shielded_data(
+                sapling_shielded_data,
+                &shielded_sighash,
+            )?)
+            .and(Self::verify_orchard_zsa_shielded_data(
+                orchard_shielded_data,
+                &shielded_sighash,
+            )?))
+    }
+
 
     /// Verify a V5 transaction.
     ///
@@ -1020,6 +1069,109 @@ where
 
         Ok(async_checks)
     }
+
+    /// Verifies a transaction's Orchard shielded data.
+    fn verify_orchard_zsa_shielded_data(
+        orchard_shielded_data: &Option<orchard::ShieldedData<orchard::OrchardZSA>>,
+        shielded_sighash: &SigHash,
+    ) -> Result<AsyncChecks, TransactionError> {
+        let mut async_checks = AsyncChecks::new();
+
+        if let Some(orchard_shielded_data) = orchard_shielded_data {
+            // # Consensus
+            //
+            // > The proof 𝜋 MUST be valid given a primary input (cv, rt^{Orchard},
+            // > nf, rk, cm_x, enableSpends, enableOutputs)
+            //
+            // https://zips.z.cash/protocol/protocol.pdf#actiondesc
+            //
+            // Unlike Sapling, Orchard shielded transactions have a single
+            // aggregated Halo2 proof per transaction, even with multiple
+            // Actions in one transaction. So we queue it for verification
+            // only once instead of queuing it up for every Action description.
+
+            // TODO proof check temporarily disabled
+            // async_checks.push(
+            //     primitives::halo2::VERIFIER
+            //         .clone()
+            //         .oneshot(primitives::halo2::Item::from(orchard_shielded_data)),
+            // );
+
+            for authorized_action in orchard_shielded_data.actions.iter().cloned() {
+                let (action, spend_auth_sig) = authorized_action.into_parts();
+
+                // # Consensus
+                //
+                // > - Let SigHash be the SIGHASH transaction hash of this transaction, not
+                // >   associated with an input, as defined in § 4.10 using SIGHASH_ALL.
+                // > - The spend authorization signature MUST be a valid SpendAuthSig^{Orchard}
+                // >   signature over SigHash using rk as the validating key — i.e.
+                // >   SpendAuthSig^{Orchard}.Validate_{rk}(SigHash, spendAuthSig) = 1.
+                // >   As specified in § 5.4.7, validation of the 𝑅 component of the
+                // >   signature prohibits non-canonical encodings.
+                //
+                // https://zips.z.cash/protocol/protocol.pdf#actiondesc
+                //
+                // This is validated by the verifier, inside the [`reddsa`] crate.
+                // It calls [`pallas::Affine::from_bytes`] to parse R and
+                // that enforces the canonical encoding.
+                //
+                // Queue the validation of the RedPallas spend
+                // authorization signature for each Action
+                // description while adding the resulting future to
+                // our collection of async checks that (at a
+                // minimum) must pass for the transaction to verify.
+                async_checks.push(primitives::redpallas::VERIFIER.clone().oneshot(
+                    primitives::redpallas::Item::from_spendauth(
+                        action.rk,
+                        spend_auth_sig,
+                        &shielded_sighash,
+                    ),
+                ));
+            }
+
+            let bvk = orchard_shielded_data.binding_verification_key();
+
+            // # Consensus
+            //
+            // > The Action transfers of a transaction MUST be consistent with
+            // > its v balanceOrchard value as specified in § 4.14.
+            //
+            // https://zips.z.cash/protocol/protocol.pdf#actions
+            //
+            // > [NU5 onward] If effectiveVersion ≥ 5 and nActionsOrchard > 0, then:
+            // > – let bvk^{Orchard} and SigHash be as defined in § 4.14;
+            // > – bindingSigOrchard MUST represent a valid signature under the
+            // >   transaction binding validating key bvk^{Orchard} of SigHash —
+            // >   i.e. BindingSig^{Orchard}.Validate_{bvk^{Orchard}}(SigHash, bindingSigOrchard) = 1.
+            //
+            // https://zips.z.cash/protocol/protocol.pdf#txnconsensus
+            //
+            // This is validated by the verifier. The `if` part is indirectly
+            // enforced, since the `orchard_shielded_data` is only parsed if those
+            // conditions apply in [`Transaction::zcash_deserialize`].
+            //
+            // >   As specified in § 5.4.7, validation of the 𝑅 component of the signature
+            // >   prohibits non-canonical encodings.
+            //
+            // https://zips.z.cash/protocol/protocol.pdf#txnconsensus
+            //
+            // This is validated by the verifier, inside the `reddsa` crate.
+            // It calls [`pallas::Affine::from_bytes`] to parse R and
+            // that enforces the canonical encoding.
+
+            async_checks.push(primitives::redpallas::VERIFIER.clone().oneshot(
+                primitives::redpallas::Item::from_binding(
+                    bvk,
+                    orchard_shielded_data.binding_sig,
+                    &shielded_sighash,
+                ),
+            ));
+        }
+
+        Ok(async_checks)
+    }
+
 
     /// Verifies a transaction's Orchard shielded data.
     fn verify_orchard_shielded_data(
