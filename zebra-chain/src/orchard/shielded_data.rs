@@ -119,7 +119,13 @@ impl<V: OrchardFlavorExt> ShieldedData<V> {
         let cv_balance: ValueCommitment =
             ValueCommitment::new(pallas::Scalar::zero(), self.value_balance);
 
+        #[cfg(not(feature = "tx-v6"))]
         let key_bytes: [u8; 32] = (cv - cv_balance).into();
+
+        // FIXME: use asset to create ValueCommitment here for burns and above for value_balance?
+        #[cfg(feature = "tx-v6")]
+        let key_bytes: [u8; 32] = (cv - cv_balance - self.burn.clone().into()).into();
+
         key_bytes.into()
     }
 
@@ -313,6 +319,9 @@ bitflags! {
         const ENABLE_SPENDS = 0b00000001;
         /// Enable creating new non-zero valued Orchard notes.
         const ENABLE_OUTPUTS = 0b00000010;
+        /// Enable ZSA transaction (otherwise all notes within actions must use native asset).
+        // FIXME: Should we use this flag explicitly anywhere in Zebra?
+        const ENABLE_ZSA = 0b00000100;
     }
 }
 

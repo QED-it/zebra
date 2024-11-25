@@ -2,15 +2,34 @@
 
 use std::io;
 
+use halo2::pasta::pallas;
+
 use crate::{
     amount::Amount,
     block::MAX_BLOCK_BYTES,
-    serialization::{SerializationError, TrustedPreallocate, ZcashDeserialize, ZcashSerialize},
+    orchard::ValueCommitment,
+    serialization::{
+        ReadZcashExt, SerializationError, TrustedPreallocate, ZcashDeserialize, ZcashSerialize,
+    },
 };
 
 use orchard::{note::AssetBase, value::NoteValue};
 
-use super::common::ASSET_BASE_SIZE;
+// The size of the serialized AssetBase in bytes (used for TrustedPreallocate impls)
+pub(super) const ASSET_BASE_SIZE: u64 = 32;
+
+impl ZcashSerialize for AssetBase {
+    fn zcash_serialize<W: io::Write>(&self, mut writer: W) -> Result<(), io::Error> {
+        writer.write_all(&self.to_bytes())
+    }
+}
+
+impl ZcashDeserialize for AssetBase {
+    fn zcash_deserialize<R: io::Read>(mut reader: R) -> Result<Self, SerializationError> {
+        Option::from(AssetBase::from_bytes(&reader.read_32_bytes()?))
+            .ok_or_else(|| SerializationError::Parse("Invalid orchard_zsa AssetBase!"))
+    }
+}
 
 // Sizes of the serialized values for types in bytes (used for TrustedPreallocate impls)
 const AMOUNT_SIZE: u64 = 8;
@@ -93,6 +112,13 @@ impl<'de> serde::Deserialize<'de> for BurnItem {
 #[derive(Default, Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct NoBurn;
 
+impl From<NoBurn> for ValueCommitment {
+    fn from(_burn: NoBurn) -> ValueCommitment {
+        // FIXME: is there a simpler way to get zero ValueCommitment?
+        ValueCommitment::new(pallas::Scalar::zero(), Amount::zero())
+    }
+}
+
 impl ZcashSerialize for NoBurn {
     fn zcash_serialize<W: io::Write>(&self, mut _writer: W) -> Result<(), io::Error> {
         Ok(())
@@ -112,6 +138,18 @@ pub struct Burn(Vec<BurnItem>);
 impl From<Vec<BurnItem>> for Burn {
     fn from(inner: Vec<BurnItem>) -> Self {
         Self(inner)
+    }
+}
+
+// FIXME: consider conversion from reference to Burn instead, to avoid using `clone` when it's called
+impl From<Burn> for ValueCommitment {
+    fn from(burn: Burn) -> ValueCommitment {
+        burn.0
+            .into_iter()
+            .map(|BurnItem(asset, amount)| {
+                ValueCommitment::with_asset(pallas::Scalar::zero(), amount, &asset)
+            })
+            .sum()
     }
 }
 
