@@ -4,8 +4,9 @@ use std::io;
 
 use halo2::pasta::pallas;
 
+use group::prime::PrimeCurveAffine;
+
 use crate::{
-    amount::Amount,
     block::MAX_BLOCK_BYTES,
     orchard::ValueCommitment,
     serialization::{
@@ -37,16 +38,32 @@ const AMOUNT_SIZE: u64 = 8;
 // FIXME: is this a correct way to calculate (simple sum of sizes of components)?
 const BURN_ITEM_SIZE: u64 = ASSET_BASE_SIZE + AMOUNT_SIZE;
 
+// FIXME: Define BurnItem (or, even Burn/NoBurn) in Orchard and reuse it here?
 /// Orchard ZSA burn item.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct BurnItem(AssetBase, Amount);
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct BurnItem(AssetBase, NoteValue);
+
+impl BurnItem {
+    /// Returns [`AssetBase`] being burned.
+    pub fn asset(&self) -> AssetBase {
+        self.0
+    }
+
+    /// Returns the amount being burned.
+    pub fn amount(&self) -> NoteValue {
+        self.1
+    }
+
+    /// Returns the raw [`u64`] amount being burned.
+    pub fn raw_amount(&self) -> u64 {
+        self.1.inner()
+    }
+}
 
 // Convert from burn item type used in `orchard` crate
-impl TryFrom<(AssetBase, NoteValue)> for BurnItem {
-    type Error = crate::amount::Error;
-
-    fn try_from(item: (AssetBase, NoteValue)) -> Result<Self, Self::Error> {
-        Ok(Self(item.0, item.1.inner().try_into()?))
+impl From<(AssetBase, NoteValue)> for BurnItem {
+    fn from(item: (AssetBase, NoteValue)) -> Self {
+        Self(item.0, item.1)
     }
 }
 
@@ -55,7 +72,7 @@ impl ZcashSerialize for BurnItem {
         let BurnItem(asset_base, amount) = self;
 
         asset_base.zcash_serialize(&mut writer)?;
-        amount.zcash_serialize(&mut writer)?;
+        writer.write_all(&amount.to_bytes())?;
 
         Ok(())
     }
@@ -63,10 +80,10 @@ impl ZcashSerialize for BurnItem {
 
 impl ZcashDeserialize for BurnItem {
     fn zcash_deserialize<R: io::Read>(mut reader: R) -> Result<Self, SerializationError> {
-        Ok(Self(
-            AssetBase::zcash_deserialize(&mut reader)?,
-            Amount::zcash_deserialize(&mut reader)?,
-        ))
+        let asset_base = AssetBase::zcash_deserialize(&mut reader)?;
+        let mut amount_bytes = [0; 8];
+        reader.read_exact(&mut amount_bytes)?;
+        Ok(Self(asset_base, NoteValue::from_bytes(amount_bytes)))
     }
 }
 
@@ -85,7 +102,7 @@ impl serde::Serialize for BurnItem {
         S: serde::Serializer,
     {
         // FIXME: return a custom error with a meaningful description?
-        (self.0.to_bytes(), &self.1).serialize(serializer)
+        (self.0.to_bytes(), &self.1.inner()).serialize(serializer)
     }
 }
 
@@ -95,13 +112,13 @@ impl<'de> serde::Deserialize<'de> for BurnItem {
         D: serde::Deserializer<'de>,
     {
         // FIXME: consider another implementation (explicit specifying of [u8; 32] may not look perfect)
-        let (asset_base_bytes, amount) = <([u8; 32], Amount)>::deserialize(deserializer)?;
+        let (asset_base_bytes, amount) = <([u8; 32], u64)>::deserialize(deserializer)?;
         // FIXME: return custom error with a meaningful description?
         Ok(BurnItem(
             // FIXME: duplicates the body of AssetBase::zcash_deserialize?
             Option::from(AssetBase::from_bytes(&asset_base_bytes))
                 .ok_or_else(|| serde::de::Error::custom("Invalid orchard_zsa AssetBase"))?,
-            amount,
+            NoteValue::from_raw(amount),
         ))
     }
 }
@@ -114,8 +131,13 @@ pub struct NoBurn;
 
 impl From<NoBurn> for ValueCommitment {
     fn from(_burn: NoBurn) -> ValueCommitment {
-        // FIXME: is there a simpler way to get zero ValueCommitment?
-        ValueCommitment::new(pallas::Scalar::zero(), Amount::zero())
+        ValueCommitment(pallas::Affine::identity())
+    }
+}
+
+impl AsRef<[BurnItem]> for NoBurn {
+    fn as_ref(&self) -> &[BurnItem] {
+        &[]
     }
 }
 
@@ -150,6 +172,12 @@ impl From<Burn> for ValueCommitment {
                 ValueCommitment::with_asset(pallas::Scalar::zero(), amount, &asset)
             })
             .sum()
+    }
+}
+
+impl AsRef<[BurnItem]> for Burn {
+    fn as_ref(&self) -> &[BurnItem] {
+        &self.0
     }
 }
 

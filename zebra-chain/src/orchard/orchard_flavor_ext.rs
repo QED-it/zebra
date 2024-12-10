@@ -15,7 +15,7 @@ use crate::{
 };
 
 #[cfg(feature = "tx-v6")]
-use crate::orchard_zsa::{Burn, NoBurn};
+use crate::orchard_zsa::{Burn, BurnItem, NoBurn};
 
 use super::note;
 
@@ -58,7 +58,9 @@ pub trait OrchardFlavorExt: Clone + Debug {
         + Default
         + ZcashDeserialize
         + ZcashSerialize
+        // FIXME: consider using AsRef instead of Into, to avoid a redundancy
         + Into<ValueCommitment>
+        + AsRef<[BurnItem]>
         + TestArbitrary;
 }
 

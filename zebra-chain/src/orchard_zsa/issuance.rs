@@ -53,6 +53,11 @@ impl IssueData {
             })
         })
     }
+
+    /// Returns issuance actions
+    pub fn actions(&self) -> impl Iterator<Item = &IssueAction> {
+        self.0.actions().iter()
+    }
 }
 
 // Sizes of the serialized values for types in bytes (used for TrustedPreallocate impls)
