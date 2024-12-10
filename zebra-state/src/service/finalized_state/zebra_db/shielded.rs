@@ -20,7 +20,9 @@ use std::{
 use zebra_chain::{
     block::Height,
     orchard::{self},
-    orchard_zsa::{AssetBase, AssetState, IssuedAssetsChange},
+    orchard_zsa::{
+        asset_state::ExtractedNoteCommitment, AssetBase, AssetState, IssuedAssetsChange,
+    },
     parallel::tree::NoteCommitmentTrees,
     sapling, sprout,
     subtree::{NoteCommitmentSubtreeData, NoteCommitmentSubtreeIndex},
@@ -41,21 +43,38 @@ use crate::{
 #[allow(unused_imports)]
 use zebra_chain::subtree::NoteCommitmentSubtree;
 
-/// The name of the chain value pools column family.
+/// The name of the issued assets column family.
 ///
 /// This constant should be used so the compiler can detect typos.
 pub const ISSUED_ASSETS: &str = "orchard_issued_assets";
 
-/// The type for reading value pools from the database.
+/// The type for reading issued assets from the database.
 ///
 /// This constant should be used so the compiler can detect incorrectly typed accesses to the
 /// column family.
 pub type IssuedAssetsCf<'cf> = TypedColumnFamily<'cf, AssetBase, AssetState>;
 
+/// The name of the issued asset reference note commitments column family.
+///
+/// This constant should be used so the compiler can detect typos.
+pub const ISSUED_ASSET_REF_NOTES: &str = "orchard_issued_asset_ref_notes";
+
+/// The type for reading issued asset reference note commitments from the database.
+///
+/// This constant should be used so the compiler can detect incorrectly typed accesses to the
+/// column family.
+pub type IssuedAssetRefNotesCf<'cf> = TypedColumnFamily<'cf, AssetBase, ExtractedNoteCommitment>;
+
 impl ZebraDb {
-    /// Returns a typed handle to the `history_tree` column family.
+    /// Returns a typed handle to the [`ISSUED_ASSETS`] column family.
     pub(crate) fn issued_assets_cf(&self) -> IssuedAssetsCf {
         IssuedAssetsCf::new(&self.db, ISSUED_ASSETS)
+            .expect("column family was created when database was created")
+    }
+
+    /// Returns a typed handle to the [`ISSUED_ASSET_REF_NOTES`] column family.
+    pub(crate) fn issued_asset_ref_notes_cf(&self) -> IssuedAssetRefNotesCf {
+        IssuedAssetRefNotesCf::new(&self.db, ISSUED_ASSET_REF_NOTES)
             .expect("column family was created when database was created")
     }
 
@@ -530,11 +549,16 @@ impl DiskWriteBatch {
                 .apply_with(|asset_base| zebra_db.issued_asset(&asset_base).unwrap_or_default())
             };
 
-        // TODO: Add a column family for reference note commitments
-        for (asset_base, updated_issued_asset_state, _first_note_commitment) in
-            updated_issued_assets.iter()
-        {
+        for (asset_base, updated_issued_asset_state) in updated_issued_assets.iter_states() {
             batch = batch.zs_insert(asset_base, updated_issued_asset_state);
+        }
+
+        let mut batch = zebra_db
+            .issued_asset_ref_notes_cf()
+            .with_batch_for_writing(self);
+
+        for (asset_base, ref_note_commitment) in updated_issued_assets.iter_ref_notes() {
+            batch = batch.zs_insert(asset_base, ref_note_commitment);
         }
 
         Ok(())

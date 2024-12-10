@@ -6,7 +6,7 @@ use std::{
 };
 
 use orchard::issuance::IssueAction;
-pub use orchard::note::{AssetBase, NoteCommitment};
+pub use orchard::note::{AssetBase, ExtractedNoteCommitment, NoteCommitment};
 
 use crate::{serialization::ZcashSerialize, transaction::Transaction};
 
@@ -159,13 +159,13 @@ impl AssetState {
 impl
     From<(
         HashMap<AssetBase, AssetState>,
-        HashMap<AssetBase, NoteCommitment>,
+        HashMap<AssetBase, ExtractedNoteCommitment>,
     )> for IssuedAssets
 {
     fn from(
         (asset_states, asset_ref_notes): (
             HashMap<AssetBase, AssetState>,
-            HashMap<AssetBase, NoteCommitment>,
+            HashMap<AssetBase, ExtractedNoteCommitment>,
         ),
     ) -> Self {
         Self {
@@ -270,10 +270,10 @@ impl AssetStateChange {
 
 /// An map of issued asset states by asset base.
 // TODO: Reference ZIP
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct IssuedAssets {
     asset_states: HashMap<AssetBase, AssetState>,
-    asset_ref_notes: HashMap<AssetBase, NoteCommitment>,
+    asset_ref_notes: HashMap<AssetBase, ExtractedNoteCommitment>,
 }
 
 impl IssuedAssets {
@@ -282,20 +282,13 @@ impl IssuedAssets {
         Self::default()
     }
 
-    /// Returns an iterator of the inner HashMap.
-    pub fn iter(&self) -> impl Iterator<Item = (&AssetBase, &AssetState, Option<&NoteCommitment>)> {
-        self.asset_states
-            .iter()
-            .map(|(base, state)| (base, state, self.asset_ref_notes.get(base)))
-    }
-
     /// Returns an iterator of the asset state map.
     pub fn iter_states(&self) -> impl Iterator<Item = (&AssetBase, &AssetState)> {
         self.asset_states.iter()
     }
 
     /// Returns an iterator of the reference note commitment map.
-    pub fn iter_ref_notes(&self) -> impl Iterator<Item = (&AssetBase, &NoteCommitment)> {
+    pub fn iter_ref_notes(&self) -> impl Iterator<Item = (&AssetBase, &ExtractedNoteCommitment)> {
         self.asset_ref_notes.iter()
     }
 

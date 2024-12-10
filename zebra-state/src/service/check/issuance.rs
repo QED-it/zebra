@@ -53,7 +53,9 @@ pub fn valid_burns_and_issuance(
                 let first_note_commitment = transaction
                     .orchard_issue_actions()
                     .flat_map(|action| action.notes())
-                    .find_map(|note| (note.asset() == asset_base).then_some(note.commitment()))
+                    .find_map(|note| {
+                        (note.asset() == asset_base).then_some(note.commitment().into())
+                    })
                     .expect("tx should have an issue action for new asset");
 
                 new_asset_ref_notes.insert(asset_base, first_note_commitment);

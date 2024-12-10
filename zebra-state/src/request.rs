@@ -188,7 +188,7 @@ pub struct CheckpointVerifiedBlock(pub(crate) SemanticallyVerifiedBlock);
 /// Note: The difference between a `CheckpointVerifiedBlock` and a `ContextuallyVerifiedBlock` is
 /// that the `CheckpointVerifier` doesn't bind the transaction authorizing data to the
 /// `ChainHistoryBlockTxAuthCommitmentHash`, but the `NonFinalizedState` and `FinalizedState` do.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ContextuallyVerifiedBlock {
     /// The block to commit to the state.
     pub(crate) block: Arc<Block>,
@@ -306,7 +306,7 @@ pub struct FinalizedBlock {
 /// Either changes to be applied to the previous `issued_assets` map for the finalized tip, or
 /// updates asset states to be inserted into the finalized state, replacing the previous
 /// asset states for those asset bases.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum IssuedAssetsOrChange {
     /// A map of updated issued assets.
     Updated(IssuedAssets),
