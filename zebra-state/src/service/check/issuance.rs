@@ -1,6 +1,9 @@
 //! Checks for issuance and burn validity.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use zebra_chain::orchard_zsa::{AssetBase, AssetState, IssuedAssets, IssuedAssetsChange};
 
@@ -21,7 +24,9 @@ pub fn valid_burns_and_issuance(
         let issued_assets_change = IssuedAssetsChange::from_transaction(transaction)
             .ok_or(ValidateContextError::InvalidIssuance)?;
 
-        // Check that no burn item attempts to burn more than the issued supply for an asset
+        // Check that no burn item attempts to burn more than the issued supply for an asset, and that there
+        // are no duplicate burns of a given asset base within a single transaction.
+        let mut burned_assets = HashSet::new();
         for burn in transaction.orchard_burns() {
             let asset_base = burn.asset();
             let asset_state =
@@ -30,7 +35,7 @@ pub fn valid_burns_and_issuance(
                     // any assets issued in previous transactions should be present in the issued assets map.
                     .ok_or(ValidateContextError::InvalidBurn)?;
 
-            if asset_state.total_supply < burn.raw_amount() {
+            if !burned_assets.insert(asset_base) || asset_state.total_supply < burn.raw_amount() {
                 return Err(ValidateContextError::InvalidBurn);
             } else {
                 // Any burned asset bases in the transaction will also be present in the issued assets change,
@@ -39,8 +44,6 @@ pub fn valid_burns_and_issuance(
             }
         }
 
-        // TODO: Remove the `issued_assets_change` field from `SemanticallyVerifiedBlock` and get the changes
-        //       directly from transactions here and when writing blocks to disk.
         for (asset_base, change) in issued_assets_change.iter() {
             let asset_state =
                 asset_state(finalized_state, parent_chain, &issued_assets, &asset_base)
@@ -50,8 +53,6 @@ pub fn valid_burns_and_issuance(
                 .apply_change(change)
                 .ok_or(ValidateContextError::InvalidIssuance)?;
 
-            // TODO: Update `Burn` to `HashMap<AssetBase, NoteValue>)` and return an error during deserialization if
-            //       any asset base is burned twice in the same transaction
             issued_assets.insert(asset_base, updated_asset_state);
         }
     }
