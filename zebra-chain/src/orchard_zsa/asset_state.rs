@@ -6,7 +6,7 @@ use std::{
 };
 
 use orchard::issuance::IssueAction;
-pub use orchard::note::AssetBase;
+pub use orchard::note::{AssetBase, NoteCommitment};
 
 use crate::{serialization::ZcashSerialize, transaction::Transaction};
 
@@ -156,9 +156,22 @@ impl AssetState {
     }
 }
 
-impl From<HashMap<AssetBase, AssetState>> for IssuedAssets {
-    fn from(issued_assets: HashMap<AssetBase, AssetState>) -> Self {
-        Self(issued_assets)
+impl
+    From<(
+        HashMap<AssetBase, AssetState>,
+        HashMap<AssetBase, NoteCommitment>,
+    )> for IssuedAssets
+{
+    fn from(
+        (asset_states, asset_ref_notes): (
+            HashMap<AssetBase, AssetState>,
+            HashMap<AssetBase, NoteCommitment>,
+        ),
+    ) -> Self {
+        Self {
+            asset_states,
+            asset_ref_notes,
+        }
     }
 }
 
@@ -257,33 +270,38 @@ impl AssetStateChange {
 
 /// An map of issued asset states by asset base.
 // TODO: Reference ZIP
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct IssuedAssets(HashMap<AssetBase, AssetState>);
+#[derive(Clone, Debug, Default)]
+pub struct IssuedAssets {
+    asset_states: HashMap<AssetBase, AssetState>,
+    asset_ref_notes: HashMap<AssetBase, NoteCommitment>,
+}
 
 impl IssuedAssets {
     /// Creates a new [`IssuedAssets`].
     pub fn new() -> Self {
-        Self(HashMap::new())
+        Self::default()
     }
 
     /// Returns an iterator of the inner HashMap.
-    pub fn iter(&self) -> impl Iterator<Item = (&AssetBase, &AssetState)> {
-        self.0.iter()
+    pub fn iter(&self) -> impl Iterator<Item = (&AssetBase, &AssetState, Option<&NoteCommitment>)> {
+        self.asset_states
+            .iter()
+            .map(|(base, state)| (base, state, self.asset_ref_notes.get(base)))
+    }
+
+    /// Returns an iterator of the asset state map.
+    pub fn iter_states(&self) -> impl Iterator<Item = (&AssetBase, &AssetState)> {
+        self.asset_states.iter()
+    }
+
+    /// Returns an iterator of the reference note commitment map.
+    pub fn iter_ref_notes(&self) -> impl Iterator<Item = (&AssetBase, &NoteCommitment)> {
+        self.asset_ref_notes.iter()
     }
 
     /// Extends inner [`HashMap`] with updated asset states from the provided iterator
     fn extend<'a>(&mut self, issued_assets: impl Iterator<Item = (AssetBase, AssetState)> + 'a) {
-        self.0.extend(issued_assets);
-    }
-}
-
-impl IntoIterator for IssuedAssets {
-    type Item = (AssetBase, AssetState);
-
-    type IntoIter = std::collections::hash_map::IntoIter<AssetBase, AssetState>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
+        self.asset_states.extend(issued_assets);
     }
 }
 

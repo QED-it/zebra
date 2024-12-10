@@ -530,7 +530,10 @@ impl DiskWriteBatch {
                 .apply_with(|asset_base| zebra_db.issued_asset(&asset_base).unwrap_or_default())
             };
 
-        for (asset_base, updated_issued_asset_state) in updated_issued_assets.iter() {
+        // TODO: Add a column family for reference note commitments
+        for (asset_base, updated_issued_asset_state, _first_note_commitment) in
+            updated_issued_assets.iter()
+        {
             batch = batch.zs_insert(asset_base, updated_issued_asset_state);
         }
 

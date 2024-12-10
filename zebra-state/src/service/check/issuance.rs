@@ -17,6 +17,7 @@ pub fn valid_burns_and_issuance(
     semantically_verified: &SemanticallyVerifiedBlock,
 ) -> Result<IssuedAssets, ValidateContextError> {
     let mut issued_assets = HashMap::new();
+    let mut new_asset_ref_notes = HashMap::new();
 
     // Burns need to be checked and asset state changes need to be applied per tranaction, in case
     // the asset being burned was also issued in an earlier transaction in the same block.
@@ -45,11 +46,21 @@ pub fn valid_burns_and_issuance(
         }
 
         for (asset_base, change) in issued_assets_change.iter() {
-            let asset_state =
-                asset_state(finalized_state, parent_chain, &issued_assets, &asset_base)
-                    .unwrap_or_default();
+            let prev_asset_state =
+                asset_state(finalized_state, parent_chain, &issued_assets, &asset_base);
 
-            let updated_asset_state = asset_state
+            if prev_asset_state.is_none() {
+                let first_note_commitment = transaction
+                    .orchard_issue_actions()
+                    .flat_map(|action| action.notes())
+                    .find_map(|note| (note.asset() == asset_base).then_some(note.commitment()))
+                    .expect("tx should have an issue action for new asset");
+
+                new_asset_ref_notes.insert(asset_base, first_note_commitment);
+            }
+
+            let updated_asset_state = prev_asset_state
+                .unwrap_or_default()
                 .apply_change(change)
                 .ok_or(ValidateContextError::InvalidIssuance)?;
 
@@ -57,7 +68,7 @@ pub fn valid_burns_and_issuance(
         }
     }
 
-    Ok(issued_assets.into())
+    Ok((issued_assets, new_asset_ref_notes).into())
 }
 
 fn asset_state(
