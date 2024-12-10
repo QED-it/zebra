@@ -10,7 +10,7 @@ use bincode::Options;
 use zebra_chain::{
     block::Height,
     orchard,
-    orchard_zsa::{AssetBase, AssetState},
+    orchard_zsa::{asset_state::ExtractedNoteCommitment, AssetBase, AssetState},
     sapling, sprout,
     subtree::{NoteCommitmentSubtreeData, NoteCommitmentSubtreeIndex},
 };
@@ -235,6 +235,20 @@ impl FromDisk for AssetState {
             is_finalized: is_finalized_byte != 0,
             total_supply: u64::from_be_bytes(total_supply_bytes),
         }
+    }
+}
+
+impl IntoDisk for ExtractedNoteCommitment {
+    type Bytes = [u8; 32];
+
+    fn as_bytes(&self) -> Self::Bytes {
+        self.to_bytes()
+    }
+}
+
+impl FromDisk for ExtractedNoteCommitment {
+    fn from_bytes(bytes: impl AsRef<[u8]>) -> Self {
+        ExtractedNoteCommitment::from_bytes(&bytes.as_ref().try_into().unwrap()).unwrap()
     }
 }
 

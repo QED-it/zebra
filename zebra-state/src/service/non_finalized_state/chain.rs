@@ -16,7 +16,10 @@ use zebra_chain::{
     block::{self, Height},
     history_tree::HistoryTree,
     orchard,
-    orchard_zsa::{AssetBase, AssetState, IssuedAssets, IssuedAssetsChange},
+    orchard_zsa::{
+        asset_state::ExtractedNoteCommitment, AssetBase, AssetState, IssuedAssets,
+        IssuedAssetsChange,
+    },
     parallel::tree::NoteCommitmentTrees,
     parameters::Network,
     primitives::Groth16Proof,
@@ -71,7 +74,7 @@ pub struct Chain {
 }
 
 /// The internal state of [`Chain`].
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ChainInner {
     // Blocks, heights, hashes, and transaction locations
     //
@@ -182,6 +185,9 @@ pub struct ChainInner {
     // TODO: Add reference to ZIP
     pub(crate) issued_assets: HashMap<AssetBase, AssetState>,
 
+    /// The first note commitment of newly-issued assets for creating split notes.
+    pub(crate) issued_asset_ref_notes: HashMap<AssetBase, ExtractedNoteCommitment>,
+
     // Nullifiers
     //
     /// The Sprout nullifiers revealed by `blocks`.
@@ -246,6 +252,7 @@ impl Chain {
             orchard_trees_by_height: Default::default(),
             orchard_subtrees: Default::default(),
             issued_assets: Default::default(),
+            issued_asset_ref_notes: Default::default(),
             sprout_nullifiers: Default::default(),
             sapling_nullifiers: Default::default(),
             orchard_nullifiers: Default::default(),
@@ -952,7 +959,7 @@ impl Chain {
         self.issued_assets.get(asset_base).cloned()
     }
 
-    /// Remove the History tree index at `height`.
+    /// Revert the changes to issued asset states.
     fn revert_issued_assets(
         &mut self,
         position: RevertPosition,
@@ -961,7 +968,7 @@ impl Chain {
     ) {
         if position == RevertPosition::Root {
             trace!(?position, "removing unmodified issued assets");
-            for (asset_base, &asset_state) in issued_assets.iter() {
+            for (asset_base, &asset_state) in issued_assets.iter_states() {
                 if self
                     .issued_asset(asset_base)
                     .expect("issued assets for chain should include those in all blocks")
@@ -984,6 +991,10 @@ impl Chain {
                         .revert_change(change);
                 }
             }
+        }
+
+        for (asset_base, _) in issued_assets.iter_ref_notes() {
+            self.issued_asset_ref_notes.remove(asset_base);
         }
     }
 
@@ -1489,8 +1500,19 @@ impl Chain {
 
         self.add_history_tree(height, history_tree);
 
-        self.issued_assets
-            .extend(contextually_valid.issued_assets.clone());
+        self.issued_assets.extend(
+            contextually_valid
+                .issued_assets
+                .iter_states()
+                .map(|(&base, &state)| (base, state)),
+        );
+
+        self.issued_asset_ref_notes.extend(
+            contextually_valid
+                .issued_assets
+                .iter_ref_notes()
+                .map(|(&base, &note_commitment)| (base, note_commitment)),
+        );
 
         Ok(())
     }
