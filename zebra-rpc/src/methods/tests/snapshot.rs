@@ -14,7 +14,10 @@ use zebra_chain::{
     block::Block,
     chain_tip::mock::MockChainTip,
     orchard,
-    orchard_zsa::{asset_state::RandomAssetBase, AssetBase, AssetState},
+    orchard_zsa::{
+        asset_state::{ExtractedNoteCommitment, RandomAssetBase},
+        AssetBase, AssetState,
+    },
     parameters::{
         subsidy::POST_NU6_FUNDING_STREAMS_TESTNET,
         testnet::{self, ConfiguredActivationHeights, Parameters},
@@ -558,10 +561,13 @@ async fn test_mocked_rpc_response_data_for_network(network: &Network) {
     let rsp = state
         .expect_request_that(|req| matches!(req, ReadRequest::AssetState { .. }))
         .map(|responder| {
-            responder.respond(ReadResponse::AssetState(Some(AssetState {
-                is_finalized: true,
-                total_supply: 1000,
-            })))
+            responder.respond(ReadResponse::AssetState(Some((
+                AssetState {
+                    is_finalized: true,
+                    total_supply: 1000,
+                },
+                ExtractedNoteCommitment::from_bytes(&[2; 32]).unwrap(),
+            ))))
         });
     let req = rpc.get_asset_state(AssetBase::random_serialized(), None);
 
