@@ -1961,7 +1961,8 @@ impl Service<ReadRequest> for ReadStateService {
                             .then(|| state.latest_best_chain())
                             .flatten();
 
-                        let response = read::asset_state(best_chain, &state.db, &asset_base);
+                        let response =
+                            read::asset_state_and_ref_note(best_chain, &state.db, &asset_base);
 
                         // The work is done in the future.
                         timer.finish(module_path!(), line!(), "ReadRequest::AssetState");

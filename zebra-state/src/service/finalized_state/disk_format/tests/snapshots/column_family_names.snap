@@ -1,6 +1,5 @@
 ---
 source: zebra-state/src/service/finalized_state/disk_format/tests/snapshot.rs
-assertion_line: 81
 expression: cf_names
 ---
 [
@@ -12,6 +11,7 @@ expression: cf_names
   "height_by_hash",
   "history_tree",
   "orchard_anchors",
+  "orchard_issued_asset_ref_notes",
   "orchard_issued_assets",
   "orchard_note_commitment_subtree",
   "orchard_note_commitment_tree",

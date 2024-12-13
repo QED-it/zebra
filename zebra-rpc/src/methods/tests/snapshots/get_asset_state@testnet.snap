@@ -3,6 +3,9 @@ source: zebra-rpc/src/methods/tests/snapshot.rs
 expression: asset_state
 ---
 {
-  "is_finalized": true,
-  "total_supply": 1000
+  "supply": {
+    "is_finalized": true,
+    "total_supply": 1000
+  },
+  "reference_note": "0202020202020202020202020202020202020202020202020202020202020202"
 }

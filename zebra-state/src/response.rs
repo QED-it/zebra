@@ -6,7 +6,7 @@ use zebra_chain::{
     amount::{Amount, NonNegative},
     block::{self, Block},
     orchard,
-    orchard_zsa::AssetState,
+    orchard_zsa::{asset_state::ExtractedNoteCommitment, AssetState},
     sapling,
     serialization::DateTime32,
     subtree::{NoteCommitmentSubtreeData, NoteCommitmentSubtreeIndex},
@@ -238,7 +238,7 @@ pub enum ReadResponse {
 
     #[cfg(feature = "tx-v6")]
     /// Response to [`ReadRequest::AssetState`]
-    AssetState(Option<AssetState>),
+    AssetState(Option<(AssetState, ExtractedNoteCommitment)>),
 }
 
 /// A structure with the information needed from the state to build a `getblocktemplate` RPC response.

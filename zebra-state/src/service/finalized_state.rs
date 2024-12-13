@@ -20,6 +20,7 @@ use std::{
 };
 
 use zebra_chain::{block, parallel::tree::NoteCommitmentTrees, parameters::Network};
+use zebra_db::shielded::{ISSUED_ASSETS, ISSUED_ASSET_REF_NOTES};
 
 use crate::{
     constants::{state_database_format_version_in_code, STATE_DATABASE_KIND},
@@ -91,7 +92,8 @@ pub const STATE_COLUMN_FAMILIES_IN_CODE: &[&str] = &[
     "orchard_anchors",
     "orchard_note_commitment_tree",
     "orchard_note_commitment_subtree",
-    "orchard_issued_assets",
+    ISSUED_ASSETS,
+    ISSUED_ASSET_REF_NOTES,
     // Chain
     "history_tree",
     "tip_chain_value_pool",

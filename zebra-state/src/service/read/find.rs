@@ -21,7 +21,7 @@ use chrono::{DateTime, Utc};
 use zebra_chain::{
     amount::NonNegative,
     block::{self, Block, Height},
-    orchard_zsa::{AssetBase, AssetState},
+    orchard_zsa::{asset_state::ExtractedNoteCommitment, AssetBase, AssetState},
     serialization::DateTime32,
     value_balance::ValueBalance,
 };
@@ -681,6 +681,21 @@ pub(crate) fn calculate_median_time_past(relevant_chain: Vec<Arc<Block>>) -> Dat
     DateTime32::try_from(median_time_past).expect("valid blocks have in-range times")
 }
 
+/// Return the [`AssetState`] and the reference [`ExtractedNoteCommitment`] for
+/// the provided [`AssetBase`], if it exists in the provided chain.
+pub fn asset_state_and_ref_note<C>(
+    chain: Option<C>,
+    db: &ZebraDb,
+    asset_base: &AssetBase,
+) -> Option<(AssetState, ExtractedNoteCommitment)>
+where
+    C: AsRef<Chain>,
+{
+    asset_state(chain.as_ref(), db, asset_base).and_then(|asset_state| {
+        asset_ref_note(chain, db, asset_base).map(|ref_note| (asset_state, ref_note))
+    })
+}
+
 /// Return the [`AssetState`] for the provided [`AssetBase`], if it exists in the provided chain.
 pub fn asset_state<C>(chain: Option<C>, db: &ZebraDb, asset_base: &AssetBase) -> Option<AssetState>
 where
@@ -689,4 +704,18 @@ where
     chain
         .and_then(|chain| chain.as_ref().issued_asset(asset_base))
         .or_else(|| db.issued_asset(asset_base))
+}
+
+/// Return the reference [`ExtractedNoteCommitment`] for the provided [`AssetBase`], if it exists in the provided chain.
+pub fn asset_ref_note<C>(
+    chain: Option<C>,
+    db: &ZebraDb,
+    asset_base: &AssetBase,
+) -> Option<ExtractedNoteCommitment>
+where
+    C: AsRef<Chain>,
+{
+    chain
+        .and_then(|chain| chain.as_ref().issued_asset_ref_note(asset_base))
+        .or_else(|| db.issued_asset_ref_note(asset_base))
 }

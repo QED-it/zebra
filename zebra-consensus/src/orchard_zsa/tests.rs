@@ -117,7 +117,8 @@ async fn request_asset_state(
     };
 
     match read_state_service.clone().oneshot(request).await {
-        Ok(ReadResponse::AssetState(asset_state)) => asset_state,
+        Ok(ReadResponse::AssetState(Some((asset_state, _)))) => Some(asset_state),
+        Ok(ReadResponse::AssetState(None)) => None,
         _ => unreachable!("The state service returned an unexpected response."),
     }
 }
