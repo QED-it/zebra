@@ -22,6 +22,7 @@ use zcash_primitives::consensus::Parameters;
 use zebra_chain::{
     block::{self, Height, SerializedBlock},
     chain_tip::{ChainTip, NetworkChainTipHeightEstimator},
+    orchard_zsa::AssetState,
     parameters::{ConsensusBranchId, Network, NetworkUpgrade},
     serialization::{ZcashDeserialize, ZcashDeserializeInto},
     subtree::NoteCommitmentSubtreeIndex,
@@ -311,7 +312,7 @@ pub trait Rpc {
         &self,
         asset_base: String,
         include_non_finalized: Option<bool>,
-    ) -> BoxFuture<Result<zebra_chain::orchard_zsa::AssetState>>;
+    ) -> BoxFuture<Result<GetAssetState>>;
 
     /// Stop the running zebrad process.
     ///
@@ -1373,7 +1374,7 @@ where
         &self,
         asset_base: String,
         include_non_finalized: Option<bool>,
-    ) -> BoxFuture<Result<zebra_chain::orchard_zsa::AssetState>> {
+    ) -> BoxFuture<Result<GetAssetState>> {
         let state = self.state.clone();
         let include_non_finalized = include_non_finalized.unwrap_or(true);
 
@@ -1388,13 +1389,19 @@ where
                 include_non_finalized,
             };
 
-            let zebra_state::ReadResponse::AssetState(asset_state) =
+            let zebra_state::ReadResponse::AssetState(asset_state_and_ref_note) =
                 state.oneshot(request).await.map_server_error()?
             else {
                 unreachable!("unexpected response from state service");
             };
 
-            asset_state.ok_or_server_error("asset base not found")
+            let (supply, reference_note) =
+                asset_state_and_ref_note.ok_or_server_error("asset base not found")?;
+
+            Ok(GetAssetState {
+                supply,
+                reference_note: reference_note.to_bytes(),
+            })
         }
         .boxed()
     }
@@ -1856,6 +1863,16 @@ impl OrchardTrees {
     fn is_empty(&self) -> bool {
         self.size == 0
     }
+}
+
+/// Asset state information, response to the `getassetstate` method.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, serde::Serialize)]
+pub struct GetAssetState {
+    /// The total supply of the asset and whether that supply is finalized.
+    supply: AssetState,
+    /// The reference note commitment of the asset.
+    #[serde(with = "hex")]
+    reference_note: [u8; 32],
 }
 
 /// Check if provided height range is valid for address indexes.

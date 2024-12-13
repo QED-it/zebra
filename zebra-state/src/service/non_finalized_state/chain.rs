@@ -959,6 +959,12 @@ impl Chain {
         self.issued_assets.get(asset_base).cloned()
     }
 
+    /// Returns the Orchard issued asset's reference note commitment, if one is present in
+    /// the chain for the provided asset base.
+    pub fn issued_asset_ref_note(&self, asset_base: &AssetBase) -> Option<ExtractedNoteCommitment> {
+        self.issued_asset_ref_notes.get(asset_base).cloned()
+    }
+
     /// Revert the changes to issued asset states.
     fn revert_issued_assets(
         &mut self,

@@ -452,6 +452,11 @@ impl ZebraDb {
         self.issued_assets_cf().zs_get(asset_base)
     }
 
+    /// Get the orchard issued asset reference note commitment in the finalized state.
+    pub fn issued_asset_ref_note(&self, asset_base: &AssetBase) -> Option<ExtractedNoteCommitment> {
+        self.issued_asset_ref_notes_cf().zs_get(asset_base)
+    }
+
     /// Returns the shielded note commitment trees of the finalized tip
     /// or the empty trees if the state is empty.
     /// Additionally, returns the sapling and orchard subtrees for the finalized tip if
