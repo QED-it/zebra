@@ -1099,7 +1099,7 @@ impl Transaction {
     /// Access the Orchard issue data in this transaction, if any,
     /// regardless of version.
     #[cfg(feature = "tx-v6")]
-    fn orchard_issue_data(&self) -> &Option<orchard_zsa::IssueData> {
+    pub fn orchard_issue_data(&self) -> &Option<orchard_zsa::IssueData> {
         match self {
             Transaction::V1 { .. }
             | Transaction::V2 { .. }
@@ -1112,15 +1112,6 @@ impl Transaction {
                 ..
             } => orchard_zsa_issue_data,
         }
-    }
-
-    /// Access the Orchard issuance actions in this transaction, if there are any,
-    /// regardless of version.
-    #[cfg(feature = "tx-v6")]
-    pub fn orchard_issue_actions(&self) -> impl Iterator<Item = &::orchard::issuance::IssueAction> {
-        self.orchard_issue_data()
-            .iter()
-            .flat_map(orchard_zsa::IssueData::actions)
     }
 
     /// Access the Orchard asset burns in this transaction, if there are any,

@@ -6,11 +6,11 @@ use color_eyre::eyre::Report;
 use tower::ServiceExt;
 
 use orchard::{
-    issuance::Error as IssuanceError,
-    issuance::IssueAction,
+    issuance::{Error as IssuanceError, IssueAction},
+    keys::IssuanceValidatingKey,
     note::AssetBase,
     supply_info::{AssetSupply, SupplyInfo},
-    value::ValueSum,
+    value::{NoteValue, ValueSum},
 };
 
 use zebra_chain::{
@@ -53,21 +53,42 @@ fn process_burns<'a, I: Iterator<Item = &'a BurnItem>>(
 }
 
 /// Processes orchard issue actions, increasing asset supply.
-fn process_issue_actions<'a, I: Iterator<Item = &'a IssueAction>>(
+fn process_issue_actions<'a, I: IntoIterator<Item = &'a IssueAction>>(
     supply_info: &mut SupplyInfo,
-    issue_actions: I,
+    ik: &IssuanceValidatingKey,
+    actions: I,
 ) -> Result<(), IssuanceError> {
-    for action in issue_actions {
+    for action in actions {
+        let issue_asset = AssetBase::derive(ik, action.asset_desc());
         let is_finalized = action.is_finalized();
 
-        for note in action.notes() {
-            supply_info.add_supply(
-                note.asset(),
-                AssetSupply {
-                    amount: note.value().into(),
-                    is_finalized,
-                },
-            )?;
+        if action.notes().is_empty() {
+            if is_finalized {
+                supply_info.add_supply(
+                    issue_asset,
+                    AssetSupply {
+                        amount: NoteValue::from_raw(0).into(),
+                        is_finalized: true,
+                    },
+                )?;
+            } else {
+                return Err(IssuanceError::IssueActionWithoutNoteNotFinalized);
+            }
+        } else {
+            for note in action.notes() {
+                note.asset()
+                    .eq(&issue_asset)
+                    .then_some(())
+                    .ok_or(IssuanceError::IssueBundleIkMismatchAssetBase)?;
+
+                supply_info.add_supply(
+                    note.asset(),
+                    AssetSupply {
+                        amount: note.value().into(),
+                        is_finalized,
+                    },
+                )?;
+            }
         }
     }
 
@@ -80,15 +101,22 @@ fn calc_asset_supply_info<'a, I: IntoIterator<Item = &'a TranscriptItem>>(
 ) -> Result<SupplyInfo, IssuanceError> {
     blocks
         .into_iter()
-        .filter_map(|(request, _)| match request {
-            Request::Commit(block) => Some(&block.transactions),
-            #[cfg(feature = "getblocktemplate-rpcs")]
-            Request::CheckProposal(_) => None,
+        .filter_map(|(request, result)| match (request, result) {
+            (Request::Commit(block), Ok(_)) => Some(&block.transactions),
+            _ => None,
         })
         .flatten()
         .try_fold(SupplyInfo::new(), |mut supply_info, tx| {
             process_burns(&mut supply_info, tx.orchard_burns().iter())?;
-            process_issue_actions(&mut supply_info, tx.orchard_issue_actions())?;
+
+            if let Some(issue_data) = tx.orchard_issue_data() {
+                process_issue_actions(
+                    &mut supply_info,
+                    issue_data.inner().ik(),
+                    issue_data.actions(),
+                )?;
+            }
+
             Ok(supply_info)
         })
 }
@@ -103,7 +131,17 @@ fn create_transcript_data<'a, I: IntoIterator<Item = &'a Vec<u8>>>(
 
     std::iter::once(regtest_genesis_block())
         .chain(workflow_blocks)
-        .map(|block| (Request::Commit(block.clone()), Ok(block.hash())))
+        .enumerate()
+        .map(|(i, block)| {
+            (
+                Request::Commit(block.clone()),
+                if i == 5 {
+                    Err(ExpectedTranscriptError::Any)
+                } else {
+                    Ok(block.hash())
+                },
+            )
+        })
 }
 
 /// Queries the state service for the asset state of the given asset.
@@ -168,6 +206,7 @@ async fn check_zsa_workflow() -> Result<(), Report> {
 
         assert_eq!(
             asset_state.total_supply,
+            // FIXME: Fix it after chaning ValueSum to NoteValue in AssetSupply in orchard
             u64::try_from(i128::from(asset_supply.amount))
                 .expect("asset supply amount should be within u64 range"),
             "Total supply mismatch for asset {:?}.",
