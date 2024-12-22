@@ -24,7 +24,7 @@ use zebra_state::{ReadRequest, ReadResponse, ReadStateService};
 
 use zebra_test::{
     transcript::{ExpectedTranscriptError, Transcript},
-    vectors::ORCHARD_ZSA_WORKFLOW_BLOCKS,
+    vectors::{OrchardZSABlock, ORCHARD_ZSA_WORKFLOW_BLOCKS},
 };
 
 use crate::{block::Request, Config};
@@ -122,23 +122,30 @@ fn calc_asset_supply_info<'a, I: IntoIterator<Item = &'a TranscriptItem>>(
 }
 
 /// Creates transcript data from predefined workflow blocks.
-fn create_transcript_data<'a, I: IntoIterator<Item = &'a Vec<u8>>>(
+fn create_transcript_data<'a, I: IntoIterator<Item = &'a OrchardZSABlock>>(
     serialized_blocks: I,
 ) -> impl Iterator<Item = TranscriptItem> + use<'a, I> {
-    let workflow_blocks = serialized_blocks.into_iter().map(|block_bytes| {
-        Arc::new(Block::zcash_deserialize(&block_bytes[..]).expect("block should deserialize"))
-    });
+    let workflow_blocks =
+        serialized_blocks
+            .into_iter()
+            .map(|OrchardZSABlock { bytes, is_valid }| {
+                (
+                    Arc::new(
+                        Block::zcash_deserialize(&bytes[..]).expect("block should deserialize"),
+                    ),
+                    *is_valid,
+                )
+            });
 
-    std::iter::once(regtest_genesis_block())
+    std::iter::once((regtest_genesis_block(), true))
         .chain(workflow_blocks)
-        .enumerate()
-        .map(|(i, block)| {
+        .map(|(block, is_valid)| {
             (
                 Request::Commit(block.clone()),
-                if i == 5 {
-                    Err(ExpectedTranscriptError::Any)
-                } else {
+                if is_valid {
                     Ok(block.hash())
+                } else {
+                    Err(ExpectedTranscriptError::Any)
                 },
             )
         })
@@ -172,7 +179,7 @@ async fn check_zsa_workflow() -> Result<(), Report> {
         crate::router::init(Config::default(), &network, state_service.clone()).await;
 
     let transcript_data =
-        create_transcript_data(ORCHARD_ZSA_WORKFLOW_BLOCKS.iter()).collect::<Vec<_>>();
+        create_transcript_data(ORCHARD_ZSA_WORKFLOW_BLOCKS[0].iter()).collect::<Vec<_>>();
 
     let asset_supply_info =
         calc_asset_supply_info(&transcript_data).expect("should calculate asset_supply_info");
