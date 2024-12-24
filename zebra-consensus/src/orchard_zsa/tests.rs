@@ -29,6 +29,10 @@ use zebra_test::{
 
 use crate::{block::Request, Config};
 
+mod block_description;
+
+use block_description::build_block_description;
+
 type TranscriptItem = (Request, Result<Hash, ExpectedTranscriptError>);
 
 /// Processes orchard burns, decreasing asset supply.
@@ -125,21 +129,27 @@ fn calc_asset_supply_info<'a, I: IntoIterator<Item = &'a TranscriptItem>>(
 fn create_transcript_data<'a, I: IntoIterator<Item = &'a OrchardZSABlock>>(
     serialized_blocks: I,
 ) -> impl Iterator<Item = TranscriptItem> + use<'a, I> {
-    let workflow_blocks =
-        serialized_blocks
-            .into_iter()
-            .map(|OrchardZSABlock { bytes, is_valid }| {
-                (
-                    Arc::new(
-                        Block::zcash_deserialize(&bytes[..]).expect("block should deserialize"),
-                    ),
-                    *is_valid,
-                )
-            });
+    let workflow_blocks = serialized_blocks.into_iter().map(
+        |OrchardZSABlock {
+             description,
+             bytes,
+             is_valid,
+         }| {
+            (
+                description,
+                Arc::new(Block::zcash_deserialize(&bytes[..]).expect("block should deserialize")),
+                *is_valid,
+            )
+        },
+    );
 
-    std::iter::once((regtest_genesis_block(), true))
+    std::iter::once((&None, regtest_genesis_block(), true))
         .chain(workflow_blocks)
-        .map(|(block, is_valid)| {
+        .map(|(description, block, is_valid)| {
+            if let Some(description) = description {
+                assert_eq!(description, &build_block_description(&block))
+            }
+
             (
                 Request::Commit(block.clone()),
                 if is_valid {

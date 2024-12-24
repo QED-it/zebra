@@ -14,7 +14,7 @@ mod burn;
 mod issuance;
 
 pub(crate) use burn::{Burn, NoBurn};
-pub(crate) use issuance::IssueData;
+pub use issuance::IssueData;
 
 pub use burn::BurnItem;
 
