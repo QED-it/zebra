@@ -64,15 +64,13 @@ fn format_tx_v6(
         .as_ref()
         .and_then(|shielded_data| format_burn(shielded_data.burn.as_ref()));
 
-    let issue = issue_data
-        .as_ref()
-        .and_then(|issue_data| format_issue(issue_data));
+    let issue = issue_data.as_ref().and_then(format_issue);
 
     format!(
         "V6 {{ {} }}",
         [transfer, burn, issue]
             .into_iter()
-            .filter_map(|part| part)
+            .flatten()
             .collect::<Vec<String>>()
             .join(", ")
     )
