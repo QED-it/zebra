@@ -20,6 +20,9 @@ use crate::{
     LedgerState,
 };
 
+#[cfg(feature = "tx-v6")]
+use crate::orchard_zsa::IssueData;
+
 use itertools::Itertools;
 
 use super::{
@@ -132,8 +135,21 @@ impl Transaction {
             .boxed()
     }
 
-    /// Generate a proptest strategy for V5 Transactions
-    pub fn v5_strategy(ledger_state: LedgerState) -> BoxedStrategy<Self> {
+    /// Helper function to generate the common transaction fields.
+    /// This function is generic over the Orchard shielded data type.
+    fn v5_v6_strategy_common<V: orchard::OrchardFlavorExt + 'static>(
+        ledger_state: LedgerState,
+    ) -> impl Strategy<
+        Value = (
+            NetworkUpgrade,
+            LockTime,
+            block::Height,
+            Vec<transparent::Input>,
+            Vec<transparent::Output>,
+            Option<sapling::ShieldedData<sapling::SharedAnchor>>,
+            Option<orchard::ShieldedData<V>>,
+        ),
+    > + 'static {
         (
             NetworkUpgrade::branch_id_strategy(),
             any::<LockTime>(),
@@ -141,7 +157,7 @@ impl Transaction {
             transparent::Input::vec_strategy(&ledger_state, MAX_ARBITRARY_ITEMS),
             vec(any::<transparent::Output>(), 0..MAX_ARBITRARY_ITEMS),
             option::of(any::<sapling::ShieldedData<sapling::SharedAnchor>>()),
-            option::of(any::<orchard::ShieldedData>()),
+            option::of(any::<orchard::ShieldedData<V>>()),
         )
             .prop_map(
                 move |(
@@ -153,29 +169,97 @@ impl Transaction {
                     sapling_shielded_data,
                     orchard_shielded_data,
                 )| {
-                    Transaction::V5 {
-                        network_upgrade: if ledger_state.transaction_has_valid_network_upgrade() {
-                            ledger_state.network_upgrade()
-                        } else {
-                            network_upgrade
-                        },
+                    // Apply conditional logic based on ledger_state
+                    let network_upgrade = if ledger_state.transaction_has_valid_network_upgrade() {
+                        ledger_state.network_upgrade()
+                    } else {
+                        network_upgrade
+                    };
+
+                    let sapling_shielded_data = if ledger_state.height.is_min() {
+                        // The genesis block should not contain any shielded data.
+                        None
+                    } else {
+                        sapling_shielded_data
+                    };
+
+                    let orchard_shielded_data = if ledger_state.height.is_min() {
+                        // The genesis block should not contain any shielded data.
+                        None
+                    } else {
+                        orchard_shielded_data
+                    };
+
+                    (
+                        network_upgrade,
                         lock_time,
                         expiry_height,
                         inputs,
                         outputs,
-                        sapling_shielded_data: if ledger_state.height.is_min() {
-                            // The genesis block should not contain any shielded data.
-                            None
-                        } else {
-                            sapling_shielded_data
-                        },
-                        orchard_shielded_data: if ledger_state.height.is_min() {
-                            // The genesis block should not contain any shielded data.
-                            None
-                        } else {
-                            orchard_shielded_data
-                        },
-                    }
+                        sapling_shielded_data,
+                        orchard_shielded_data,
+                    )
+                },
+            )
+    }
+
+    /// Generate a proptest strategy for V5 Transactions
+    pub fn v5_strategy(ledger_state: LedgerState) -> BoxedStrategy<Transaction> {
+        Self::v5_v6_strategy_common::<orchard::OrchardVanilla>(ledger_state)
+            .prop_map(
+                move |(
+                    network_upgrade,
+                    lock_time,
+                    expiry_height,
+                    inputs,
+                    outputs,
+                    sapling_shielded_data,
+                    orchard_shielded_data,
+                )| Transaction::V5 {
+                    network_upgrade,
+                    lock_time,
+                    expiry_height,
+                    inputs,
+                    outputs,
+                    sapling_shielded_data,
+                    orchard_shielded_data,
+                },
+            )
+            .boxed()
+    }
+
+    /// Generate a proptest strategy for V6 Transactions
+    #[cfg(feature = "tx-v6")]
+    pub fn v6_strategy(ledger_state: LedgerState) -> BoxedStrategy<Transaction> {
+        Self::v5_v6_strategy_common::<orchard::OrchardZSA>(ledger_state)
+            .prop_flat_map(|common_fields| {
+                // FIXME: Can IssueData present in V6 transaction without orchard::ShieldedData?
+                // If no, we possibly need to use something like prop_filter_map to filter wrong
+                // combnations (orchard_shielded_data: None, orchard_zsa_issue_data: Some)
+                option::of(any::<IssueData>())
+                    .prop_map(move |issue_data| (common_fields.clone(), issue_data))
+            })
+            .prop_map(
+                |(
+                    (
+                        network_upgrade,
+                        lock_time,
+                        expiry_height,
+                        inputs,
+                        outputs,
+                        sapling_shielded_data,
+                        orchard_shielded_data,
+                    ),
+                    orchard_zsa_issue_data,
+                )| Transaction::V6 {
+                    network_upgrade,
+                    lock_time,
+                    expiry_height,
+                    inputs,
+                    outputs,
+                    sapling_shielded_data,
+                    orchard_shielded_data,
+                    orchard_zsa_issue_data,
                 },
             )
             .boxed()
@@ -697,7 +781,12 @@ impl Arbitrary for sapling::TransferData<SharedAnchor> {
     type Strategy = BoxedStrategy<Self>;
 }
 
-impl Arbitrary for orchard::ShieldedData {
+impl<V: orchard::OrchardFlavorExt + 'static> Arbitrary for orchard::ShieldedData<V>
+// FIXME: remove the following lines
+// FIXME: define the constraint in OrchardFlavorExt?
+//where
+//    <V::EncryptedNote as Arbitrary>::Strategy: 'static,
+{
     type Parameters = ();
 
     fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
@@ -707,13 +796,22 @@ impl Arbitrary for orchard::ShieldedData {
             any::<orchard::tree::Root>(),
             any::<Halo2Proof>(),
             vec(
-                any::<orchard::shielded_data::AuthorizedAction>(),
+                any::<orchard::shielded_data::AuthorizedAction<V>>(),
                 1..MAX_ARBITRARY_ITEMS,
             ),
             any::<BindingSignature>(),
+            #[cfg(feature = "tx-v6")]
+            any::<V::BurnType>(),
         )
-            .prop_map(
-                |(flags, value_balance, shared_anchor, proof, actions, binding_sig)| Self {
+            .prop_map(|props| {
+                #[cfg(not(feature = "tx-v6"))]
+                let (flags, value_balance, shared_anchor, proof, actions, binding_sig) = props;
+
+                #[cfg(feature = "tx-v6")]
+                let (flags, value_balance, shared_anchor, proof, actions, binding_sig, burn) =
+                    props;
+
+                Self {
                     flags,
                     value_balance,
                     shared_anchor,
@@ -722,8 +820,10 @@ impl Arbitrary for orchard::ShieldedData {
                         .try_into()
                         .expect("arbitrary vector size range produces at least one action"),
                     binding_sig: binding_sig.0,
-                },
-            )
+                    #[cfg(feature = "tx-v6")]
+                    burn,
+                }
+            })
             .boxed()
     }
 
@@ -765,6 +865,8 @@ impl Arbitrary for Transaction {
             Some(3) => return Self::v3_strategy(ledger_state),
             Some(4) => return Self::v4_strategy(ledger_state),
             Some(5) => return Self::v5_strategy(ledger_state),
+            #[cfg(feature = "tx-v6")]
+            Some(6) => return Self::v6_strategy(ledger_state),
             Some(_) => unreachable!("invalid transaction version in override"),
             None => {}
         }
@@ -778,11 +880,13 @@ impl Arbitrary for Transaction {
             NetworkUpgrade::Blossom | NetworkUpgrade::Heartwood | NetworkUpgrade::Canopy => {
                 Self::v4_strategy(ledger_state)
             }
-            NetworkUpgrade::Nu5 | NetworkUpgrade::Nu6 => prop_oneof![
+            // FIXME: should v6_strategy be included here?
+            NetworkUpgrade::Nu5 | NetworkUpgrade::Nu6 | NetworkUpgrade::Nu7 => prop_oneof![
                 Self::v4_strategy(ledger_state.clone()),
                 Self::v5_strategy(ledger_state)
             ]
             .boxed(),
+            // FIXME: process NetworkUpgrade::Nu7 properly, with v6 strategy
         }
     }
 
@@ -918,6 +1022,26 @@ pub fn transaction_to_fake_v5(
             orchard_shielded_data: None,
         },
         v5 @ V5 { .. } => v5.clone(),
+        #[cfg(feature = "tx-v6")]
+        V6 {
+            inputs,
+            outputs,
+            lock_time,
+            sapling_shielded_data,
+            orchard_shielded_data: _,
+            ..
+        } => V5 {
+            network_upgrade: block_nu,
+            inputs: inputs.clone(),
+            outputs: outputs.clone(),
+            lock_time: *lock_time,
+            expiry_height: height,
+            sapling_shielded_data: sapling_shielded_data.clone(),
+            // FIXME: is it possible to convert V6 shielded data to V5?
+            // FIXME: add another function for V6, like transaction_to_fake_v6?
+            //orchard_shielded_data: orchard_shielded_data.clone(),
+            orchard_shielded_data: None,
+        },
     }
 }
 
@@ -1020,6 +1144,7 @@ pub fn transactions_from_blocks<'a>(
     })
 }
 
+// FIXME: make it a generic to support V6?
 /// Modify a V5 transaction to insert fake Orchard shielded data.
 ///
 /// Creates a fake instance of [`orchard::ShieldedData`] with one fake action. Note that both the
@@ -1034,7 +1159,7 @@ pub fn transactions_from_blocks<'a>(
 /// Panics if the transaction to be modified is not V5.
 pub fn insert_fake_orchard_shielded_data(
     transaction: &mut Transaction,
-) -> &mut orchard::ShieldedData {
+) -> &mut orchard::ShieldedData<orchard::OrchardVanilla> {
     // Create a dummy action
     let mut runner = TestRunner::default();
     let dummy_action = orchard::Action::arbitrary()
@@ -1049,13 +1174,15 @@ pub fn insert_fake_orchard_shielded_data(
     };
 
     // Place the dummy action inside the Orchard shielded data
-    let dummy_shielded_data = orchard::ShieldedData {
+    let dummy_shielded_data = orchard::ShieldedData::<orchard::OrchardVanilla> {
         flags: orchard::Flags::empty(),
         value_balance: Amount::try_from(0).expect("invalid transaction amount"),
         shared_anchor: orchard::tree::Root::default(),
         proof: Halo2Proof(vec![]),
         actions: at_least_one![dummy_authorized_action],
         binding_sig: Signature::from([0u8; 64]),
+        #[cfg(feature = "tx-v6")]
+        burn: Default::default(),
     };
 
     // Replace the shielded data in the transaction
