@@ -546,12 +546,10 @@ impl From<zcash_protocol::consensus::NetworkUpgrade> for NetworkUpgrade {
             zcash_protocol::consensus::NetworkUpgrade::Heartwood => Self::Heartwood,
             zcash_protocol::consensus::NetworkUpgrade::Canopy => Self::Canopy,
             zcash_protocol::consensus::NetworkUpgrade::Nu5 => Self::Nu5,
-            // FIXME: remove cfg
-            #[cfg(zcash_unstable = "nu6")]
             zcash_protocol::consensus::NetworkUpgrade::Nu6 => Self::Nu6,
-            // FIXME: do we need the following cfg check?
-            #[cfg(zcash_unstable = "nu7")]
-            zcash_protocol::consensus::NetworkUpgrade::Nu7 => Self::Nu7,
+            // FIXME: TODO: Use a proper value below.
+            #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+            zcash_protocol::consensus::NetworkUpgrade::Nu7 => Self::Nu6,
         }
     }
 }
