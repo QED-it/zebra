@@ -96,7 +96,11 @@ pub(super) const MAINNET_ACTIVATION_HEIGHTS: &[(block::Height, NetworkUpgrade)] 
     (block::Height(2_726_400), Nu6),
     // FIXME: TODO: Use a proper value below.
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+<<<<<<< HEAD
     (block::Height(3_111_000), Nu7),
+=======
+    (block::Height(2_726_401), Nu7),
+>>>>>>> d8b48c92a (Fix Nu7 constants and add cfg(zcash_unstable ...) attribute according to PR #15 review comments)
 ];
 
 /// Fake mainnet network upgrade activation heights, used in tests.
@@ -136,7 +140,11 @@ pub(super) const TESTNET_ACTIVATION_HEIGHTS: &[(block::Height, NetworkUpgrade)] 
     (block::Height(2_976_000), Nu6),
     // FIXME: TODO: Use a proper value below.
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+<<<<<<< HEAD
     (block::Height(3_222_000), Nu7),
+=======
+    (block::Height(2_942_001), Nu7),
+>>>>>>> d8b48c92a (Fix Nu7 constants and add cfg(zcash_unstable ...) attribute according to PR #15 review comments)
 ];
 
 /// Fake testnet network upgrade activation heights, used in tests.
@@ -549,9 +557,15 @@ impl From<zcash_protocol::consensus::NetworkUpgrade> for NetworkUpgrade {
             zcash_protocol::consensus::NetworkUpgrade::Canopy => Self::Canopy,
             zcash_protocol::consensus::NetworkUpgrade::Nu5 => Self::Nu5,
             zcash_protocol::consensus::NetworkUpgrade::Nu6 => Self::Nu6,
+<<<<<<< HEAD
             // TODO: Use a proper value below.
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             zcash_protocol::consensus::NetworkUpgrade::Nu7 => Self::Nu7,
+=======
+            // FIXME: TODO: Use a proper value below.
+            #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+            zcash_protocol::consensus::NetworkUpgrade::Nu7 => Self::Nu6,
+>>>>>>> d8b48c92a (Fix Nu7 constants and add cfg(zcash_unstable ...) attribute according to PR #15 review comments)
         }
     }
 }
