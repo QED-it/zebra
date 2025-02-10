@@ -77,11 +77,8 @@ pub type ItemVerifyingKey = VerifyingKey;
 
 // FIXME: Check if the Orchard code (called from the zebra-consensus) checks burn as a part of bidning signature
 lazy_static::lazy_static! {
-    /// The halo2 proof verifying key for Orchard Vanilla
-    pub static ref VERIFYING_KEY_VANILLA: ItemVerifyingKey = ItemVerifyingKey::build::<<OrchardVanilla as OrchardFlavorExt>::Flavor>();
-
-    /// The halo2 proof verifying key for Orchard ZSA
-    pub static ref VERIFYING_KEY_ZSA: ItemVerifyingKey = ItemVerifyingKey::build::<<OrchardZSA as OrchardFlavorExt>::Flavor>();
+    /// The halo2 proof verifying key.
+    pub static ref VERIFYING_KEY: ItemVerifyingKey = ItemVerifyingKey::build::<OrchardVanilla>();
 }
 
 // === TEMPORARY BATCH HALO2 SUBSTITUTE ===
@@ -149,7 +146,6 @@ impl<V: OrchardVerifier> From<&zebra_chain::orchard::ShieldedData<V>> for Item {
             .flags
             .contains(zebra_chain::orchard::Flags::ENABLE_OUTPUTS);
 
-        // FIXME: support OrchardZSA?
         let flags = orchard::bundle::Flags::from_byte(shielded_data.flags.bits())
             .expect("type should not have unexpected bits");
 
