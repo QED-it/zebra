@@ -137,6 +137,15 @@ impl zp_tx::components::orchard::MapAuth<orchard::bundle::Authorized, orchard::b
     }
 }
 
+#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+impl zp_tx::components::issuance::MapIssueAuth<orchard::issuance::Signed, orchard::issuance::Signed>
+    for IdentityMap
+{
+    fn map_issue_authorization(&self, s: orchard::issuance::Signed) -> orchard::issuance::Signed {
+        s
+    }
+}
+
 #[derive(Debug)]
 struct PrecomputedAuth<'a> {
     _phantom: std::marker::PhantomData<&'a ()>,
@@ -146,6 +155,12 @@ impl<'a> zp_tx::Authorization for PrecomputedAuth<'a> {
     type TransparentAuth = TransparentAuth<'a>;
     type SaplingAuth = sapling_crypto::bundle::Authorized;
     type OrchardAuth = orchard::bundle::Authorized;
+
+    #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+    type OrchardZsaAuth = orchard::bundle::Authorized;
+
+    #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+    type IssueAuth = orchard::issuance::Signed;
 }
 
 // End of (mostly) copied code
@@ -273,9 +288,14 @@ impl<'a> PrecomputedTxData<'a> {
                 all_prev_outputs: all_previous_outputs,
             },
         };
-        let tx_data: zp_tx::TransactionData<PrecomputedAuth> = alt_tx
-            .into_data()
-            .map_authorization(f_transparent, IdentityMap, IdentityMap);
+        let tx_data: zp_tx::TransactionData<PrecomputedAuth> =
+            alt_tx.into_data().map_authorization(
+                f_transparent,
+                IdentityMap,
+                IdentityMap,
+                IdentityMap,
+                IdentityMap,
+            );
 
         PrecomputedTxData {
             tx_data,

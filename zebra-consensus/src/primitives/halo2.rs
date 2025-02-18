@@ -10,7 +10,7 @@ use std::{
 
 use futures::{future::BoxFuture, FutureExt};
 use once_cell::sync::Lazy;
-use orchard::circuit::VerifyingKey;
+use orchard::{circuit::VerifyingKey, orchard_flavor::OrchardVanilla};
 use rand::{thread_rng, CryptoRng, RngCore};
 
 use thiserror::Error;
@@ -75,7 +75,7 @@ pub type ItemVerifyingKey = VerifyingKey;
 
 lazy_static::lazy_static! {
     /// The halo2 proof verifying key.
-    pub static ref VERIFYING_KEY: ItemVerifyingKey = ItemVerifyingKey::build();
+    pub static ref VERIFYING_KEY: ItemVerifyingKey = ItemVerifyingKey::build::<OrchardVanilla>();
 }
 
 // === TEMPORARY BATCH HALO2 SUBSTITUTE ===
@@ -136,12 +136,8 @@ impl From<&zebra_chain::orchard::ShieldedData> for Item {
 
         let anchor = tree::Anchor::from_bytes(shielded_data.shared_anchor.into()).unwrap();
 
-        let enable_spend = shielded_data
-            .flags
-            .contains(zebra_chain::orchard::Flags::ENABLE_SPENDS);
-        let enable_output = shielded_data
-            .flags
-            .contains(zebra_chain::orchard::Flags::ENABLE_OUTPUTS);
+        let flags = orchard::bundle::Flags::from_byte(shielded_data.flags.bits())
+            .expect("type should not have unexpected bits");
 
         let instances = shielded_data
             .actions()
@@ -155,8 +151,7 @@ impl From<&zebra_chain::orchard::ShieldedData> for Item {
                     ))
                     .expect("should be a valid redpallas spendauth verification key"),
                     note::ExtractedNoteCommitment::from_bytes(&action.cm_x.into()).unwrap(),
-                    enable_spend,
-                    enable_output,
+                    flags,
                 )
             })
             .collect();
