@@ -228,9 +228,8 @@ pub(crate) const CONSENSUS_BRANCH_IDS: &[(NetworkUpgrade, ConsensusBranchId)] = 
     (Canopy, ConsensusBranchId(0xe9ff75a6)),
     (Nu5, ConsensusBranchId(0xc2d6d0b4)),
     (Nu6, ConsensusBranchId(0xc8e71055)),
-    // FIXME: TODO: Use a proper value below.
-    #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-    (Nu7, ConsensusBranchId(0x77777777)),
+    // FIXME: use a proper value below
+    (Nu7, ConsensusBranchId(0x77190ad8)),
 ];
 
 /// The target block spacing before Blossom.
