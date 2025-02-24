@@ -210,8 +210,8 @@ pub enum Transaction {
         /// The orchard data for this transaction, if any.
         orchard_shielded_data: Option<orchard::ShieldedData<orchard::OrchardVanilla>>,
     },
-    // FIXME: implement V6 properly (now it's just a coipy of V5)
-    /// A `version = 6` transaction , which supports Orchard ZSA, Orchard Vanille, Sapling and
+    // FIXME: implement V6 properly (now it's just a copy of V5)
+    /// A `version = 6` transaction , which supports Orchard ZSA, Orchard Vanilla, Sapling and
     /// transparent, but not Sprout.
     #[cfg(feature = "tx-v6")]
     V6 {
@@ -1024,9 +1024,19 @@ impl Transaction {
 
     /// Iterate over the [`orchard::Action`]s in this transaction, if there are any,
     /// regardless of version.
-    pub fn orchard_actions(&self) -> Box<dyn Iterator<Item = orchard::ActionCommon> + '_> {
-        orchard_shielded_data_iter!(self, orchard::ShieldedData::action_commons)
-    }
+    pub fn orchard_shielded_data(&self) -> Option<&orchard::ShieldedData> {
+        match self {
+            // Maybe Orchard shielded data
+            Transaction::V5 {
+                orchard_shielded_data,
+                ..
+            } => orchard_shielded_data.as_ref(),
+
+            // FIXME: Support V6/OrchardZSA properly.
+            Transaction::V6 {
+                orchard_shielded_data,
+                ..
+            } => orchard_shielded_data.as_ref(),
 
     /// Access the [`orchard::Nullifier`]s in this transaction, if there are any,
     /// regardless of version.
@@ -1038,6 +1048,17 @@ impl Transaction {
     /// regardless of version.
     pub fn orchard_note_commitments(&self) -> Box<dyn Iterator<Item = pallas::Base> + '_> {
         match self {
+            Transaction::V5 {
+                orchard_shielded_data: Some(orchard_shielded_data),
+                ..
+            } => Some(orchard_shielded_data),
+
+            // FIXME: Support V6/OrchardZSA properly.
+            Transaction::V6 {
+                orchard_shielded_data: Some(orchard_shielded_data),
+                ..
+            } => Some(orchard_shielded_data),
+
             Transaction::V1 { .. }
             | Transaction::V2 { .. }
             | Transaction::V3 { .. }
