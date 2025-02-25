@@ -62,13 +62,13 @@ pub trait OrchardFlavorExt: Clone + Debug {
         + TestArbitrary;
 }
 
-/// A structure representing a tag for Orchard protocol variant used for the transaction version `V5`.
+/// A structure representing a tag for Orchard protocol variant used for the transaction version 5.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[cfg_attr(any(test, feature = "proptest-impl"), derive(Arbitrary))]
 pub struct OrchardVanilla;
 
-/// A structure representing a tag for Orchard protocol variant used for the transaction version `V6`
-/// (which ZSA features support).
+/// A structure representing a tag for Orchard protocol variant used for the transaction version 6
+/// (which support for ZSAs).
 #[cfg(feature = "tx-v6")]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[cfg_attr(any(test, feature = "proptest-impl"), derive(Arbitrary))]
