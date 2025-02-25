@@ -45,8 +45,7 @@ impl TrustedPreallocate for Note {
 
 impl TrustedPreallocate for IssueAction {
     fn max_allocation() -> u64 {
-        // FIXME: impl correct calculation
-        10
+        (MAX_BLOCK_BYTES - 1) / 3
     }
 }
 
