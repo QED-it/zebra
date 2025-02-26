@@ -1021,8 +1021,8 @@ pub fn transaction_to_fake_min_v5(
             orchard_shielded_data: None,
         },
         v5 @ V5 { .. } => v5.clone(),
-        // FIXME: add #[cfg(feature = "tx-v6")]
-        V6 => panic!("V6 transactions are not supported in this test!"),
+        #[cfg(feature = "tx-v6")]
+        _v6 @ V6 { .. } => panic!("V6 transactions are not supported in this test!"),
     }
 }
 
