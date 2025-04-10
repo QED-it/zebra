@@ -799,6 +799,7 @@ fn calculate_orchard_subtree(
             .expect("height with note commitment tree should have block");
         let orchard_note_commitments = block
             .orchard_note_commitments()
+            .into_iter()
             .take(prev_remaining_notes)
             .collect();
 
