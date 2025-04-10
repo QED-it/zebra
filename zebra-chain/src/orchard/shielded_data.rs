@@ -115,8 +115,7 @@ impl<FL: ShieldedDataFlavor> ShieldedData<FL> {
     /// <https://zips.z.cash/protocol/protocol.pdf#orchardbalance>
     pub fn binding_verification_key(&self) -> reddsa::VerificationKeyBytes<Binding> {
         let cv: ValueCommitment = self.actions().map(|action| action.cv).sum();
-        let cv_balance =
-            ValueCommitment::new(pallas::Scalar::zero(), self.value_balance);
+        let cv_balance = ValueCommitment::new(pallas::Scalar::zero(), self.value_balance);
 
         // For TX-V6 assign a proper value commitment to the burn
         // otherwise use a zero value commitment
@@ -127,8 +126,7 @@ impl<FL: ShieldedDataFlavor> ShieldedData<FL> {
             ValueCommitment::new(pallas::Scalar::zero(), Amount::zero())
         };
 
-        let key_bytes: [u8; 32] =
-            (cv - cv_balance - burn_value_commitment).into();
+        let key_bytes: [u8; 32] = (cv - cv_balance - burn_value_commitment).into();
 
         key_bytes.into()
     }
