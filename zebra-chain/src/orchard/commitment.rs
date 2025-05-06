@@ -14,7 +14,11 @@ use halo2::{
 use lazy_static::lazy_static;
 use rand_core::{CryptoRng, RngCore};
 
-use orchard::{note::AssetBase, value::NoteValue};
+#[cfg(feature = "tx-v6")]
+use orchard::{
+    note::AssetBase,
+    value::{ValueCommitTrapdoor, ValueSum},
+};
 
 use crate::{
     amount::Amount,
@@ -238,7 +242,13 @@ impl ValueCommitment {
     {
         let rcv = generate_trapdoor(csprng)?;
 
-        Ok(Self::new(rcv, value))
+        #[cfg(not(feature = "tx-v6"))]
+        let reuslt = Self::new(rcv, value);
+
+        #[cfg(feature = "tx-v6")]
+        let result = Self::new(rcv, ValueSum::from_raw(value.into()), AssetBase::native());
+
+        Ok(result)
     }
 
     /// Generate a new `ValueCommitment` from an existing `rcv on a `value`.
@@ -246,6 +256,7 @@ impl ValueCommitment {
     /// ValueCommit^Orchard(v) :=
     ///
     /// <https://zips.z.cash/protocol/nu5.pdf#concretehomomorphiccommit>
+    #[cfg(not(feature = "tx-v6"))]
     #[allow(non_snake_case)]
     pub fn new(rcv: pallas::Scalar, value: Amount) -> Self {
         let v = pallas::Scalar::from(value);
@@ -253,12 +264,22 @@ impl ValueCommitment {
     }
 
     /// Generate a new `ValueCommitment` from an existing `rcv on a `value` (ZSA version).
+    ///
+    /// ValueCommit^Orchard(v) :=
+    ///
+    /// <https://zips.z.cash/protocol/nu5.pdf#concretehomomorphiccommit>
     #[cfg(feature = "tx-v6")]
     #[allow(non_snake_case)]
-    pub fn with_asset(rcv: pallas::Scalar, value: NoteValue, asset: &AssetBase) -> Self {
-        let v = pallas::Scalar::from(value.inner());
-        let V_zsa = asset.cv_base();
-        Self::from(V_zsa * v + *R * rcv)
+    pub fn new(rcv: pallas::Scalar, value: orchard::value::ValueSum, asset: AssetBase) -> Self {
+        Self(
+            orchard::value::ValueCommitment::derive(
+                value,
+                ValueCommitTrapdoor::from_inner(rcv),
+                asset,
+            )
+            .inner()
+            .into(),
+        )
     }
 }
 

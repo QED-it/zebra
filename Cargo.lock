@@ -2878,7 +2878,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 [[package]]
 name = "orchard"
 version = "0.8.0"
-source = "git+https://github.com/QED-it/orchard?rev=831ca109705a409bc3d3b82e76245e45dd0f0812#831ca109705a409bc3d3b82e76245e45dd0f0812"
+source = "git+https://github.com/QED-it/orchard?branch=reuse-value-derive-in-zebra#08a2181ea1348e2419aefd73cc5a9731676d5b9d"
 dependencies = [
  "aes",
  "bitvec",

@@ -10,6 +10,9 @@ use byteorder::{ReadBytesExt, WriteBytesExt};
 use halo2::pasta::pallas;
 use reddsa::{orchard::Binding, orchard::SpendAuth, Signature};
 
+#[cfg(feature = "tx-v6")]
+use orchard::{note::AssetBase, value::ValueSum};
+
 use crate::{
     amount::{Amount, NegativeAllowed},
     block::MAX_BLOCK_BYTES,
@@ -115,17 +118,25 @@ impl<Flavor: ShieldedDataFlavor> ShieldedData<Flavor> {
     /// <https://zips.z.cash/protocol/protocol.pdf#orchardbalance>
     pub fn binding_verification_key(&self) -> reddsa::VerificationKeyBytes<Binding> {
         let cv: ValueCommitment = self.actions().map(|action| action.cv).sum();
-        let cv_balance = ValueCommitment::new(pallas::Scalar::zero(), self.value_balance);
 
-        // For TX-V6 assign a proper value commitment to the burn
-        // otherwise use a zero value commitment
-        let burn_value_commitment = if cfg!(feature = "tx-v6") {
-            self.burn.clone().into()
-        } else {
-            ValueCommitment::new(pallas::Scalar::zero(), Amount::zero())
+        #[cfg(not(feature = "tx-v6"))]
+        let key = {
+            let cv_balance = ValueCommitment::new(pallas::Scalar::zero(), self.value_balance);
+            cv - cv_balance
         };
 
-        let key_bytes: [u8; 32] = (cv - cv_balance - burn_value_commitment).into();
+        #[cfg(feature = "tx-v6")]
+        let key = {
+            let cv_balance = ValueCommitment::new(
+                pallas::Scalar::zero(),
+                ValueSum::from_raw(self.value_balance.into()),
+                AssetBase::native(),
+            );
+            let burn_value_commitment = self.burn.clone().into();
+            cv - cv_balance - burn_value_commitment
+        };
+
+        let key_bytes: [u8; 32] = key.into();
 
         key_bytes.into()
     }
