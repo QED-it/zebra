@@ -20,7 +20,7 @@ use zebra_chain::{
     amount::{Amount, NonNegative},
     block, orchard,
     parameters::{Network, NetworkUpgrade},
-    primitives::Groth16Proof,
+    primitives::{Groth16Proof, zcash_primitives::{swap_bundle_sighash, action_group_sighashes}},
     sapling,
     serialization::DateTime32,
     transaction::{
@@ -695,7 +695,8 @@ where
             | NetworkUpgrade::Canopy
             | NetworkUpgrade::Nu5
             | NetworkUpgrade::Nu6
-            | NetworkUpgrade::Nu7 => Ok(()),
+            | NetworkUpgrade::Nu7
+            | NetworkUpgrade::Swap => Ok(()),
 
             // Does not support V4 transactions
             NetworkUpgrade::Genesis
@@ -762,6 +763,7 @@ where
         .and(Self::verify_orchard_shielded_data(
             orchard_shielded_data,
             &shielded_sighash,
+            vec![]
         )?))
     }
 
@@ -783,7 +785,7 @@ where
             //
             // Note: Here we verify the transaction version number of the above rule, the group
             // id is checked in zebra-chain crate, in the transaction serialize.
-            NetworkUpgrade::Nu5 | NetworkUpgrade::Nu6 | NetworkUpgrade::Nu7 => Ok(()),
+            NetworkUpgrade::Nu5 | NetworkUpgrade::Nu6 | NetworkUpgrade::Nu7 | NetworkUpgrade::Swap => Ok(()),
 
             // Does not support V5 transactions
             NetworkUpgrade::Genesis
@@ -834,13 +836,28 @@ where
 
         Self::verify_v6_transaction_network_upgrade(&transaction, upgrade)?;
 
-        let shielded_sighash = transaction.sighash(
+        // FIXME we use should use the old way of calculating sighash for pre-Swap ZSA  
+        // let shielded_sighash = transaction.sighash(
+        //     upgrade
+        //         .branch_id()
+        //         .expect("Overwinter-onwards must have branch ID, and we checkpoint on Canopy"),
+        //     HashType::ALL,
+        //     cached_ffi_transaction.all_previous_outputs(),
+        //     None,
+        // );
+        
+        let shielded_sighash = swap_bundle_sighash(
+            &transaction, 
             upgrade
                 .branch_id()
-                .expect("Overwinter-onwards must have branch ID, and we checkpoint on Canopy"),
-            HashType::ALL,
-            cached_ffi_transaction.all_previous_outputs(),
-            None,
+                .expect("Overwinter-onwards must have branch ID, and we checkpoint on Canopy")
+        );
+
+        let action_group_sighashes = action_group_sighashes(
+            &transaction,
+            upgrade
+                .branch_id()
+                .expect("Overwinter-onwards must have branch ID, and we checkpoint on Canopy")
         );
 
         Ok(Self::verify_transparent_inputs_and_outputs(
@@ -856,6 +873,7 @@ where
         .and(Self::verify_orchard_shielded_data(
             orchard_shielded_data,
             &shielded_sighash,
+            action_group_sighashes,
         )?))
         // FIXME: Do we need to verify IssueBundle here in a some way?
         // FIXME: Do we need to verify burns (separately or inside verify_orchard_shielded_data)?
@@ -880,7 +898,8 @@ where
             //
             // Note: Here we verify the transaction version number of the above rule, the group
             // id is checked in zebra-chain crate, in the transaction serialize.
-            NetworkUpgrade::Nu7 => Ok(()),
+            // In current design Swaps use the same TX format as defined in V6 (with the only difference being potentially multiple action groups).
+            NetworkUpgrade::Nu7 | NetworkUpgrade::Swap => Ok(()),
 
             // Does not support V6 transactions
             NetworkUpgrade::Genesis
@@ -1132,6 +1151,7 @@ where
     fn verify_orchard_shielded_data<V: primitives::halo2::OrchardVerifier>(
         orchard_shielded_data: &Option<orchard::ShieldedData<V>>,
         shielded_sighash: &SigHash,
+        action_group_sighashes: Vec<SigHash>,
     ) -> Result<AsyncChecks, TransactionError> {
         let mut async_checks = AsyncChecks::new();
 
@@ -1148,14 +1168,34 @@ where
             // aggregated Halo2 proof per transaction, even with multiple
             // Actions in one transaction. So we queue it for verification
             // only once instead of queuing it up for every Action description.
-            for action_group in orchard_shielded_data.action_groups.iter() {
+            for (index, action_group) in orchard_shielded_data.action_groups.iter().enumerate() {
                 async_checks.push(
                     V::get_verifier()
                         .clone()
                         .oneshot(primitives::halo2::Item::from(action_group)),
-                )
+                );
+
+                // FIXME implement a more graceful decision making which sighash we sign
+                #[cfg(feature = "zsa-swap")]
+                let action_group_sighash = action_group_sighashes.get(index).unwrap();
+                #[cfg(feature = "zsa-swap")] 
+                for authorized_action in action_group.actions.clone() {
+                    // In case of multiple action group we sign action group sighash insead of 
+                    // sighash of the transaction or the Orchard bundle
+                    
+                    let (action, spend_auth_sig) = authorized_action.into_parts();
+
+                    async_checks.push(primitives::redpallas::VERIFIER.clone().oneshot(
+                        primitives::redpallas::Item::from_spendauth(
+                            action.rk,
+                            spend_auth_sig,
+                            &action_group_sighash,
+                        ),
+                    ));
+                }
             }
 
+            #[cfg(not(feature = "zsa-swap"))] // FIXME implement a more graceful decision making which sighash we sign
             for authorized_action in orchard_shielded_data.authorized_actions().cloned() {
                 let (action, spend_auth_sig) = authorized_action.into_parts();
 
@@ -1189,6 +1229,7 @@ where
                 ));
             }
 
+            
             let bvk = orchard_shielded_data.binding_verification_key();
 
             // # Consensus

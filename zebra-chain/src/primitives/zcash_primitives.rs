@@ -343,6 +343,34 @@ pub(crate) fn sighash(
     )
 }
 
+// TODO remove/refactor following temporary hacks for prototyping 
+
+/// FIXME We should not need to convert the transaction to librustzcash format here, 
+/// we should either convert only Orchard bundle, or compute hash directly from Zebra format,
+/// or maybe merge this method with the one above to do conversion only once.
+pub fn swap_bundle_sighash(tx: &Transaction, branch_id: ConsensusBranchId) -> SigHash {
+    let alt_tx = convert_tx_to_librustzcash(tx, branch_id)
+        .expect("zcash_primitives and Zebra transaction formats must be compatible");
+    SigHash(alt_tx.orchard_bundle().expect("Orchard bundle should not be empty").as_swap_bundle().commitment().0.as_ref().try_into().unwrap())
+}
+
+/// FIXME We should not need to convert the transaction to librustzcash format here, 
+/// we should either convert only Action Group, or compute hash directly from Zebra format,
+/// or maybe merge this method with the one above to do conversion only once.
+pub fn action_group_sighashes(tx: &Transaction, branch_id: ConsensusBranchId) -> Vec<SigHash> {
+    let alt_tx = convert_tx_to_librustzcash(tx, branch_id)
+        .expect("zcash_primitives and Zebra transaction formats must be compatible");
+
+    alt_tx
+        .orchard_bundle()
+        .expect("Orchard bundle should not be empty")
+        .as_swap_bundle()
+        .action_groups()
+        .iter().map(
+        |ag| SigHash(ag.action_group_commitment().0.as_ref().try_into().unwrap())
+    ).collect::<Vec<SigHash>>()
+}
+
 /// Compute the authorizing data commitment of this transaction as specified
 /// in [ZIP-244].
 ///

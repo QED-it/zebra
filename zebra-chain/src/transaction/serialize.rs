@@ -408,12 +408,13 @@ impl ZcashSerialize for orchard::ShieldedData<OrchardZSA> {
             "V6 transaction must contain exactly one action group"
         );
 
+        // Denoted as `nActionGroupsOrchard` in the spec  (ZIP 230) (must be one for V6/NU7).
+        CompactSizeMessage::try_from(self.action_groups.len())
+            .expect("nActionGroupsOrchard should convert to CompactSizeMessage")
+            .zcash_serialize(&mut writer)?;
+        
         // FIXME: consider using use zcash_serialize_external_count for or Vec::zcash_serialize
         for action_group in self.action_groups.iter() {
-            // Denoted as `nActionGroupsOrchard` in the spec  (ZIP 230) (must be one for V6/NU7).
-            CompactSizeMessage::try_from(self.action_groups.len())
-                .expect("nActionGroupsOrchard should convert to CompactSizeMessage")
-                .zcash_serialize(&mut writer)?;
 
             // Split the AuthorizedAction
             let (actions, sigs): (Vec<orchard::Action<OrchardZSA>>, Vec<Signature<SpendAuth>>) =
@@ -437,7 +438,7 @@ impl ZcashSerialize for orchard::ShieldedData<OrchardZSA> {
             action_group.proof.zcash_serialize(&mut writer)?;
 
             // Denoted as `nAGExpiryHeight` in the spec  (ZIP 230) (must be zero for V6/NU7).
-            writer.write_u32::<LittleEndian>(0)?;
+            writer.write_u32::<LittleEndian>(action_group.expiry_height)?;
 
             // Denoted as `vAssetBurn` in the spec (ZIP 230).
             #[cfg(feature = "zsa-swap")]
@@ -531,6 +532,7 @@ impl ZcashDeserialize for Option<orchard::ShieldedData<OrchardVanilla>> {
             action_groups: AtLeastOne::from_one(ActionGroup {
                 flags,
                 shared_anchor,
+                expiry_height: 0,
                 proof,
                 actions,
                 burn: Default::default(),
@@ -596,8 +598,9 @@ impl ZcashDeserialize for Option<orchard::ShieldedData<OrchardZSA>> {
             let proof: Halo2Proof = (&mut reader).zcash_deserialize_into()?;
 
             // Denoted as `nAGExpiryHeight` in the spec  (ZIP 230) (must be zero for V6/NU7).
-            let n_ag_expiry_height = reader.read_u32::<LittleEndian>()?;
-            if n_ag_expiry_height != 0 {
+            let expiry_height = reader.read_u32::<LittleEndian>()?;
+            #[cfg(not(feature = "zsa-swap"))]
+            if expiry_height != 0 {
                 return Err(SerializationError::Parse("nAGExpiryHeight for V6/NU7"));
             }
 
@@ -630,6 +633,7 @@ impl ZcashDeserialize for Option<orchard::ShieldedData<OrchardZSA>> {
             action_groups.push(ActionGroup {
                 flags,
                 shared_anchor,
+                expiry_height,
                 proof,
                 actions,
                 burn,

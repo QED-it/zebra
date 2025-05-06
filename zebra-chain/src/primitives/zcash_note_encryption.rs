@@ -79,6 +79,7 @@ pub fn decrypts_successfully(transaction: &Transaction, network: &Network, heigh
         if !match bundle {
             OrchardBundle::OrchardVanilla(bundle) => orchard_bundle_decrypts_successfully(bundle),
             OrchardBundle::OrchardZSA(bundle) => orchard_bundle_decrypts_successfully(bundle),
+            OrchardBundle::OrchardSwap(bundle) => !bundle.action_groups().iter().any(|group| !orchard_bundle_decrypts_successfully(group)),
         } {
             return false;
         }
