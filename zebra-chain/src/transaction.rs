@@ -146,6 +146,7 @@ pub enum Transaction {
         orchard_shielded_data: Option<orchard::ShieldedData<orchard::OrchardVanilla>>,
     },
     /// A `version = 6` transaction , OrchardZSA, Orchard, Sapling and transparent, but not Sprout.
+    #[cfg(feature = "tx-v6")]
     V6 {
         /// The Network Upgrade for this transaction.
         ///
@@ -165,7 +166,7 @@ pub enum Transaction {
         /// The OrchardZSA shielded data for this transaction, if any.
         orchard_shielded_data: Option<orchard::ShieldedData<orchard::OrchardZSA>>,
         /// The OrchardZSA issuance data for this transaction, if any.
-        orchard_zsa_issue_data: Option<orchard::IssueData>,
+        orchard_zsa_issue_data: Option<orchard_zsa::IssueData>,
     },
 }
 
@@ -1058,17 +1059,6 @@ impl Transaction {
     /// Access the note commitments in this transaction.
     pub fn orchard_note_commitments(&self) -> Box<dyn Iterator<Item = pallas::Base> + '_> {
         match self {
-            Transaction::V5 {
-                orchard_shielded_data: Some(orchard_shielded_data),
-                ..
-            } => Some(orchard_shielded_data),
-
-            // FIXME: Support V6/OrchardZSA properly.
-            Transaction::V6 {
-                orchard_shielded_data: Some(orchard_shielded_data),
-                ..
-            } => Some(orchard_shielded_data),
-
             Transaction::V1 { .. }
             | Transaction::V2 { .. }
             | Transaction::V3 { .. }

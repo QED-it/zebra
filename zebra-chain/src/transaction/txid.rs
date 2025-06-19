@@ -28,7 +28,7 @@ impl<'a> TxIdBuilder<'a> {
             | Transaction::V2 { .. }
             | Transaction::V3 { .. }
             | Transaction::V4 { .. } => self.txid_v1_to_v4(),
-            Transaction::V5 { .. } | Transaction::V6 { .. } => self.txid_v5_to_v6(),
+            tx_v5_and_v6! { .. } => self.txid_v5_to_v6(),
         }
     }
 

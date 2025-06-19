@@ -624,22 +624,7 @@ impl Parameters {
         Self {
             network_name: "Regtest".to_string(),
             network_magic: magics::REGTEST,
-            ..Self::build()
-                .with_genesis_hash(REGTEST_GENESIS_HASH)
-                // This value is chosen to match zcashd, see: <https://github.com/zcash/zcash/blob/master/src/chainparams.cpp#L654>
-                .with_target_difficulty_limit(U256::from_big_endian(&[0x0f; 32]))
-                .with_disable_pow(true)
-                .with_slow_start_interval(Height::MIN)
-                // Removes default Testnet activation heights if not configured,
-                // most network upgrades are disabled by default for Regtest in zcashd
-                .with_activation_heights(ConfiguredActivationHeights {
-                    canopy: Some(1),
-                    nu5: nu5_activation_height,
-                    nu6: nu6_activation_height,
-                    nu7: nu7_activation_height,
-                    ..Default::default()
-                })
-                .finish()
+            ..parameters.finish()
         }
     }
 

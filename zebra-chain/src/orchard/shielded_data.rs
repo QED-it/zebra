@@ -323,7 +323,8 @@ bitflags! {
         const ENABLE_SPENDS = 0b00000001;
         /// Enable creating new non-zero valued Orchard notes.
         const ENABLE_OUTPUTS = 0b00000010;
-        /// Enable ZSA transactions.
+        /// Enable ZSA transaction (otherwise all notes within actions must use native asset).
+        // FIXME: Should we use this flag explicitly anywhere in Zebra?
         const ENABLE_ZSA = 0b00000100;
     }
 }
