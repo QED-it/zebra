@@ -21,6 +21,9 @@ use crate::{
 };
 
 #[cfg(feature = "tx-v6")]
+use crate::orchard_zsa::compute_burn_value_commitment;
+
+#[cfg(feature = "tx-v6")]
 use orchard::{note::AssetBase, value::ValueSum};
 
 use super::{OrchardVanilla, ShieldedDataFlavor};
@@ -142,7 +145,7 @@ impl<Flavor: ShieldedDataFlavor> ShieldedData<Flavor> {
                 (ValueSum::default() + i64::from(self.value_balance)).unwrap(),
                 AssetBase::native(),
             );
-            let burn_value_commitment = self.burn.clone().into();
+            let burn_value_commitment = compute_burn_value_commitment(&self.burn);
             cv - cv_balance - burn_value_commitment
         };
 
