@@ -482,6 +482,55 @@ fn fake_v5_round_trip_for_network(network: Network) {
     }
 }
 
+#[cfg(feature = "tx-v6")]
+/// Do a round-trip test on v6 transactions created from the block
+/// test vectors.
+#[test]
+fn v6_round_trip() {
+    use zebra_test::vectors::ORCHARD_ZSA_WORKFLOW_BLOCKS;
+
+    let _init_guard = zebra_test::init();
+
+    for block_bytes in ORCHARD_ZSA_WORKFLOW_BLOCKS.iter() {
+        let block = block_bytes
+            .zcash_deserialize_into::<Block>()
+            .expect("block is structurally valid");
+
+        // test each transaction
+        for tx in &block.transactions {
+            let tx_bytes = tx
+                .zcash_serialize_to_vec()
+                .expect("vec serialization is infallible");
+
+            let tx2 = tx_bytes
+                .zcash_deserialize_into::<Transaction>()
+                .expect("tx is structurally valid");
+
+            assert_eq!(tx.as_ref(), &tx2);
+
+            let tx_bytes2 = tx2
+                .zcash_serialize_to_vec()
+                .expect("vec serialization is infallible");
+
+            assert_eq!(
+                tx_bytes, tx_bytes2,
+                "data must be equal if structs are equal"
+            );
+        }
+
+        // test full blocks
+
+        let block_bytes2 = block
+            .zcash_serialize_to_vec()
+            .expect("vec serialization is infallible");
+
+        assert_eq!(
+            block_bytes, &block_bytes2,
+            "data must be equal if structs are equal"
+        );
+    }
+}
+
 #[test]
 fn invalid_orchard_nullifier() {
     let _init_guard = zebra_test::init();
@@ -574,6 +623,34 @@ fn fake_v5_librustzcash_round_trip_for_network(network: Network) {
             );
 
             let _alt_tx: zcash_primitives::transaction::Transaction = fake_tx
+                .as_ref()
+                .try_into()
+                .expect("librustzcash deserialization must work for zebra serialized transactions");
+        }
+    }
+}
+
+#[cfg(feature = "tx-v6")]
+/// Do a round-trip test on v6 transactions created from the block
+/// test vectors.
+#[test]
+fn v6_librustzcash_round_trip() {
+    use zebra_test::vectors::ORCHARD_ZSA_WORKFLOW_BLOCKS;
+
+    let _init_guard = zebra_test::init();
+
+    for block_bytes in ORCHARD_ZSA_WORKFLOW_BLOCKS.iter() {
+        let block = block_bytes
+            .zcash_deserialize_into::<Block>()
+            .expect("block is structurally valid");
+
+        // Test each V6 transaction
+        for tx in block
+            .transactions
+            .iter()
+            .filter(|tx| matches!(tx.as_ref(), &Transaction::V6 { .. }))
+        {
+            let _alt_tx: zcash_primitives::transaction::Transaction = tx
                 .as_ref()
                 .try_into()
                 .expect("librustzcash deserialization must work for zebra serialized transactions");

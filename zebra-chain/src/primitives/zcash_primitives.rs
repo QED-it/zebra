@@ -180,13 +180,30 @@ impl TryFrom<&Transaction> for zp_tx::Transaction {
             Transaction::V1 { .. }
             | Transaction::V2 { .. }
             | Transaction::V3 { .. }
-            | Transaction::V4 { .. } => panic!("Zebra only uses librustzcash for V5 transactions"),
+            | Transaction::V4 { .. } => {
+                #[cfg(not(feature = "tx-v6"))]
+                panic!("Zebra only uses librustzcash for V5 transactions");
+
+                #[cfg(feature = "tx-v6")]
+                panic!("Zebra only uses librustzcash for V5/V6 transactions");
+            }
         };
 
-        convert_tx_to_librustzcash(
+        #[cfg(not(feature = "tx-v6"))]
+        let result = convert_tx_to_librustzcash(
             trans,
             network_upgrade.branch_id().expect("V5 txs have branch IDs"),
-        )
+        );
+
+        #[cfg(feature = "tx-v6")]
+        let result = convert_tx_to_librustzcash(
+            trans,
+            network_upgrade
+                .branch_id()
+                .expect("V5/V6 txs have branch IDs"),
+        );
+
+        result
     }
 }
 
