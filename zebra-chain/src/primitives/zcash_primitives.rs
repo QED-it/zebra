@@ -29,7 +29,7 @@ impl zp_tx::components::transparent::Authorization for TransparentAuth<'_> {
 
 // In this block we convert our Output to a librustzcash to TxOut.
 // (We could do the serialize/deserialize route but it's simple enough to convert manually)
-impl zp_tx::sighash::TransparentAuthorizingContext for TransparentAuth<'_> {
+impl zcash_transparent::sighash::TransparentAuthorizingContext for TransparentAuth<'_> {
     fn input_amounts(&self) -> Vec<zp_tx::components::amount::NonNegativeAmount> {
         self.all_prev_outputs
             .iter()
@@ -137,7 +137,7 @@ impl zp_tx::components::orchard::MapAuth<orchard::bundle::Authorized, orchard::b
     }
 }
 
-#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+#[cfg(zcash_unstable = "nu7")]
 impl zp_tx::components::issuance::MapIssueAuth<orchard::issuance::Signed, orchard::issuance::Signed>
     for IdentityMap
 {
@@ -156,7 +156,7 @@ impl<'a> zp_tx::Authorization for PrecomputedAuth<'a> {
     type SaplingAuth = sapling_crypto::bundle::Authorized;
     type OrchardAuth = orchard::bundle::Authorized;
 
-    #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+    #[cfg(zcash_unstable = "nu7")]
     type IssueAuth = orchard::issuance::Signed;
 }
 
@@ -319,16 +319,18 @@ pub(crate) fn sighash(
             let output = &precomputed_tx_data.all_previous_outputs[input_index];
             lock_script = output.lock_script.clone().into();
             unlock_script = zcash_primitives::legacy::Script(script_code);
-            zp_tx::sighash::SignableInput::Transparent {
-                hash_type: hash_type.bits() as _,
-                index: input_index,
-                script_code: &unlock_script,
-                script_pubkey: &lock_script,
-                value: output
-                    .value
-                    .try_into()
-                    .expect("amount was previously validated"),
-            }
+            zp_tx::sighash::SignableInput::Transparent(
+                zcash_transparent::sighash::SignableInput::from_parts(
+                    hash_type.try_into().expect("hash type should be ALL"),
+                    input_index,
+                    &unlock_script,
+                    &lock_script,
+                    output
+                        .value
+                        .try_into()
+                        .expect("amount was previously validated"),
+                ),
+            )
         }
         None => zp_tx::sighash::SignableInput::Shielded,
     };
