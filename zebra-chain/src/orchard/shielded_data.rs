@@ -139,7 +139,7 @@ impl<Flavor: ShieldedDataFlavor> ShieldedData<Flavor> {
                 (ValueSum::default() + i64::from(self.value_balance)).unwrap(),
                 AssetBase::native(),
             );
-            let burn_value_commitment = compute_burn_value_commitment(&self.burn);
+            let burn_value_commitment = compute_burn_value_commitment(self.burn.as_ref());
             cv - cv_balance - burn_value_commitment
         };
 

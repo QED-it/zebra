@@ -165,14 +165,12 @@ impl ZcashDeserialize for Burn {
     }
 }
 
-pub(crate) fn compute_burn_value_commitment<B>(burn: &B) -> ValueCommitment
-where
-    B: AsRef<[BurnItem]>,
-{
-    burn.as_ref()
-        .iter()
+/// Computes the value commitment for a list of burns.
+///
+/// For burns, the public trapdoor is always zero.
+pub(crate) fn compute_burn_value_commitment(burn: &[BurnItem]) -> ValueCommitment {
+    burn.iter()
         .map(|&BurnItem(asset, amount)| {
-            // The trapdoor for the burn which is public is always zero.
             ValueCommitment::new(pallas::Scalar::zero(), amount.into(), asset)
         })
         .sum()
