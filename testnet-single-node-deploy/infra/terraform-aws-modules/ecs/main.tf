@@ -125,8 +125,8 @@ resource "aws_ecs_task_definition" "task" {
         ]
         interval     = 15     # Time between health checks in seconds
         timeout      = 10     # Time before a health check is considered failed
-        retries      = 3      # Number of consecutive failures before marking as unhealthy
-        startPeriod  = 120    # Grace period for the service to start
+        retries      = 5      # Number of consecutive failures before marking as unhealthy
+        startPeriod  = 180    # Grace period for the service to start
       }
       
     mountPoints = var.enable_persistent ? [{
