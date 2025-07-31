@@ -19,7 +19,7 @@ use rand::rngs::OsRng;
 
 use zebra_chain::{
     orchard::{ShieldedData, ShieldedDataFlavor},
-    serialization::{ZcashDeserialize, ZcashDeserializeInto, ZcashSerialize},
+    serialization::{AtLeastOne, ZcashDeserialize, ZcashDeserializeInto, ZcashSerialize},
 };
 
 use crate::primitives::halo2::*;
@@ -76,41 +76,44 @@ where
                 .unwrap();
 
             ShieldedData::<Flavor> {
-                flags,
+                action_groups: AtLeastOne::from_one(ActionGroup {
+                    flags,
+                    shared_anchor: anchor_bytes.try_into().unwrap(),
+                    proof: zebra_chain::primitives::Halo2Proof(
+                        bundle.authorization().proof().as_ref().into(),
+                    ),
+                    actions: bundle
+                        .actions()
+                        .iter()
+                        .map(|a| {
+                            let action = zebra_chain::orchard::Action::<Flavor> {
+                                cv: a.cv_net().to_bytes().try_into().unwrap(),
+                                nullifier: a.nullifier().to_bytes().try_into().unwrap(),
+                                rk: <[u8; 32]>::from(a.rk()).into(),
+                                cm_x: pallas::Base::from_repr(a.cmx().into()).unwrap(),
+                                ephemeral_key: a.encrypted_note().epk_bytes.try_into().unwrap(),
+                                enc_ciphertext: a
+                                    .encrypted_note()
+                                    .enc_ciphertext
+                                    .as_ref()
+                                    .try_into()
+                                    .unwrap(),
+                                out_ciphertext: a.encrypted_note().out_ciphertext.into(),
+                            };
+                            zebra_chain::orchard::shielded_data::AuthorizedAction {
+                                action,
+                                spend_auth_sig: <[u8; 64]>::from(a.authorization()).into(),
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .try_into()
+                        .unwrap(),
+                    // FIXME: use a proper value when implementing V6
+                    #[cfg(feature = "tx-v6")]
+                    burn: bundle.burn().as_slice().into(),
+                }),
                 value_balance: note_value.try_into().unwrap(),
-                shared_anchor: anchor_bytes.try_into().unwrap(),
-                proof: zebra_chain::primitives::Halo2Proof(
-                    bundle.authorization().proof().as_ref().into(),
-                ),
-                actions: bundle
-                    .actions()
-                    .iter()
-                    .map(|a| {
-                        let action = zebra_chain::orchard::Action::<Flavor> {
-                            cv: a.cv_net().to_bytes().try_into().unwrap(),
-                            nullifier: a.nullifier().to_bytes().try_into().unwrap(),
-                            rk: <[u8; 32]>::from(a.rk()).into(),
-                            cm_x: pallas::Base::from_repr(a.cmx().into()).unwrap(),
-                            ephemeral_key: a.encrypted_note().epk_bytes.try_into().unwrap(),
-                            enc_ciphertext: a
-                                .encrypted_note()
-                                .enc_ciphertext
-                                .as_ref()
-                                .try_into()
-                                .unwrap(),
-                            out_ciphertext: a.encrypted_note().out_ciphertext.into(),
-                        };
-                        zebra_chain::orchard::shielded_data::AuthorizedAction {
-                            action,
-                            spend_auth_sig: <[u8; 64]>::from(a.authorization()).into(),
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .try_into()
-                    .unwrap(),
                 binding_sig: <[u8; 64]>::from(bundle.authorization().binding_signature()).into(),
-                #[cfg(feature = "tx-v6")]
-                burn: bundle.burn().as_slice().into(),
             }
         })
         .collect();
@@ -134,11 +137,13 @@ where
     let mut async_checks = FuturesUnordered::new();
 
     for sd in shielded_data {
-        tracing::trace!(?sd);
+        for ag in sd.action_groups {
+            tracing::trace!(?ag);
 
-        let rsp = verifier.ready().await?.call(Item::from(&sd));
+            let rsp = verifier.ready().await?.call(Item::from(&ag));
 
-        async_checks.push(rsp);
+            async_checks.push(rsp);
+        }
     }
 
     while let Some(result) = async_checks.next().await {
@@ -214,17 +219,19 @@ where
     let mut async_checks = FuturesUnordered::new();
 
     for sd in shielded_data {
-        let mut sd = sd.clone();
+        for ag in sd.action_groups {
+            let mut ag = ag.clone();
 
-        sd.flags.remove(zebra_chain::orchard::Flags::ENABLE_SPENDS);
-        sd.flags.remove(zebra_chain::orchard::Flags::ENABLE_OUTPUTS);
-        // FIXME: What about zebra_chain::orchard::Flags::ENABLE_ZSA?
+            ag.flags.remove(zebra_chain::orchard::Flags::ENABLE_SPENDS);
+            ag.flags.remove(zebra_chain::orchard::Flags::ENABLE_OUTPUTS);
+            // FIXME: What about zebra_chain::orchard::Flags::ENABLE_ZSA?
 
-        tracing::trace!(?sd);
+            tracing::trace!(?ag);
 
-        let rsp = verifier.ready().await?.call(Item::from(&sd));
+            let rsp = verifier.ready().await?.call(Item::from(&ag));
 
-        async_checks.push(rsp);
+            async_checks.push(rsp);
+        }
     }
 
     while let Some(result) = async_checks.next().await {

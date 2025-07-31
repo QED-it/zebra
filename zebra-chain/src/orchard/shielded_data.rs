@@ -25,6 +25,48 @@ use orchard::{note::AssetBase, value::ValueSum};
 
 use super::{OrchardVanilla, ShieldedDataFlavor};
 
+// FIXME: wrap all ActionGroup usages with tx-v6 feature flag?
+/// Action Group description.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[cfg_attr(
+    not(feature = "tx-v6"),
+    serde(bound(serialize = "Flavor::EncryptedNote: serde::Serialize"))
+)]
+#[cfg_attr(
+    feature = "tx-v6",
+    serde(bound(
+        serialize = "Flavor::EncryptedNote: serde::Serialize, Flavor::BurnType: serde::Serialize",
+        deserialize = "Flavor::BurnType: serde::Deserialize<'de>"
+    ))
+)]
+pub struct ActionGroup<Flavor: ShieldedDataFlavor> {
+    /// The orchard flags for this transaction.
+    /// Denoted as `flagsOrchard` in the spec.
+    pub flags: Flags,
+    /// The shared anchor for all `Spend`s in this transaction.
+    /// Denoted as `anchorOrchard` in the spec.
+    pub shared_anchor: tree::Root,
+    /// The aggregated zk-SNARK proof for all the actions in this transaction.
+    /// Denoted as `proofsOrchard` in the spec.
+    pub proof: Halo2Proof,
+    /// The Orchard Actions, in the order they appear in the transaction.
+    /// Denoted as `vActionsOrchard` and `vSpendAuthSigsOrchard` in the spec.
+    pub actions: AtLeastOne<AuthorizedAction<Flavor>>,
+
+    #[cfg(feature = "tx-v6")]
+    /// Assets intended for burning
+    /// Denoted as `vAssetBurn` in the spec (ZIP 230).
+    pub burn: Flavor::BurnType,
+}
+
+impl<Flavor: ShieldedDataFlavor> ActionGroup<Flavor> {
+    /// Iterate over the [`Action`]s for the [`AuthorizedAction`]s in this
+    /// action group, in the order they appear in it.
+    pub fn actions(&self) -> impl Iterator<Item = &Action<Flavor>> {
+        self.actions.actions()
+    }
+}
+
 /// A bundle of [`Action`] descriptions and signature data.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[cfg_attr(
@@ -39,42 +81,44 @@ use super::{OrchardVanilla, ShieldedDataFlavor};
     ))
 )]
 pub struct ShieldedData<Flavor: ShieldedDataFlavor> {
-    /// The orchard flags for this transaction.
-    /// Denoted as `flagsOrchard` in the spec.
-    pub flags: Flags,
-    /// The net value of Orchard spends minus outputs.
+    /// Action Group descriptions.
+    /// Denoted as `vActionGroupsOrchard` in the spec (ZIP 230).
+    pub action_groups: AtLeastOne<ActionGroup<Flavor>>,
     /// Denoted as `valueBalanceOrchard` in the spec.
     pub value_balance: Amount,
-    /// The shared anchor for all `Spend`s in this transaction.
-    /// Denoted as `anchorOrchard` in the spec.
-    pub shared_anchor: tree::Root,
-    /// The aggregated zk-SNARK proof for all the actions in this transaction.
-    /// Denoted as `proofsOrchard` in the spec.
-    pub proof: Halo2Proof,
-    /// The Orchard Actions, in the order they appear in the transaction.
-    /// Denoted as `vActionsOrchard` and `vSpendAuthSigsOrchard` in the spec.
-    pub actions: AtLeastOne<AuthorizedAction<Flavor>>,
     /// A signature on the transaction `sighash`.
     /// Denoted as `bindingSigOrchard` in the spec.
     pub binding_sig: Signature<Binding>,
+}
 
-    #[cfg(feature = "tx-v6")]
-    /// Assets intended for burning
-    /// Denoted as `vAssetBurn` in the spec (ZIP 230).
-    pub burn: Flavor::BurnType,
+impl<Flavor: ShieldedDataFlavor> fmt::Display for ActionGroup<Flavor> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut fmter = f.debug_struct("orchard::ActionGroup");
+
+        // FIXME: reorder fields here according the struct/spec?
+
+        fmter.field("actions", &self.actions.len());
+        fmter.field("flags", &self.flags);
+
+        fmter.field("proof_len", &self.proof.zcash_serialized_size());
+
+        fmter.field("shared_anchor", &self.shared_anchor);
+
+        #[cfg(feature = "tx-v6")]
+        fmter.field("burn", &self.burn.as_ref().len());
+
+        fmter.finish()
+    }
 }
 
 impl<Flavor: ShieldedDataFlavor> fmt::Display for ShieldedData<Flavor> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut fmter = f.debug_struct("orchard::ShieldedData");
 
-        fmter.field("actions", &self.actions.len());
+        fmter.field("action_groups", &self.action_groups);
         fmter.field("value_balance", &self.value_balance);
-        fmter.field("flags", &self.flags);
 
-        fmter.field("proof_len", &self.proof.zcash_serialized_size());
-
-        fmter.field("shared_anchor", &self.shared_anchor);
+        // FIXME: format binding_sig as well?
 
         fmter.finish()
     }
@@ -84,13 +128,14 @@ impl<Flavor: ShieldedDataFlavor> ShieldedData<Flavor> {
     /// Iterate over the [`Action`]s for the [`AuthorizedAction`]s in this
     /// transaction, in the order they appear in it.
     pub fn actions(&self) -> impl Iterator<Item = &Action<Flavor>> {
-        self.actions.actions()
+        self.authorized_actions()
+            .map(|authorized_action| &authorized_action.action)
     }
 
     /// Return an iterator for the [`ActionCommon`] copy of the Actions in this
     /// transaction, in the order they appear in it.
     pub fn action_commons(&self) -> impl Iterator<Item = ActionCommon> + '_ {
-        self.actions.actions().map(|action| action.into())
+        self.actions().map(|action| action.into())
     }
 
     /// Collect the [`Nullifier`]s for this transaction.
@@ -142,7 +187,11 @@ impl<Flavor: ShieldedDataFlavor> ShieldedData<Flavor> {
                 (ValueSum::default() + i64::from(self.value_balance)).unwrap(),
                 AssetBase::native(),
             );
-            let burn_value_commitment = self.burn.clone().into();
+            let burn_value_commitment = self
+                .action_groups
+                .iter()
+                .map(|action_group| action_group.burn.clone().into())
+                .sum::<ValueCommitment>();
             cv - cv_balance - burn_value_commitment
         };
 
@@ -162,6 +211,29 @@ impl<Flavor: ShieldedDataFlavor> ShieldedData<Flavor> {
     /// outputs, in the order they appear in the transaction.
     pub fn note_commitments(&self) -> impl Iterator<Item = &pallas::Base> {
         self.actions().map(|action| &action.cm_x)
+    }
+
+    /// Makes a union of the flags for this transaction.
+    pub fn flags_union(&self) -> Flags {
+        self.action_groups
+            .iter()
+            .map(|action_group| &action_group.flags)
+            .fold(Flags::empty(), |result, flags| result.union(*flags))
+    }
+
+    /// Collect the shared anchors for this transaction.
+    pub fn shared_anchors(&self) -> impl Iterator<Item = tree::Root> + '_ {
+        self.action_groups
+            .iter()
+            .map(|action_group| action_group.shared_anchor)
+    }
+
+    /// Iterate over the [`AuthorizedAction`]s in this
+    /// transaction, in the order they appear in it.
+    pub fn authorized_actions(&self) -> impl Iterator<Item = &AuthorizedAction<Flavor>> {
+        self.action_groups
+            .iter()
+            .flat_map(|action_group| action_group.actions.iter())
     }
 }
 

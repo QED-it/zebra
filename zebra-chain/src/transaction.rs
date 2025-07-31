@@ -220,32 +220,6 @@ macro_rules! tx_v5_and_v6 {
 
 pub(crate) use tx_v5_and_v6;
 
-// Macro to get a specific field from an Orchard shielded data struct.
-// Returns `None` for transaction versions that don't support Orchard (V1-V4).
-// This avoids repeating the same match block pattern across multiple accessor methods.
-macro_rules! orchard_shielded_data_field {
-    ($self:expr, $field:ident) => {
-        match $self {
-            // No Orchard shielded data
-            Transaction::V1 { .. }
-            | Transaction::V2 { .. }
-            | Transaction::V3 { .. }
-            | Transaction::V4 { .. } => None,
-
-            Transaction::V5 {
-                orchard_shielded_data,
-                ..
-            } => orchard_shielded_data.as_ref().map(|data| data.$field),
-
-            #[cfg(feature = "tx-v6")]
-            Transaction::V6 {
-                orchard_shielded_data,
-                ..
-            } => orchard_shielded_data.as_ref().map(|data| data.$field),
-        }
-    };
-}
-
 impl Transaction {
     // identifiers and hashes
 
@@ -333,11 +307,12 @@ impl Transaction {
     ///
     /// See [`Self::has_transparent_or_shielded_inputs`] for details.
     pub fn has_shielded_inputs(&self) -> bool {
+        // FIXME: is it correct to use orchard_flags_union here?
         self.joinsplit_count() > 0
             || self.sapling_spends_per_anchor().count() > 0
             || (self.orchard_actions().count() > 0
                 && self
-                    .orchard_flags()
+                    .orchard_flags_union()
                     .unwrap_or_else(orchard::Flags::empty)
                     .contains(orchard::Flags::ENABLE_SPENDS))
     }
@@ -351,11 +326,12 @@ impl Transaction {
     ///
     /// See [`Self::has_transparent_or_shielded_outputs`] for details.
     pub fn has_shielded_outputs(&self) -> bool {
+        // FIXME: is it correct to use orchard_flags_union here?
         self.joinsplit_count() > 0
             || self.sapling_outputs().count() > 0
             || (self.orchard_actions().count() > 0
                 && self
-                    .orchard_flags()
+                    .orchard_flags_union()
                     .unwrap_or_else(orchard::Flags::empty)
                     .contains(orchard::Flags::ENABLE_OUTPUTS))
     }
@@ -365,7 +341,7 @@ impl Transaction {
         if self.version() < 5 || self.orchard_actions().count() == 0 {
             return true;
         }
-        self.orchard_flags()
+        self.orchard_flags_union()
             .unwrap_or_else(orchard::Flags::empty)
             .intersects(orchard::Flags::ENABLE_SPENDS | orchard::Flags::ENABLE_OUTPUTS)
     }
@@ -1092,22 +1068,142 @@ impl Transaction {
         }
     }
 
+    /// Access the Orchard issue data in this transaction, if any,
+    /// regardless of version.
+    #[cfg(feature = "tx-v6")]
+    fn orchard_issue_data(&self) -> &Option<orchard_zsa::IssueData> {
+        match self {
+            Transaction::V1 { .. }
+            | Transaction::V2 { .. }
+            | Transaction::V3 { .. }
+            | Transaction::V4 { .. }
+            | Transaction::V5 { .. } => &None,
+
+            Transaction::V6 {
+                orchard_zsa_issue_data,
+                ..
+            } => orchard_zsa_issue_data,
+        }
+    }
+
+    /// Access the Orchard issuance actions in this transaction, if there are any,
+    /// regardless of version.
+    #[cfg(feature = "tx-v6")]
+    pub fn orchard_issue_actions(&self) -> impl Iterator<Item = &::orchard::issuance::IssueAction> {
+        self.orchard_issue_data()
+            .iter()
+            .flat_map(orchard_zsa::IssueData::actions)
+    }
+
+    /// Access the Orchard asset burns in this transaction, if there are any,
+    /// regardless of version.
+    #[cfg(feature = "tx-v6")]
+    pub fn orchard_burns(&self) -> Box<dyn Iterator<Item = &orchard_zsa::BurnItem> + '_> {
+        match self {
+            Transaction::V1 { .. }
+            | Transaction::V2 { .. }
+            | Transaction::V3 { .. }
+            | Transaction::V4 { .. }
+            | Transaction::V5 { .. } => Box::new(std::iter::empty()),
+
+            #[cfg(feature = "tx-v6")]
+            Transaction::V6 {
+                orchard_shielded_data,
+                ..
+            } => Box::new(orchard_shielded_data.iter().flat_map(|data| {
+                data.action_groups
+                    .iter()
+                    .flat_map(|action_group| action_group.burn.as_ref().iter())
+            })),
+        }
+    }
+
     /// Access the [`orchard::Flags`] in this transaction, if there is any,
     /// regardless of version.
-    pub fn orchard_flags(&self) -> Option<orchard::shielded_data::Flags> {
-        orchard_shielded_data_field!(self, flags)
+    pub fn orchard_flags_union(&self) -> Option<orchard::shielded_data::Flags> {
+        match self {
+            // No Orchard shielded data
+            Transaction::V1 { .. }
+            | Transaction::V2 { .. }
+            | Transaction::V3 { .. }
+            | Transaction::V4 { .. } => None,
+
+            Transaction::V5 {
+                orchard_shielded_data,
+                ..
+            } => orchard_shielded_data
+                .as_ref()
+                .map(|data| data.flags_union()),
+
+            #[cfg(feature = "tx-v6")]
+            Transaction::V6 {
+                orchard_shielded_data,
+                ..
+            } => orchard_shielded_data
+                .as_ref()
+                .map(|data| data.flags_union()),
+        }
     }
 
     /// Access the [`orchard::tree::Root`] in this transaction, if there is any,
     /// regardless of version.
-    pub fn orchard_shared_anchor(&self) -> Option<orchard::tree::Root> {
-        orchard_shielded_data_field!(self, shared_anchor)
+    pub fn orchard_shared_anchors(&self) -> Box<dyn Iterator<Item = orchard::tree::Root> + '_> {
+        match self {
+            // No Orchard shielded data
+            Transaction::V1 { .. }
+            | Transaction::V2 { .. }
+            | Transaction::V3 { .. }
+            | Transaction::V4 { .. } => Box::new(std::iter::empty()),
+
+            Transaction::V5 {
+                orchard_shielded_data,
+                ..
+            } => Box::new(
+                orchard_shielded_data
+                    .iter()
+                    .flat_map(orchard::ShieldedData::shared_anchors),
+            ),
+
+            #[cfg(feature = "tx-v6")]
+            Transaction::V6 {
+                orchard_shielded_data,
+                ..
+            } => Box::new(
+                orchard_shielded_data
+                    .iter()
+                    .flat_map(orchard::ShieldedData::shared_anchors),
+            ),
+        }
     }
 
     /// Return if the transaction has any Orchard shielded data,
     /// regardless of version.
     pub fn has_orchard_shielded_data(&self) -> bool {
-        self.orchard_flags().is_some()
+        // FIXME: avoid code duplication with orchard_value_balance
+        let value_balance = match self {
+            // No Orchard shielded data
+            Transaction::V1 { .. }
+            | Transaction::V2 { .. }
+            | Transaction::V3 { .. }
+            | Transaction::V4 { .. } => None,
+
+            Transaction::V5 {
+                orchard_shielded_data,
+                ..
+            } => orchard_shielded_data
+                .as_ref()
+                .map(|data| data.value_balance()),
+
+            #[cfg(feature = "tx-v6")]
+            Transaction::V6 {
+                orchard_shielded_data,
+                ..
+            } => orchard_shielded_data
+                .as_ref()
+                .map(|data| data.value_balance()),
+        };
+
+        value_balance.is_some()
     }
 
     // value balances
@@ -1481,10 +1577,30 @@ impl Transaction {
     ///
     /// <https://zebra.zfnd.org/dev/rfcs/0012-value-pools.html#definitions>
     pub fn orchard_value_balance(&self) -> ValueBalance<NegativeAllowed> {
-        let orchard_value_balance =
-            orchard_shielded_data_field!(self, value_balance).unwrap_or_else(Amount::zero);
+        let value_balance = match self {
+            // No Orchard shielded data
+            Transaction::V1 { .. }
+            | Transaction::V2 { .. }
+            | Transaction::V3 { .. }
+            | Transaction::V4 { .. } => None,
 
-        ValueBalance::from_orchard_amount(orchard_value_balance)
+            Transaction::V5 {
+                orchard_shielded_data,
+                ..
+            } => orchard_shielded_data
+                .as_ref()
+                .map(|data| data.value_balance()),
+
+            #[cfg(feature = "tx-v6")]
+            Transaction::V6 {
+                orchard_shielded_data,
+                ..
+            } => orchard_shielded_data
+                .as_ref()
+                .map(|data| data.value_balance()),
+        };
+
+        ValueBalance::from_orchard_amount(value_balance.unwrap_or_else(Amount::zero))
     }
 
     /// Modify the `value_balance` field from the `orchard::ShieldedData` in this transaction,
