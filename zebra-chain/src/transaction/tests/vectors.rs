@@ -483,8 +483,8 @@ fn fake_v5_round_trip_for_network(network: Network) {
 }
 
 #[cfg(feature = "tx-v6")]
-/// Do a serialization round-trip test on v6 transactions created from the block
-/// test vectors.
+/// Do a serialization round-trip on OrchardZSA workflow blocks and their V6
+/// transactions.
 #[test]
 fn v6_round_trip() {
     use zebra_test::vectors::ORCHARD_ZSA_WORKFLOW_BLOCKS;
@@ -630,10 +630,10 @@ fn fake_v5_librustzcash_round_trip_for_network(network: Network) {
 }
 
 #[cfg(feature = "tx-v6")]
-/// Do a round-trip test via librustzcash on v6 transactions created from the block
-/// test vectors.
+/// Confirms each V6 transaction in the OrchardZSA test blocks converts to librustzcash’s
+/// transaction type without error.
 #[test]
-fn v6_librustzcash_round_trip() {
+fn v6_librustzcash_tx_conversion() {
     use zebra_test::vectors::ORCHARD_ZSA_WORKFLOW_BLOCKS;
 
     let _init_guard = zebra_test::init();
@@ -642,16 +642,6 @@ fn v6_librustzcash_round_trip() {
         let block = block_bytes
             .zcash_deserialize_into::<Block>()
             .expect("block is structurally valid");
-
-        // test full blocks
-        let block_bytes2 = block
-            .zcash_serialize_to_vec()
-            .expect("vec serialization is infallible");
-
-        assert_eq!(
-            block_bytes, &block_bytes2,
-            "data must be equal if structs are equal"
-        );
 
         // Test each V6 transaction
         for tx in block
@@ -662,7 +652,7 @@ fn v6_librustzcash_round_trip() {
             let _alt_tx: zcash_primitives::transaction::Transaction = tx
                 .as_ref()
                 .try_into()
-                .expect("librustzcash deserialization must work for zebra serialized transactions");
+                .expect("librustzcash conversion must work for zebra transactions");
         }
     }
 }
