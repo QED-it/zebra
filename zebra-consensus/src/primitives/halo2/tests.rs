@@ -24,7 +24,6 @@ use zebra_chain::{
 
 use crate::primitives::halo2::*;
 
-// FIXME: Where is this function called from?
 #[allow(dead_code, clippy::print_stdout)]
 fn generate_test_vectors<Flavor: ShieldedDataFlavor>()
 where

@@ -286,25 +286,6 @@ fn tx_round_trip(tx: &Transaction) {
     assert_eq!(data, data2, "data must be equal if structs are equal");
 }
 
-/// An empty transaction v5, with no Orchard, Sapling, or Transparent data
-///
-/// empty transaction are invalid, but Zebra only checks this rule in
-/// zebra_consensus::transaction::Verifier
-#[test]
-fn empty_v5_round_trip() {
-    tx_round_trip(&EMPTY_V5_TX)
-}
-
-#[cfg(feature = "tx-v6")]
-/// An empty transaction v6, with no Orchard/OrchardZSA, Sapling, or Transparent data
-///
-/// empty transaction are invalid, but Zebra only checks this rule in
-/// zebra_consensus::transaction::Verifier
-#[test]
-fn empty_v6_round_trip() {
-    tx_round_trip(&EMPTY_V6_TX)
-}
-
 /// An empty transaction v4, with no Sapling, Sprout, or Transparent data
 ///
 /// empty transaction are invalid, but Zebra only checks this rule in
@@ -334,6 +315,25 @@ fn empty_v4_round_trip() {
         .expect("vec serialization is infallible");
 
     assert_eq!(data, data2, "data must be equal if structs are equal");
+}
+
+/// An empty transaction v5, with no Orchard, Sapling, or Transparent data
+///
+/// empty transaction are invalid, but Zebra only checks this rule in
+/// zebra_consensus::transaction::Verifier
+#[test]
+fn empty_v5_round_trip() {
+    tx_round_trip(&EMPTY_V5_TX)
+}
+
+#[cfg(feature = "tx-v6")]
+/// An empty transaction v6, with no Orchard/OrchardZSA, Sapling, or Transparent data
+///
+/// empty transaction are invalid, but Zebra only checks this rule in
+/// zebra_consensus::transaction::Verifier
+#[test]
+fn empty_v6_round_trip() {
+    tx_round_trip(&EMPTY_V6_TX)
 }
 
 fn tx_librustzcash_round_trip(tx: &Transaction) {
@@ -483,7 +483,7 @@ fn fake_v5_round_trip_for_network(network: Network) {
 }
 
 #[cfg(feature = "tx-v6")]
-/// Do a round-trip test on v6 transactions created from the block
+/// Do a serialization round-trip test on v6 transactions created from the block
 /// test vectors.
 #[test]
 fn v6_round_trip() {
@@ -495,6 +495,16 @@ fn v6_round_trip() {
         let block = block_bytes
             .zcash_deserialize_into::<Block>()
             .expect("block is structurally valid");
+
+        // test full blocks
+        let block_bytes2 = block
+            .zcash_serialize_to_vec()
+            .expect("vec serialization is infallible");
+
+        assert_eq!(
+            block_bytes, &block_bytes2,
+            "data must be equal if structs are equal"
+        );
 
         // test each transaction
         for tx in &block.transactions {
@@ -517,17 +527,6 @@ fn v6_round_trip() {
                 "data must be equal if structs are equal"
             );
         }
-
-        // test full blocks
-
-        let block_bytes2 = block
-            .zcash_serialize_to_vec()
-            .expect("vec serialization is infallible");
-
-        assert_eq!(
-            block_bytes, &block_bytes2,
-            "data must be equal if structs are equal"
-        );
     }
 }
 
@@ -631,7 +630,7 @@ fn fake_v5_librustzcash_round_trip_for_network(network: Network) {
 }
 
 #[cfg(feature = "tx-v6")]
-/// Do a round-trip test on v6 transactions created from the block
+/// Do a round-trip test via librustzcash on v6 transactions created from the block
 /// test vectors.
 #[test]
 fn v6_librustzcash_round_trip() {
@@ -643,6 +642,16 @@ fn v6_librustzcash_round_trip() {
         let block = block_bytes
             .zcash_deserialize_into::<Block>()
             .expect("block is structurally valid");
+
+        // test full blocks
+        let block_bytes2 = block
+            .zcash_serialize_to_vec()
+            .expect("vec serialization is infallible");
+
+        assert_eq!(
+            block_bytes, &block_bytes2,
+            "data must be equal if structs are equal"
+        );
 
         // Test each V6 transaction
         for tx in block
