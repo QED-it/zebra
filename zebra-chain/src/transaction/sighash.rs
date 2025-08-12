@@ -31,6 +31,9 @@ bitflags::bitflags! {
     }
 }
 
+// FIXME (for future reviewers): Copied from upstream Zebra v2.4.2 to fix a librustzcash
+// breaking change. Keep the code (or update it accordingly) and remove this note when we
+// merge with upstream Zebra.
 impl TryFrom<HashType> for SighashType {
     type Error = ();
 
