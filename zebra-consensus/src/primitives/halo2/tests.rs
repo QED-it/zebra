@@ -24,7 +24,6 @@ use zebra_chain::{
 
 use crate::primitives::halo2::*;
 
-// FIXME: Where is this function called from?
 #[allow(dead_code, clippy::print_stdout)]
 fn generate_test_vectors<Flavor: ShieldedDataFlavor>()
 where
@@ -201,7 +200,7 @@ async fn verify_generated_halo2_proofs_vanilla() {
 #[cfg(feature = "tx-v6")]
 #[tokio::test(flavor = "multi_thread")]
 async fn verify_generated_halo2_proofs_zsa() {
-    verify_generated_halo2_proofs::<OrchardZSA>(&zebra_test::vectors::ORCHARD_SHIELDED_DATA_ZSA)
+    verify_generated_halo2_proofs::<OrchardZSA>(&zebra_test::vectors::ORCHARD_ZSA_SHIELDED_DATA)
         .await
 }
 
@@ -293,7 +292,7 @@ async fn correctly_err_on_invalid_halo2_proofs_vanilla() {
 #[tokio::test(flavor = "multi_thread")]
 async fn correctly_err_on_invalid_halo2_proofs_zsa() {
     correctly_err_on_invalid_halo2_proofs::<OrchardZSA>(
-        &zebra_test::vectors::ORCHARD_SHIELDED_DATA_ZSA,
+        &zebra_test::vectors::ORCHARD_ZSA_SHIELDED_DATA,
     )
     .await
 }
