@@ -21,7 +21,7 @@ use std::{
 
 use futures::{FutureExt, TryFutureExt};
 use thiserror::Error;
-use tokio::task::JoinHandle;
+use tokio::{sync::oneshot, task::JoinHandle};
 use tower::{buffer::Buffer, util::BoxService, Service, ServiceExt};
 use tracing::{instrument, Instrument, Span};
 
@@ -30,6 +30,7 @@ use zebra_chain::{
     parameters::Network,
 };
 
+use zebra_node_services::mempool;
 use zebra_state as zs;
 
 use crate::{
@@ -138,6 +139,15 @@ impl RouterError {
             RouterError::Block { source, .. } => source.is_duplicate_request(),
         }
     }
+
+    /// Returns a suggested misbehaviour score increment for a certain error.
+    pub fn misbehavior_score(&self) -> u32 {
+        // TODO: Adjust these values based on zcashd (#9258).
+        match self {
+            RouterError::Checkpoint { source } => source.misbehavior_score(),
+            RouterError::Block { source } => source.misbehavior_score(),
+        }
+    }
 }
 
 impl<S, V> Service<Request> for BlockVerifierRouter<S, V>
@@ -182,7 +192,6 @@ where
         let block = request.block();
 
         match block.coinbase_height() {
-            #[cfg(feature = "getblocktemplate-rpcs")]
             // There's currently no known use case for block proposals below the checkpoint height,
             // so it's okay to immediately return an error here.
             Some(height) if height <= self.max_checkpoint_height && request.is_proposal() => {
@@ -230,11 +239,12 @@ where
 /// Block and transaction verification requests should be wrapped in a timeout,
 /// so that out-of-order and invalid requests do not hang indefinitely.
 /// See the [`router`](`crate::router`) module documentation for details.
-#[instrument(skip(state_service))]
-pub async fn init<S>(
+#[instrument(skip(state_service, mempool))]
+pub async fn init<S, Mempool>(
     config: Config,
     network: &Network,
     mut state_service: S,
+    mempool: oneshot::Receiver<Mempool>,
 ) -> (
     Buffer<BoxService<Request, block::Hash, RouterError>, Request>,
     Buffer<
@@ -247,6 +257,11 @@ pub async fn init<S>(
 where
     S: Service<zs::Request, Response = zs::Response, Error = BoxError> + Send + Clone + 'static,
     S::Future: Send + 'static,
+    Mempool: Service<mempool::Request, Response = mempool::Response, Error = BoxError>
+        + Send
+        + Clone
+        + 'static,
+    Mempool::Future: Send + 'static,
 {
     // Give other tasks priority before spawning the checkpoint task.
     tokio::task::yield_now().await;
@@ -333,7 +348,7 @@ where
 
     // transaction verification
 
-    let transaction = transaction::Verifier::new(network, state_service.clone());
+    let transaction = transaction::Verifier::new(network, state_service.clone(), mempool);
     let transaction = Buffer::new(BoxService::new(transaction), VERIFIER_BUFFER_BOUND);
 
     // block verification
@@ -396,4 +411,37 @@ pub struct BackgroundTaskHandles {
     /// A handle to the state checkpoint verify task.
     /// Finishes when all the checkpoints are verified, or when the state tip is reached.
     pub state_checkpoint_verify_handle: JoinHandle<()>,
+}
+
+/// Calls [`init`] with a closed mempool setup channel for conciseness in tests.
+///
+/// See [`init`] for more details.
+#[cfg(any(test, feature = "proptest-impl"))]
+pub async fn init_test<S>(
+    config: Config,
+    network: &Network,
+    state_service: S,
+) -> (
+    Buffer<BoxService<Request, block::Hash, RouterError>, Request>,
+    Buffer<
+        BoxService<transaction::Request, transaction::Response, TransactionError>,
+        transaction::Request,
+    >,
+    BackgroundTaskHandles,
+    Height,
+)
+where
+    S: Service<zs::Request, Response = zs::Response, Error = BoxError> + Send + Clone + 'static,
+    S::Future: Send + 'static,
+{
+    init(
+        config.clone(),
+        network,
+        state_service.clone(),
+        oneshot::channel::<
+            Buffer<BoxService<mempool::Request, mempool::Response, BoxError>, mempool::Request>,
+        >()
+        .1,
+    )
+    .await
 }

@@ -828,6 +828,9 @@ impl ZcashSerialize for Transaction {
                 orchard_shielded_data,
                 orchard_zsa_issue_data,
             } => {
+                // Transaction V6 spec:
+                // https://zips.z.cash/zip-0230#specification
+
                 // Denoted as `nVersionGroupId` in the spec.
                 writer.write_u32::<LittleEndian>(TX_V6_VERSION_GROUP_ID)?;
 
@@ -1081,12 +1084,7 @@ impl ZcashDeserialize for Transaction {
                 // Denoted as `nConsensusBranchId` in the spec.
                 // Convert it to a NetworkUpgrade
                 let network_upgrade =
-                    NetworkUpgrade::from_branch_id(limited_reader.read_u32::<LittleEndian>()?)
-                        .ok_or_else(|| {
-                            SerializationError::Parse(
-                                "expected a valid network upgrade from the consensus branch id",
-                            )
-                        })?;
+                    NetworkUpgrade::try_from(limited_reader.read_u32::<LittleEndian>()?)?;
 
                 // Denoted as `lock_time` in the spec.
                 let lock_time = LockTime::zcash_deserialize(&mut limited_reader)?;
@@ -1134,12 +1132,7 @@ impl ZcashDeserialize for Transaction {
                 // Denoted as `nConsensusBranchId` in the spec.
                 // Convert it to a NetworkUpgrade
                 let network_upgrade =
-                    NetworkUpgrade::from_branch_id(limited_reader.read_u32::<LittleEndian>()?)
-                        .ok_or_else(|| {
-                            SerializationError::Parse(
-                                "expected a valid network upgrade from the consensus branch id",
-                            )
-                        })?;
+                    NetworkUpgrade::try_from(limited_reader.read_u32::<LittleEndian>()?)?;
 
                 // Denoted as `lock_time` in the spec.
                 let lock_time = LockTime::zcash_deserialize(&mut limited_reader)?;

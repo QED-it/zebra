@@ -4,23 +4,20 @@
 //!
 //! For usage please refer to the program help: `block-template-to-proposal --help`
 
+mod args;
+
 use std::io::Read;
 
 use color_eyre::eyre::Result;
 use serde_json::Value;
 use structopt::StructOpt;
 
-use zebra_chain::{
-    parameters::NetworkUpgrade,
-    serialization::{DateTime32, ZcashSerialize},
-};
-use zebra_rpc::methods::get_block_template_rpcs::{
-    get_block_template::proposal_block_from_template,
-    types::{get_block_template::GetBlockTemplate, long_poll::LONG_POLL_ID_LENGTH},
+use zebra_chain::serialization::{DateTime32, ZcashSerialize};
+use zebra_rpc::{
+    client::{BlockTemplateResponse, LONG_POLL_ID_LENGTH},
+    proposal_block_from_template,
 };
 use zebra_utils::init_tracing;
-
-mod args;
 
 /// The minimum number of characters in a valid `getblocktemplate JSON response.
 ///
@@ -96,10 +93,10 @@ fn main() -> Result<()> {
     });
 
     // parse the modified json to template type
-    let template: GetBlockTemplate = serde_json::from_value(template)?;
+    let template: BlockTemplateResponse = serde_json::from_value(template)?;
 
     // generate proposal according to arguments
-    let proposal = proposal_block_from_template(&template, time_source, NetworkUpgrade::Nu5)?;
+    let proposal = proposal_block_from_template(&template, time_source, &args.net)?;
     eprintln!("{proposal:#?}");
 
     let proposal = proposal
