@@ -240,7 +240,7 @@ serde_json = { version = "1.0.132", features = ["preserve_order"], optional = tr
 
 # prod feature release_max_level_info
 #
-# zebra uses tracing for logging,
+# zebrad uses tracing for logging,
 # we only use `log` to set and print the static log levels in transitive dependencies
 log = "0.4.22"
 
