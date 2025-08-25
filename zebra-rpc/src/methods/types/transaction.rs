@@ -11,12 +11,17 @@ use hex::ToHex;
 use zebra_chain::{
     amount::{self, Amount, NegativeOrZero, NonNegative},
     block::{self, merkle::AUTH_DIGEST_PLACEHOLDER, Height},
+    orchard::{self, OrchardDomainCommon, OrchardVanilla, ShieldedDataFlavor},
     parameters::Network,
     primitives::ed25519,
     sapling::NotSmallOrderValueCommitment,
     transaction::{self, SerializedTransaction, Transaction, UnminedTx, VerifiedUnminedTx},
     transparent::Script,
 };
+
+#[cfg(feature = "tx_v6")]
+use zebra_chain::orchard::OrchardZSA;
+
 use zebra_consensus::groth16::Description;
 use zebra_state::IntoDisk;
 
@@ -219,6 +224,12 @@ pub struct TransactionObject {
     /// Orchard actions of the transaction.
     #[serde(rename = "orchard", skip_serializing_if = "Option::is_none")]
     pub(crate) orchard: Option<Orchard>,
+
+    // FIXME: Do we need to include this into TransactionObject? All IssueData fields or actions only?
+    // What names should we use here?
+    /// The OrchardZSA issuance of the transaction.
+    //#[serde(rename = "orchardZSAIssue", skip_serializing_if = "Option::is_none")]
+    //pub(crate) orchard_zsa_issue: Option<OrchardZSAIssue,
 
     /// The net value of Sapling Spends minus Outputs in ZEC
     #[serde(rename = "valueBalance", skip_serializing_if = "Option::is_none")]
@@ -435,6 +446,20 @@ pub struct ShieldedOutput {
     proof: [u8; 192],
 }
 
+/// FIXME: add doc here
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+pub enum EncCiphertextHex {
+    // V5/Vanilla size
+    // FIXME: name ot Vanilla?
+    V5(#[serde(with = "arrayhex")] [u8; OrchardVanilla::ENC_CIPHERTEXT_SIZE]),
+
+    // V6/ZSA size
+    // FIXME: name ot ZSA?
+    #[cfg(feature = "tx_v6")]
+    V6(#[serde(with = "arrayhex")] [u8; OrchardZSA::ENC_CIPHERTEXT_SIZE]),
+}
+
 /// Object with Orchard-specific information.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, Getters, new)]
 pub struct Orchard {
@@ -468,14 +493,45 @@ pub struct OrchardAction {
     #[serde(rename = "ephemeralKey", with = "hex")]
     ephemeral_key: [u8; 32],
     /// The output note encrypted to the recipient.
-    #[serde(rename = "encCiphertext", with = "arrayhex")]
-    enc_ciphertext: [u8; 580],
+    #[serde(rename = "encCiphertext")]
+    enc_ciphertext: EncCiphertextHex,
     /// A ciphertext enabling the sender to recover the output note.
     #[serde(rename = "spendAuthSig", with = "hex")]
     spend_auth_sig: [u8; 64],
     /// A signature authorizing the spend in this Action.
     #[serde(rename = "outCiphertext", with = "hex")]
     out_ciphertext: [u8; 80],
+}
+
+impl<'a, Flavor: ShieldedDataFlavor> From<&'a orchard::AuthorizedAction<Flavor>> for OrchardAction {
+    fn from(authorized_action: &'a orchard::AuthorizedAction<Flavor>) -> Self {
+        let action = &authorized_action.action;
+
+        // FIXME: implement thsi correctly
+        let enc_ciphertext = EncCiphertextHex::V5([0u8; 580]);
+        //let enc_ciphertext = EncCiphertextHex::from_bytes(action.enc_ciphertext.as_ref())
+        //    .expect("valid Orchard encCiphertext length");
+
+        let cv: [u8; 32] = action.cv.into();
+        let nullifier: [u8; 32] = action.nullifier.into();
+        let rk: [u8; 32] = action.rk.into();
+        let cm_x: [u8; 32] = action.cm_x.into();
+        let ephemeral_key: [u8; 32] = action.ephemeral_key.into();
+        //let enc_ciphertext: [u8; 580] = action.enc_ciphertext.into();
+        let spend_auth_sig: [u8; 64] = authorized_action.spend_auth_sig.into();
+        let out_ciphertext: [u8; 80] = action.out_ciphertext.into();
+
+        OrchardAction {
+            cv,
+            nullifier,
+            rk,
+            cm_x,
+            ephemeral_key,
+            enc_ciphertext,
+            spend_auth_sig,
+            out_ciphertext,
+        }
+    }
 }
 
 impl Default for TransactionObject {
@@ -491,6 +547,8 @@ impl Default for TransactionObject {
             shielded_spends: Vec::new(),
             shielded_outputs: Vec::new(),
             orchard: None,
+            // FIXME: Do we need to add this?
+            //orchard_zsa_issue: None,
             binding_sig: None,
             joinsplit_pub_key: None,
             joinsplit_sig: None,
@@ -637,45 +695,14 @@ impl TransactionObject {
                 None
             } else {
                 Some(Orchard {
+                    // FIXME: add support of processing of orchard_zsa_actions
+                    // FIXME: orchard_vanilla_actions/orchard_zsa_actions should return already
+                    // flattened iteratior, i.e. no Option wrapper and an empty iterator instead of None?
                     actions: tx
-                        .orchard_actions()
-                        .collect::<Vec<_>>()
-                        .iter()
-                        .map(|action| {
-                            let spend_auth_sig: [u8; 64] = tx
-                                .orchard_shielded_data()
-                                .and_then(|shielded_data| {
-                                    shielded_data
-                                        .actions
-                                        .iter()
-                                        .find(|authorized_action| {
-                                            authorized_action.action == **action
-                                        })
-                                        .map(|authorized_action| {
-                                            authorized_action.spend_auth_sig.into()
-                                        })
-                                })
-                                .unwrap_or([0; 64]);
-
-                            let cv: [u8; 32] = action.cv.into();
-                            let nullifier: [u8; 32] = action.nullifier.into();
-                            let rk: [u8; 32] = action.rk.into();
-                            let cm_x: [u8; 32] = action.cm_x.into();
-                            let ephemeral_key: [u8; 32] = action.ephemeral_key.into();
-                            let enc_ciphertext: [u8; 580] = action.enc_ciphertext.into();
-                            let out_ciphertext: [u8; 80] = action.out_ciphertext.into();
-
-                            OrchardAction {
-                                cv,
-                                nullifier,
-                                rk,
-                                cm_x,
-                                ephemeral_key,
-                                enc_ciphertext,
-                                spend_auth_sig,
-                                out_ciphertext,
-                            }
-                        })
+                        .orchard_vanilla_actions()
+                        .into_iter()
+                        .flatten()
+                        .map(|authorized_action| authorized_action.into())
                         .collect(),
                     value_balance: Zec::from(tx.orchard_value_balance().orchard_amount())
                         .lossy_zec(),

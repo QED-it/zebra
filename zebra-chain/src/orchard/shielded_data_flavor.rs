@@ -4,9 +4,9 @@ use std::fmt::Debug;
 
 use serde::{de::DeserializeOwned, Serialize};
 
-use orchard::{domain::OrchardDomainCommon, orchard_flavor::OrchardFlavor};
+use orchard::orchard_flavor::OrchardFlavor;
 
-pub use orchard::orchard_flavor::OrchardVanilla;
+pub use orchard::{domain::OrchardDomainCommon, orchard_flavor::OrchardVanilla};
 
 #[cfg(feature = "tx_v6")]
 pub use orchard::{note::AssetBase, orchard_flavor::OrchardZSA, value::NoteValue};
