@@ -237,7 +237,11 @@ fn checkpoint_list_load_hard_coded() -> Result<(), BoxError> {
 
     let _ = Mainnet.checkpoint_list();
     let _ = Network::new_default_testnet().checkpoint_list();
+<<<<<<< HEAD
     let _ = Network::new_regtest(None, None, None).checkpoint_list();
+=======
+    let _ = Network::new_regtest(Default::default()).checkpoint_list();
+>>>>>>> zcash-v2.4.2
 
     Ok(())
 }

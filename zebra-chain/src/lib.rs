@@ -20,6 +20,7 @@ extern crate tracing;
 
 pub mod amount;
 pub mod block;
+pub mod block_info;
 pub mod chain_sync_status;
 pub mod chain_tip;
 pub mod common;
@@ -41,8 +42,12 @@ pub mod transparent;
 pub mod value_balance;
 pub mod work;
 
+<<<<<<< HEAD
 #[cfg(feature = "tx-v6")]
 pub mod orchard_zsa;
+=======
+pub use error::Error;
+>>>>>>> zcash-v2.4.2
 
 #[cfg(any(test, feature = "proptest-impl"))]
 pub use block::LedgerState;
