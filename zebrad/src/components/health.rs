@@ -1,16 +1,15 @@
 //! A simple HTTP health endpoint for Zebra.
 
 use std::net::SocketAddr;
+use std::convert::Infallible;
 
 use abscissa_core::{Component, FrameworkError};
-use serde::{Deserialize, Serialize};
-use tokio::spawn;
-use hyper::{Request, Response, StatusCode};
 use hyper::body::Incoming;
+use hyper::server::conn::http1;
 use hyper::service::service_fn;
-use std::convert::Infallible;
-use tracing::{info, error};
-use crate::config::ZebradConfig;
+use hyper::{Request, Response, StatusCode};
+use serde::{Deserialize, Serialize};
+use tracing::{error, info};
 
 /// Abscissa component which runs a health endpoint.
 #[derive(Debug, Component)]
@@ -47,12 +46,12 @@ impl HealthEndpoint {
             let (stream, _) = listener.accept().await?;
             let io = hyper_util::rt::TokioIo::new(stream);
             
-            spawn(async move {
-                if let Err(err) = hyper::server::conn::http1::Builder::new()
+            tokio::spawn(async move {
+                if let Err(err) = http1::Builder::new()
                     .serve_connection(io, service_fn(Self::handle_request))
                     .await
                 {
-                    error!("Health endpoint connection error: {}", err);
+                    error!("Failed to serve connection: {}", err);
                 }
             });
         }
@@ -101,12 +100,8 @@ struct HealthInfo {
 
 /// Health endpoint configuration section.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields, default)]
-#[cfg(feature = "health-endpoint")]
 pub struct Config {
-    /// The address used for the health endpoint.
-    ///
-    /// The endpoint is disabled if this is set to `None`.
+    /// The address to bind the health endpoint to
     pub endpoint_addr: Option<SocketAddr>,
 }
 
