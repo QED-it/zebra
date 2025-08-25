@@ -18,6 +18,7 @@ use color_eyre::eyre::Report;
 
 use zebra_chain::{
     block::{genesis::regtest_genesis_block, Block, Hash},
+    parameters::testnet::ConfiguredActivationHeights,
     parameters::Network,
     serialization::ZcashDeserialize,
 };
@@ -44,7 +45,12 @@ fn create_transcript_data() -> impl Iterator<Item = (Request, Result<Hash, Expec
 async fn check_zsa_workflow() -> Result<(), Report> {
     let _init_guard = zebra_test::init();
 
-    let network = Network::new_regtest(Some(1), Some(1), Some(1));
+    let network = Network::new_regtest(ConfiguredActivationHeights {
+        nu5: Some(1),
+        nu6: Some(1),
+        nu7: Some(1),
+        ..Default::default()
+    });
 
     let state_service = zebra_state::init_test(&network);
 
@@ -53,7 +59,7 @@ async fn check_zsa_workflow() -> Result<(), Report> {
         _transaction_verifier,
         _groth16_download_handle,
         _max_checkpoint_height,
-    ) = crate::router::init(Config::default(), &network, state_service.clone()).await;
+    ) = crate::router::init_test(Config::default(), &network, state_service.clone()).await;
 
     Transcript::from(create_transcript_data())
         .check(block_verifier_router.clone())

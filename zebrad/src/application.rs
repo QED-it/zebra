@@ -14,6 +14,7 @@ use abscissa_core::{
 };
 use semver::{BuildMetadata, Version};
 
+use tokio::sync::watch;
 use zebra_network::constants::PORT_IN_USE_ERROR;
 use zebra_state::{
     constants::LOCK_FILE_ERROR, state_database_format_version_in_code,
@@ -35,6 +36,11 @@ fn fatal_error(app_name: String, err: &dyn std::error::Error) -> ! {
 
 /// Application state
 pub static APPLICATION: AppCell<ZebradApp> = AppCell::new();
+
+lazy_static::lazy_static! {
+    /// The last log event that occurred in the application.
+    pub static ref LAST_WARN_ERROR_LOG_SENDER: watch::Sender<Option<(String, tracing::Level, chrono::DateTime<chrono::Utc>)>> = watch::Sender::new(None);
+}
 
 /// Returns the `zebrad` version for this build, in SemVer 2.0 format.
 ///
@@ -325,7 +331,7 @@ impl Application for ZebradApp {
             .collect();
 
         let mut builder = color_eyre::config::HookBuilder::default();
-        let mut metadata_section = "Metadata:".to_string();
+        let mut metadata_section = "Diagnostic metadata:".to_string();
         for (k, v) in panic_metadata {
             builder = builder.add_issue_metadata(k, v.clone());
             write!(&mut metadata_section, "\n{k}: {}", &v)
@@ -422,13 +428,12 @@ impl Application for ZebradApp {
             .build_global()
             .expect("unable to initialize rayon thread pool");
 
-        let cfg_ref = &config;
         let default_filter = command.cmd().default_tracing_filter(command.verbose);
         let is_server = command.cmd().is_server();
 
         // Ignore the configured tracing filter for short-lived utility commands
-        let mut tracing_config = cfg_ref.tracing.clone();
-        let metrics_config = cfg_ref.metrics.clone();
+        let mut tracing_config = config.tracing.clone();
+        let metrics_config = config.metrics.clone();
         if is_server {
             // Override the default tracing filter based on the command-line verbosity.
             tracing_config.filter = tracing_config
@@ -448,8 +453,15 @@ impl Application for ZebradApp {
 
         // Log git metadata and platform info when zebrad starts up
         if is_server {
-            tracing::info!("Diagnostic {}", metadata_section);
-            info!(config_path = ?command.config_path(), config = ?cfg_ref, "loaded zebrad config");
+            info!("{metadata_section}");
+
+            if command.config_path().is_some() {
+                info!("Using config file at: {:?}", command.config_path().unwrap());
+            } else {
+                info!("No config file provided, using default configuration");
+            }
+
+            info!("{config:?}")
         }
 
         // Activate the global span, so it's visible when we load the other
@@ -478,7 +490,7 @@ impl Application for ZebradApp {
         // Launch network and async endpoints only for long-running commands.
         if is_server {
             components.push(Box::new(TokioComponent::new()?));
-            components.push(Box::new(TracingEndpoint::new(cfg_ref)?));
+            components.push(Box::new(TracingEndpoint::new(&config)?));
             components.push(Box::new(MetricsEndpoint::new(&metrics_config)?));
         }
 

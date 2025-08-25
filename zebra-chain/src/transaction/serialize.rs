@@ -20,7 +20,7 @@ use crate::{
     },
 };
 
-#[cfg(feature = "tx-v6")]
+#[cfg(feature = "tx_v6")]
 use crate::{
     orchard::OrchardZSA, orchard_zsa::NoBurn, parameters::TX_V6_VERSION_GROUP_ID,
     serialization::CompactSizeMessage,
@@ -391,7 +391,7 @@ impl ZcashSerialize for orchard::ShieldedData<OrchardVanilla> {
     }
 }
 
-#[cfg(feature = "tx-v6")]
+#[cfg(feature = "tx_v6")]
 #[allow(clippy::unwrap_in_result)]
 impl ZcashSerialize for orchard::ShieldedData<OrchardZSA> {
     fn zcash_serialize<W: io::Write>(&self, mut writer: W) -> Result<(), io::Error> {
@@ -504,7 +504,7 @@ impl ZcashDeserialize for Option<orchard::ShieldedData<OrchardVanilla>> {
         Ok(Some(orchard::ShieldedData::<OrchardVanilla> {
             flags,
             value_balance,
-            #[cfg(feature = "tx-v6")]
+            #[cfg(feature = "tx_v6")]
             burn: NoBurn,
             shared_anchor,
             proof,
@@ -517,7 +517,7 @@ impl ZcashDeserialize for Option<orchard::ShieldedData<OrchardVanilla>> {
 // FIXME: Try to avoid duplication with OrchardVanilla version
 // we can't split ShieldedData out of Option<ShieldedData> deserialization,
 // because the counts are read along with the arrays.
-#[cfg(feature = "tx-v6")]
+#[cfg(feature = "tx_v6")]
 impl ZcashDeserialize for Option<orchard::ShieldedData<OrchardZSA>> {
     fn zcash_deserialize<R: io::Read>(mut reader: R) -> Result<Self, SerializationError> {
         // Denoted as `nActionGroupsOrchard` in the spec  (ZIP 230) (must be one for V6/NU7).
@@ -817,7 +817,7 @@ impl ZcashSerialize for Transaction {
                 orchard_shielded_data.zcash_serialize(&mut writer)?;
             }
 
-            #[cfg(feature = "tx-v6")]
+            #[cfg(feature = "tx_v6")]
             Transaction::V6 {
                 network_upgrade,
                 lock_time,
@@ -828,6 +828,9 @@ impl ZcashSerialize for Transaction {
                 orchard_shielded_data,
                 orchard_zsa_issue_data,
             } => {
+                // Transaction V6 spec:
+                // https://zips.z.cash/zip-0230#specification
+
                 // Denoted as `nVersionGroupId` in the spec.
                 writer.write_u32::<LittleEndian>(TX_V6_VERSION_GROUP_ID)?;
 
@@ -1081,12 +1084,7 @@ impl ZcashDeserialize for Transaction {
                 // Denoted as `nConsensusBranchId` in the spec.
                 // Convert it to a NetworkUpgrade
                 let network_upgrade =
-                    NetworkUpgrade::from_branch_id(limited_reader.read_u32::<LittleEndian>()?)
-                        .ok_or_else(|| {
-                            SerializationError::Parse(
-                                "expected a valid network upgrade from the consensus branch id",
-                            )
-                        })?;
+                    NetworkUpgrade::try_from(limited_reader.read_u32::<LittleEndian>()?)?;
 
                 // Denoted as `lock_time` in the spec.
                 let lock_time = LockTime::zcash_deserialize(&mut limited_reader)?;
@@ -1121,7 +1119,7 @@ impl ZcashDeserialize for Transaction {
                     orchard_shielded_data,
                 })
             }
-            #[cfg(feature = "tx-v6")]
+            #[cfg(feature = "tx_v6")]
             (6, true) => {
                 // Transaction V6 spec:
                 // https://zips.z.cash/zip-0230#transaction-format
@@ -1134,12 +1132,7 @@ impl ZcashDeserialize for Transaction {
                 // Denoted as `nConsensusBranchId` in the spec.
                 // Convert it to a NetworkUpgrade
                 let network_upgrade =
-                    NetworkUpgrade::from_branch_id(limited_reader.read_u32::<LittleEndian>()?)
-                        .ok_or_else(|| {
-                            SerializationError::Parse(
-                                "expected a valid network upgrade from the consensus branch id",
-                            )
-                        })?;
+                    NetworkUpgrade::try_from(limited_reader.read_u32::<LittleEndian>()?)?;
 
                 // Denoted as `lock_time` in the spec.
                 let lock_time = LockTime::zcash_deserialize(&mut limited_reader)?;
