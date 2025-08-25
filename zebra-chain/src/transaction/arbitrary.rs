@@ -14,7 +14,7 @@ use crate::{
     parameters::{Network, NetworkUpgrade},
     primitives::{Bctv14Proof, Groth16Proof, Halo2Proof, ZkSnarkProof},
     sapling::{self, AnchorVariant, PerSpendAnchor, SharedAnchor},
-    serialization::ZcashDeserializeInto,
+    serialization::{self, ZcashDeserializeInto},
     sprout, transparent,
     value_balance::{ValueBalance, ValueBalanceError},
     LedgerState,
@@ -875,7 +875,10 @@ impl Arbitrary for Transaction {
             NetworkUpgrade::Blossom | NetworkUpgrade::Heartwood | NetworkUpgrade::Canopy => {
                 Self::v4_strategy(ledger_state)
             }
-            NetworkUpgrade::Nu5 | NetworkUpgrade::Nu6 => prop_oneof![
+            NetworkUpgrade::Nu5
+            | NetworkUpgrade::Nu6
+            | NetworkUpgrade::Nu6_1
+            | NetworkUpgrade::Nu7 => prop_oneof![
                 Self::v4_strategy(ledger_state.clone()),
                 Self::v5_strategy(ledger_state)
             ]
@@ -930,6 +933,8 @@ impl Arbitrary for VerifiedUnminedTx {
                 )
             }),
             any::<f32>(),
+            serialization::arbitrary::datetime_u32(),
+            any::<block::Height>(),
         )
             .prop_map(
                 |(
@@ -938,6 +943,8 @@ impl Arbitrary for VerifiedUnminedTx {
                     legacy_sigop_count,
                     (conventional_actions, mut unpaid_actions),
                     fee_weight_ratio,
+                    time,
+                    height,
                 )| {
                     if unpaid_actions > conventional_actions {
                         unpaid_actions = conventional_actions;
@@ -953,6 +960,8 @@ impl Arbitrary for VerifiedUnminedTx {
                         conventional_actions,
                         unpaid_actions,
                         fee_weight_ratio,
+                        time: Some(time),
+                        height: Some(height),
                     }
                 },
             )
@@ -1034,8 +1043,13 @@ pub fn transaction_to_fake_v5(
             orchard_shielded_data: None,
         },
         v5 @ V5 { .. } => v5.clone(),
+<<<<<<< HEAD
         #[cfg(feature = "tx-v6")]
         _ => panic!(" other transaction versions are not supported"),
+=======
+        #[cfg(feature = "tx_v6")]
+        v6 @ V6 { .. } => v6.clone(),
+>>>>>>> zcash-v2.4.2
     }
 }
 
@@ -1110,16 +1124,19 @@ pub fn test_transactions(
     transactions_from_blocks(blocks)
 }
 
-/// Generate an iterator over fake V5 transactions.
-///
-/// These transactions are converted from non-V5 transactions that exist in the provided network
-/// blocks.
-pub fn fake_v5_transactions_for_network<'b>(
-    network: &'b Network,
+/// Returns an iterator over V5 transactions extracted from the given blocks.
+pub fn v5_transactions<'b>(
     blocks: impl DoubleEndedIterator<Item = (&'b u32, &'b &'static [u8])> + 'b,
 ) -> impl DoubleEndedIterator<Item = Transaction> + 'b {
-    transactions_from_blocks(blocks)
-        .map(move |(height, transaction)| transaction_to_fake_v5(&transaction, network, height))
+    transactions_from_blocks(blocks).filter_map(|(_, tx)| match *tx {
+        Transaction::V1 { .. }
+        | Transaction::V2 { .. }
+        | Transaction::V3 { .. }
+        | Transaction::V4 { .. } => None,
+        ref tx @ Transaction::V5 { .. } => Some(tx.clone()),
+        #[cfg(feature = "tx_v6")]
+        ref tx @ Transaction::V6 { .. } => Some(tx.clone()),
+    })
 }
 
 /// Generate an iterator over ([`block::Height`], [`Arc<Transaction>`]).

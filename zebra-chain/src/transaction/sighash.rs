@@ -1,9 +1,13 @@
 //! Signature hashes for Zcash transactions
 
+use std::sync::Arc;
+
+use zcash_transparent::sighash::SighashType;
+
 use super::Transaction;
 
-use crate::parameters::ConsensusBranchId;
-use crate::transparent;
+use crate::parameters::NetworkUpgrade;
+use crate::{transparent, Error};
 
 use crate::primitives::zcash_primitives::{sighash, PrecomputedTxData};
 
@@ -19,6 +23,29 @@ bitflags::bitflags! {
         const SINGLE = Self::ALL.bits() | Self::NONE.bits();
         /// Anyone can add inputs to this transaction
         const ANYONECANPAY = 0b1000_0000;
+
+        /// Sign all the outputs and Anyone can add inputs to this transaction
+        const ALL_ANYONECANPAY = Self::ALL.bits() | Self::ANYONECANPAY.bits();
+        /// Sign none of the outputs and Anyone can add inputs to this transaction
+        const NONE_ANYONECANPAY = Self::NONE.bits() | Self::ANYONECANPAY.bits();
+        /// Sign one of the outputs and Anyone can add inputs to this transaction
+        const SINGLE_ANYONECANPAY = Self::SINGLE.bits() | Self::ANYONECANPAY.bits();
+    }
+}
+
+impl TryFrom<HashType> for SighashType {
+    type Error = ();
+
+    fn try_from(hash_type: HashType) -> Result<Self, Self::Error> {
+        Ok(match hash_type {
+            HashType::ALL => Self::ALL,
+            HashType::NONE => Self::NONE,
+            HashType::SINGLE => Self::SINGLE,
+            HashType::ALL_ANYONECANPAY => Self::ALL_ANYONECANPAY,
+            HashType::NONE_ANYONECANPAY => Self::NONE_ANYONECANPAY,
+            HashType::SINGLE_ANYONECANPAY => Self::SINGLE_ANYONECANPAY,
+            _other => return Err(()),
+        })
     }
 }
 
@@ -41,21 +68,29 @@ impl AsRef<[u8]> for SigHash {
 
 /// A SigHasher context which stores precomputed data that is reused
 /// between sighash computations for the same transaction.
-pub struct SigHasher<'a> {
-    precomputed_tx_data: PrecomputedTxData<'a>,
+#[derive(Debug)]
+pub struct SigHasher {
+    precomputed_tx_data: PrecomputedTxData,
 }
 
-impl<'a> SigHasher<'a> {
+impl SigHasher {
     /// Create a new SigHasher for the given transaction.
+    ///
+    /// # Panics
+    ///
+    /// - If `trans` can't be converted to its `librustzcash` equivalent. This could happen, for
+    ///   example, if `trans` contains the `nConsensusBranchId` field, and `nu` doesn't match it.
+    ///   More details in [`PrecomputedTxData::new`].
+    /// - If `nu` doesn't contain a consensus branch id convertible to its `librustzcash`
+    ///   equivalent.
     pub fn new(
-        trans: &'a Transaction,
-        branch_id: ConsensusBranchId,
-        all_previous_outputs: &'a [transparent::Output],
-    ) -> Self {
-        let precomputed_tx_data = PrecomputedTxData::new(trans, branch_id, all_previous_outputs);
-        SigHasher {
-            precomputed_tx_data,
-        }
+        trans: &Transaction,
+        nu: NetworkUpgrade,
+        all_previous_outputs: Arc<Vec<transparent::Output>>,
+    ) -> Result<Self, Error> {
+        Ok(SigHasher {
+            precomputed_tx_data: PrecomputedTxData::new(trans, nu, all_previous_outputs)?,
+        })
     }
 
     /// Calculate the sighash for the current transaction.
