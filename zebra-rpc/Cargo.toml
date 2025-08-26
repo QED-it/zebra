@@ -40,6 +40,9 @@ getblocktemplate-rpcs = [
     "zebra-chain/getblocktemplate-rpcs",
 ]
 
+# Health RPC support
+gethealthinfo-rpc = []
+
 # Experimental internal miner support
 internal-miner = []
 

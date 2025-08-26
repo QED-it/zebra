@@ -217,6 +217,15 @@ async fn test_rpc_response_data_for_network(network: &Network) {
         return;
     }
 
+    // `gethealthinfo`
+    #[cfg(feature = "gethealthinfo-rpc")]
+    {
+        let get_health_info = rpc
+            .get_health_info()
+            .expect("We should have a GetHealthInfo struct");
+        snapshot_rpc_gethealthinfo(get_health_info, &settings);
+    }
+
     // `getinfo`
     let get_info = rpc.get_info().expect("We should have a GetInfo struct");
     snapshot_rpc_getinfo(get_info, &settings);
@@ -535,6 +544,16 @@ async fn test_mocked_rpc_response_data_for_network(network: &Network) {
     // Check the response.
     settings.bind(|| {
         insta::assert_json_snapshot!(format!("z_get_subtrees_by_index_for_orchard"), subtrees)
+    });
+}
+
+/// Snapshot `gethealthinfo` response, using `cargo insta` and JSON serialization.
+#[cfg(feature = "gethealthinfo-rpc")]
+fn snapshot_rpc_gethealthinfo(info: GetHealthInfo, settings: &insta::Settings) {
+    // Snapshot only the `status` field since other fields vary per build/run.
+    let status_only = serde_json::json!({ "status": info.status });
+    settings.bind(|| {
+        insta::assert_json_snapshot!("get_health_info_status", status_only);
     });
 }
 
