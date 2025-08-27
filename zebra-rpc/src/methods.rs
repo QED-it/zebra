@@ -528,7 +528,7 @@ where
         Ok(GetHealthInfo::snapshot())
     }
 
-    // Dummy type so the trait always compiles when the feature is off.
+    // Dummy impl: return MethodNotFound if the feature is disabled.
     #[cfg(not(feature = "gethealthinfo-rpc"))]
     fn get_health_info(&self) -> Result<GetHealthInfo> {
         Err(jsonrpc_core::Error::method_not_found())
