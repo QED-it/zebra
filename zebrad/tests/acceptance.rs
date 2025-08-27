@@ -1594,6 +1594,18 @@ async fn rpc_endpoint(parallel_cpu_threads: bool) -> Result<()> {
     // Create an http client
     let client = RpcRequestClient::new(rpc_address);
 
+    // Make the call to the `gethealthinfo` RPC method if feature is enabled.
+    #[cfg(feature = "gethealthinfo-rpc")]
+    {
+        let res = client.call("gethealthinfo", "[]".to_string()).await?;
+        assert!(res.status().is_success());
+
+        let body = res.bytes().await?;
+        let parsed: Value = serde_json::from_slice(&body)?;
+        let status = parsed["result"]["status"].as_str().unwrap();
+        assert_eq!(status, "healthy");
+    }
+
     // Make the call to the `getinfo` RPC method
     let res = client.call("getinfo", "[]".to_string()).await?;
 
@@ -1650,6 +1662,23 @@ async fn rpc_endpoint_client_content_type() -> Result<()> {
 
     // Create an http client
     let client = RpcRequestClient::new(rpc_address);
+
+    #[cfg(feature = "gethealthinfo-rpc")]
+    {
+        // Just test with plain content type, similar to getinfo.
+        let res = client
+            .call_with_content_type(
+                "gethealthinfo",
+                "[]".to_string(),
+                "application/json".to_string(),
+            )
+            .await?;
+        assert!(res.status().is_success());
+
+        let body = res.bytes().await?;
+        let parsed: Value = serde_json::from_slice(&body)?;
+        assert_eq!(parsed["result"]["status"], "healthy");
+    }
 
     // Call to `getinfo` RPC method with a no content type.
     let res = client
