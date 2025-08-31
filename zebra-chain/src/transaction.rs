@@ -208,33 +208,6 @@ impl fmt::Display for Transaction {
     }
 }
 
-// FIXME: get rid of this macro (unroll)?
-// Macro to get a specific field from an Orchard shielded data struct.
-// Returns `None` for transaction versions that don't support Orchard (V1-V4).
-// This avoids repeating the same match block pattern across multiple accessor methods.
-macro_rules! orchard_shielded_data_field {
-    ($self:expr, $field:ident) => {
-        match $self {
-            // No Orchard shielded data
-            Transaction::V1 { .. }
-            | Transaction::V2 { .. }
-            | Transaction::V3 { .. }
-            | Transaction::V4 { .. } => None,
-
-            Transaction::V5 {
-                orchard_shielded_data,
-                ..
-            } => orchard_shielded_data.as_ref().map(|data| data.$field),
-
-            #[cfg(feature = "tx_v6")]
-            Transaction::V6 {
-                orchard_shielded_data,
-                ..
-            } => orchard_shielded_data.as_ref().map(|data| data.$field),
-        }
-    };
-}
-
 impl Transaction {
     // identifiers and hashes
 
@@ -1180,13 +1153,51 @@ impl Transaction {
     /// Access the [`orchard::Flags`] in this transaction, if there is any,
     /// regardless of version.
     pub fn orchard_flags(&self) -> Option<orchard::shielded_data::Flags> {
-        orchard_shielded_data_field!(self, flags)
+        match self {
+            // No Orchard shielded data
+            Transaction::V1 { .. }
+            | Transaction::V2 { .. }
+            | Transaction::V3 { .. }
+            | Transaction::V4 { .. } => None,
+
+            Transaction::V5 {
+                orchard_shielded_data,
+                ..
+            } => orchard_shielded_data.as_ref().map(|data| data.flags),
+
+            #[cfg(feature = "tx_v6")]
+            Transaction::V6 {
+                orchard_shielded_data,
+                ..
+            } => orchard_shielded_data.as_ref().map(|data| data.flags),
+        }
     }
 
     /// Access the [`orchard::tree::Root`] in this transaction, if there is any,
     /// regardless of version.
     pub fn orchard_shared_anchor(&self) -> Option<orchard::tree::Root> {
-        orchard_shielded_data_field!(self, shared_anchor)
+        match self {
+            // No Orchard shielded data
+            Transaction::V1 { .. }
+            | Transaction::V2 { .. }
+            | Transaction::V3 { .. }
+            | Transaction::V4 { .. } => None,
+
+            Transaction::V5 {
+                orchard_shielded_data,
+                ..
+            } => orchard_shielded_data
+                .as_ref()
+                .map(|data| data.shared_anchor),
+
+            #[cfg(feature = "tx_v6")]
+            Transaction::V6 {
+                orchard_shielded_data,
+                ..
+            } => orchard_shielded_data
+                .as_ref()
+                .map(|data| data.shared_anchor),
+        }
     }
 
     /// Return if the transaction has any Orchard shielded data,
@@ -1520,10 +1531,30 @@ impl Transaction {
     ///
     /// <https://zebra.zfnd.org/dev/rfcs/0012-value-pools.html#definitions>
     pub fn orchard_value_balance(&self) -> ValueBalance<NegativeAllowed> {
-        let orchard_value_balance =
-            orchard_shielded_data_field!(self, value_balance).unwrap_or_else(Amount::zero);
+        let orchard_value_balance = match self {
+            // No Orchard shielded data
+            Transaction::V1 { .. }
+            | Transaction::V2 { .. }
+            | Transaction::V3 { .. }
+            | Transaction::V4 { .. } => None,
 
-        ValueBalance::from_orchard_amount(orchard_value_balance)
+            Transaction::V5 {
+                orchard_shielded_data,
+                ..
+            } => orchard_shielded_data
+                .as_ref()
+                .map(|data| data.value_balance),
+
+            #[cfg(feature = "tx_v6")]
+            Transaction::V6 {
+                orchard_shielded_data,
+                ..
+            } => orchard_shielded_data
+                .as_ref()
+                .map(|data| data.value_balance),
+        };
+
+        ValueBalance::from_orchard_amount(orchard_value_balance.unwrap_or_else(Amount::zero))
     }
 
     /// Returns the value balances for this transaction using the provided transparent outputs.
