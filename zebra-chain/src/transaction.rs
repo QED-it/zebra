@@ -208,6 +208,7 @@ impl fmt::Display for Transaction {
     }
 }
 
+// FIXME: get rid of this macro (unroll)?
 // Macro to get a specific field from an Orchard shielded data struct.
 // Returns `None` for transaction versions that don't support Orchard (V1-V4).
 // This avoids repeating the same match block pattern across multiple accessor methods.
@@ -1048,7 +1049,7 @@ impl Transaction {
 
     // orchard
 
-    /// Iterate over the [`orchard::AuthorizedAction`]s in V5 transaction.
+    /// Iterate over the OrchardVanilla authorized actions in this transaction.
     pub fn orchard_vanilla_actions(
         &self,
     ) -> Option<impl Iterator<Item = &orchard::AuthorizedAction<orchard::OrchardVanilla>>> {
@@ -1065,7 +1066,7 @@ impl Transaction {
         }
     }
 
-    /// Iterate over the [`orchard::AuthorizedAction`]s in V6 transaction.
+    /// Iterate over the OrchardZSA authorized actions in this transaction.
     #[cfg(feature = "tx_v6")]
     pub fn orchard_zsa_actions(
         &self,
@@ -1890,6 +1891,27 @@ impl Transaction {
             Transaction::V6 {
                 ref mut outputs, ..
             } => outputs,
+        }
+    }
+
+    /// Modify the orchard flags in this transaction, regardless of version.
+    pub fn orchard_flags_mut(&mut self) -> Option<&mut orchard::shielded_data::Flags> {
+        match self {
+            Transaction::V1 { .. }
+            | Transaction::V2 { .. }
+            | Transaction::V3 { .. }
+            | Transaction::V4 { .. } => None,
+
+            Transaction::V5 {
+                orchard_shielded_data,
+                ..
+            } => orchard_shielded_data.as_mut().map(|data| &mut data.flags),
+
+            #[cfg(feature = "tx_v6")]
+            Transaction::V6 {
+                orchard_shielded_data,
+                ..
+            } => orchard_shielded_data.as_mut().map(|data| &mut data.flags),
         }
     }
 }

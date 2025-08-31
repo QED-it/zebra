@@ -76,7 +76,7 @@ fn v5_transaction_with_orchard_actions_has_inputs_and_outputs() {
             })
             .expect("V5 tx with only Orchard shielded data");
 
-        tx.orchard_shielded_data_mut().unwrap().flags = Flags::empty();
+        *tx.orchard_flags_mut().unwrap() = Flags::empty();
 
         // The check will fail if the transaction has no flags
         assert_eq!(
@@ -85,7 +85,7 @@ fn v5_transaction_with_orchard_actions_has_inputs_and_outputs() {
         );
 
         // If we add ENABLE_SPENDS flag it will pass the inputs check but fails with the outputs
-        tx.orchard_shielded_data_mut().unwrap().flags = Flags::ENABLE_SPENDS;
+        *tx.orchard_flags_mut().unwrap() = Flags::ENABLE_SPENDS;
 
         assert_eq!(
             check::has_inputs_and_outputs(&tx),
@@ -93,7 +93,7 @@ fn v5_transaction_with_orchard_actions_has_inputs_and_outputs() {
         );
 
         // If we add ENABLE_OUTPUTS flag it will pass the outputs check but fails with the inputs
-        tx.orchard_shielded_data_mut().unwrap().flags = Flags::ENABLE_OUTPUTS;
+        *tx.orchard_flags_mut().unwrap() = Flags::ENABLE_OUTPUTS;
 
         assert_eq!(
             check::has_inputs_and_outputs(&tx),
@@ -101,8 +101,7 @@ fn v5_transaction_with_orchard_actions_has_inputs_and_outputs() {
         );
 
         // Finally make it valid by adding both required flags
-        tx.orchard_shielded_data_mut().unwrap().flags =
-            Flags::ENABLE_SPENDS | Flags::ENABLE_OUTPUTS;
+        *tx.orchard_flags_mut().unwrap() = Flags::ENABLE_SPENDS | Flags::ENABLE_OUTPUTS;
 
         assert!(check::has_inputs_and_outputs(&tx).is_ok());
     }
@@ -121,7 +120,7 @@ fn v5_transaction_with_orchard_actions_has_flags() {
             })
             .expect("V5 tx with only Orchard actions");
 
-        tx.orchard_shielded_data_mut().unwrap().flags = Flags::empty();
+        *tx.orchard_flags_mut().unwrap() = Flags::empty();
 
         // The check will fail if the transaction has no flags
         assert_eq!(
@@ -130,20 +129,19 @@ fn v5_transaction_with_orchard_actions_has_flags() {
         );
 
         // If we add ENABLE_SPENDS flag it will pass.
-        tx.orchard_shielded_data_mut().unwrap().flags = Flags::ENABLE_SPENDS;
+        *tx.orchard_flags_mut().unwrap() = Flags::ENABLE_SPENDS;
         assert!(check::has_enough_orchard_flags(&tx).is_ok());
 
-        tx.orchard_shielded_data_mut().unwrap().flags = Flags::empty();
+        *tx.orchard_flags_mut().unwrap() = Flags::empty();
 
         // If we add ENABLE_OUTPUTS flag instead, it will pass.
-        tx.orchard_shielded_data_mut().unwrap().flags = Flags::ENABLE_OUTPUTS;
+        *tx.orchard_flags_mut().unwrap() = Flags::ENABLE_OUTPUTS;
         assert!(check::has_enough_orchard_flags(&tx).is_ok());
 
-        tx.orchard_shielded_data_mut().unwrap().flags = Flags::empty();
+        *tx.orchard_flags_mut().unwrap() = Flags::empty();
 
         // If we add BOTH ENABLE_SPENDS and ENABLE_OUTPUTS flags it will pass.
-        tx.orchard_shielded_data_mut().unwrap().flags =
-            Flags::ENABLE_SPENDS | Flags::ENABLE_OUTPUTS;
+        *tx.orchard_flags_mut().unwrap() = Flags::ENABLE_SPENDS | Flags::ENABLE_OUTPUTS;
         assert!(check::has_enough_orchard_flags(&tx).is_ok());
     }
 }
@@ -2791,18 +2789,45 @@ async fn v5_with_duplicate_orchard_action() {
 
         let height = tx.expiry_height().expect("expiry height");
 
-        let orchard_shielded_data = tx
-            .orchard_shielded_data_mut()
-            .expect("tx without transparent, Sprout, or Sapling outputs must have Orchard actions");
-
         // Enable spends
-        orchard_shielded_data.flags = Flags::ENABLE_SPENDS | Flags::ENABLE_OUTPUTS;
+        *tx.orchard_flags_mut().unwrap() = Flags::ENABLE_SPENDS | Flags::ENABLE_OUTPUTS;
 
-        let duplicate_action = orchard_shielded_data.actions.first().clone();
-        let duplicate_nullifier = duplicate_action.action.nullifier;
+        // Duplicate the first action and get its nullifier
+        let duplicate_nullifier = match &mut tx {
+            Transaction::V1 { .. }
+            | Transaction::V2 { .. }
+            | Transaction::V3 { .. }
+            | Transaction::V4 { .. } => unimplemented!("Transaction version is not supported"),
 
-        // Duplicate the first action
-        orchard_shielded_data.actions.push(duplicate_action);
+            Transaction::V5 {
+                orchard_shielded_data,
+                ..
+            } => {
+                let orchard_shielded_data = orchard_shielded_data
+                    .as_mut()
+                    .expect("Transaction has orchard_shielded_data");
+                let duplicate_action = orchard_shielded_data.actions.first().clone();
+                let duplicate_nullifier = duplicate_action.action.nullifier;
+                orchard_shielded_data.actions.push(duplicate_action);
+
+                duplicate_nullifier
+            }
+
+            #[cfg(feature = "tx_v6")]
+            Transaction::V6 {
+                orchard_shielded_data,
+                ..
+            } => {
+                let orchard_shielded_data = orchard_shielded_data
+                    .as_mut()
+                    .expect("Transaction has orchard_shielded_data");
+                let duplicate_action = orchard_shielded_data.actions.first().clone();
+                let duplicate_nullifier = duplicate_action.action.nullifier;
+                orchard_shielded_data.actions.push(duplicate_action);
+
+                duplicate_nullifier
+            }
+        };
 
         let verifier = Verifier::new_for_tests(
             &net,
