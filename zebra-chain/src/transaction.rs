@@ -1022,41 +1022,6 @@ impl Transaction {
 
     // orchard
 
-    /// Iterate over the OrchardVanilla authorized actions in this transaction.
-    pub fn orchard_vanilla_actions(
-        &self,
-    ) -> Option<impl Iterator<Item = &orchard::AuthorizedAction<orchard::OrchardVanilla>>> {
-        if let Transaction::V5 {
-            orchard_shielded_data,
-            ..
-        } = self
-        {
-            orchard_shielded_data
-                .as_ref()
-                .map(|shielded_data| shielded_data.actions.iter())
-        } else {
-            None
-        }
-    }
-
-    /// Iterate over the OrchardZSA authorized actions in this transaction.
-    #[cfg(feature = "tx_v6")]
-    pub fn orchard_zsa_actions(
-        &self,
-    ) -> Option<impl Iterator<Item = &orchard::AuthorizedAction<orchard::OrchardZSA>>> {
-        if let Transaction::V6 {
-            orchard_shielded_data,
-            ..
-        } = self
-        {
-            orchard_shielded_data
-                .as_ref()
-                .map(|shielded_data| shielded_data.actions.iter())
-        } else {
-            None
-        }
-    }
-
     /// Return the number of Orchard actions in this transaction.
     pub fn orchard_action_count(&self) -> usize {
         match self {
