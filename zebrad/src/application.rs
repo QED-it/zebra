@@ -229,6 +229,8 @@ impl Application for ZebradApp {
     #[allow(clippy::print_stderr)]
     #[allow(clippy::unwrap_in_result)]
     fn register_components(&mut self, command: &Self::Cmd) -> Result<(), FrameworkError> {
+        #[cfg(feature = "health-endpoint")]
+        use crate::components::health::HealthEndpoint;
         use crate::components::{
             metrics::MetricsEndpoint, tokio::TokioComponent, tracing::TracingEndpoint,
         };
@@ -482,6 +484,8 @@ impl Application for ZebradApp {
             components.push(Box::new(TokioComponent::new()?));
             components.push(Box::new(TracingEndpoint::new(cfg_ref)?));
             components.push(Box::new(MetricsEndpoint::new(&metrics_config)?));
+            #[cfg(feature = "health-endpoint")]
+            components.push(Box::new(HealthEndpoint::new(&config.health)?));
         }
 
         self.state.components_mut().register(components)?;

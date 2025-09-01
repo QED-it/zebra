@@ -89,6 +89,7 @@ elasticsearch = [
 sentry = ["dep:sentry"]
 journald = ["tracing-journald"]
 filter-reload = ["hyper", "http-body-util", "hyper-util", "bytes"]
+health-endpoint = ["hyper", "hyper-util", "hyper-util/tokio", "serde/derive", "chrono/serde", "serde_json"]
 
 progress-bar = [
     "howudoin",
@@ -234,6 +235,9 @@ bytes = { version = "1.8.0", optional = true }
 # prod feature prometheus
 metrics-exporter-prometheus = { version = "0.16.0", default-features = false, features = ["http-listener"], optional = true }
 
+# zebra-rpc needs the preserve_order feature, it also makes test results more stable
+serde_json = { version = "1.0.132", features = ["preserve_order"], optional = true }
+
 # prod feature release_max_level_info
 #
 # zebrad uses tracing for logging,
@@ -266,8 +270,6 @@ once_cell = "1.20.2"
 regex = "1.11.0"
 insta = { version = "1.40.0", features = ["json"] }
 
-# zebra-rpc needs the preserve_order feature, it also makes test results more stable
-serde_json = { version = "1.0.132", features = ["preserve_order"] }
 tempfile = "3.13.0"
 
 hyper = { version = "1.5.0", features = ["http1", "http2", "server"]}
@@ -285,6 +287,10 @@ proptest-derive = "0.5.0"
 
 # enable span traces and track caller in tests
 color-eyre = { version = "0.6.3" }
+
+# Make serde_json available for tests regardless of feature flags
+# (while keeping it optional in [dependencies] for production builds)
+serde_json = { version = "1.0.132", features = ["preserve_order"] }
 
 zebra-chain = { path = "../zebra-chain", version = "1.0.0-beta.41", features = ["proptest-impl"] }
 zebra-consensus = { path = "../zebra-consensus", version = "1.0.0-beta.41", features = ["proptest-impl"] }
