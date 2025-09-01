@@ -1,12 +1,12 @@
 //! A simple HTTP health endpoint for Zebra.
-use std::net::SocketAddr;
-use std::convert::Infallible;
 use abscissa_core::{Component, FrameworkError};
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Method, Request, Response, StatusCode};
 use serde::{Deserialize, Serialize};
+use std::convert::Infallible;
+use std::net::SocketAddr;
 use tracing::{error, info};
 /// Abscissa component which runs a health endpoint.
 #[derive(Debug, Component)]
@@ -18,7 +18,7 @@ impl HealthEndpoint {
             info!("Trying to open health endpoint at {}...", addr);
             // Start the health endpoint server in a separate thread to avoid Tokio runtime issues
             std::thread::spawn(move || {
-                 let rt = tokio::runtime::Runtime::new().expect("Tokio runtime should be available");
+                let rt = tokio::runtime::Runtime::new().expect("Tokio runtime should be available");
                 rt.block_on(async {
                     if let Err(e) = Self::run_server(addr).await {
                         error!("Health endpoint server failed: {}", e);
@@ -31,11 +31,11 @@ impl HealthEndpoint {
     }
     async fn run_server(addr: SocketAddr) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let listener = tokio::net::TcpListener::bind(addr).await?;
-        
+
         loop {
             let (stream, _) = listener.accept().await?;
             let io = hyper_util::rt::TokioIo::new(stream);
-            
+
             tokio::spawn(async move {
                 if let Err(err) = http1::Builder::new()
                     .serve_connection(io, service_fn(Self::handle_request))
@@ -53,32 +53,32 @@ impl HealthEndpoint {
                     status: "healthy".to_string(),
                     version: env!("CARGO_PKG_VERSION").to_string(),
                     git_tag: option_env!("GIT_TAG").unwrap_or("unknown").to_string(),
-                    git_commit: option_env!("GIT_COMMIT_FULL").unwrap_or("unknown").to_string(),
+                    git_commit: option_env!("GIT_COMMIT_FULL")
+                        .unwrap_or("unknown")
+                        .to_string(),
                     timestamp: chrono::Utc::now().to_rfc3339(),
                 };
-                let response_body = serde_json::to_string_pretty(&health_info)
-                    .unwrap_or_else(|_| "{\"error\": \"Failed to serialize health info\"}".to_string());
+                let response_body =
+                    serde_json::to_string_pretty(&health_info).unwrap_or_else(|_| {
+                        "{\"error\": \"Failed to serialize health info\"}".to_string()
+                    });
                 Ok(Response::builder()
                     .status(StatusCode::OK)
                     .header("Content-Type", "application/json")
                     .body(response_body)
                     .expect("response should build successfully"))
             }
-            (_, "/health") => {
-                Ok(Response::builder()
-                    .status(StatusCode::METHOD_NOT_ALLOWED)
-                    .header("Allow", "GET")
-                    .header("Content-Type", "application/json")
-                    .body("{\"error\": \"Method Not Allowed\"}".to_string())
-                    .expect("response should build successfully"))
-            }
-            _ => {
-                Ok(Response::builder()
-                    .status(StatusCode::NOT_FOUND)
-                    .header("Content-Type", "application/json")
-                    .body("{\"error\": \"Not Found\"}".to_string())
-                    .expect("response should build successfully"))
-            }
+            (_, "/health") => Ok(Response::builder()
+                .status(StatusCode::METHOD_NOT_ALLOWED)
+                .header("Allow", "GET")
+                .header("Content-Type", "application/json")
+                .body("{\"error\": \"Method Not Allowed\"}".to_string())
+                .expect("response should build successfully")),
+            _ => Ok(Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .header("Content-Type", "application/json")
+                .body("{\"error\": \"Not Found\"}".to_string())
+                .expect("response should build successfully")),
         }
     }
 }
