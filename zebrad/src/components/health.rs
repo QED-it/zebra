@@ -23,7 +23,7 @@ impl HealthEndpoint {
 
             // Start the health endpoint server in a separate thread to avoid Tokio runtime issues
             std::thread::spawn(move || {
-                let rt = tokio::runtime::Runtime::new().unwrap();
+                 let rt = tokio::runtime::Runtime::new().expect("Tokio runtime should be available");
                 rt.block_on(async {
                     if let Err(e) = Self::run_server(addr).await {
                         error!("Health endpoint server failed: {}", e);
