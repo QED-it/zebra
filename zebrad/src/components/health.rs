@@ -62,7 +62,7 @@ impl HealthEndpoint {
                 .status(StatusCode::NOT_FOUND)
                 .header("Content-Type", "application/json")
                 .body("{\"error\": \"Not Found\"}".to_string())
-                .unwrap());
+                .expect("response should build successfully"));
         }
 
         let health_info = HealthInfo {
