@@ -89,7 +89,7 @@ elasticsearch = [
 sentry = ["dep:sentry"]
 journald = ["tracing-journald"]
 filter-reload = ["hyper", "http-body-util", "hyper-util", "bytes"]
-health-endpoint = ["hyper", "hyper-util", "serde/derive", "chrono/serde", "serde_json"]
+health-endpoint = ["hyper", "hyper-util", "hyper-util/tokio", "serde/derive", "chrono/serde", "serde_json"]
 
 progress-bar = [
     "howudoin",
