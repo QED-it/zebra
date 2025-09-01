@@ -17,18 +17,16 @@ impl HealthEndpoint {
         if let Some(addr) = config.endpoint_addr {
             info!("Trying to open health endpoint at {}...", addr);
             // Start the health endpoint server in a separate thread to avoid Tokio runtime issues
-            std::thread::spawn(move || {
-                match tokio::runtime::Runtime::new() {
-                    Ok(rt) => {
-                        rt.block_on(async {
-                            if let Err(e) = Self::run_server(addr).await {
-                                error!("Health endpoint server failed: {}", e);
-                            }
-                        });
-                    }
-                    Err(e) => {
-                        error!("Failed to create Tokio runtime for health endpoint: {}", e);
-                    }
+            std::thread::spawn(move || match tokio::runtime::Runtime::new() {
+                Ok(rt) => {
+                    rt.block_on(async {
+                        if let Err(e) = Self::run_server(addr).await {
+                            error!("Health endpoint server failed: {}", e);
+                        }
+                    });
+                }
+                Err(e) => {
+                    error!("Failed to create Tokio runtime for health endpoint: {}", e);
                 }
             });
             info!("Opened health endpoint at {}", addr);
