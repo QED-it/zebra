@@ -288,6 +288,10 @@ proptest-derive = "0.5.0"
 # enable span traces and track caller in tests
 color-eyre = { version = "0.6.3" }
 
+# Make serde_json available for tests regardless of feature flags
+# (while keeping it optional in [dependencies] for production builds)
+serde_json = { version = "1.0.132", features = ["preserve_order"] }
+
 zebra-chain = { path = "../zebra-chain", version = "1.0.0-beta.41", features = ["proptest-impl"] }
 zebra-consensus = { path = "../zebra-consensus", version = "1.0.0-beta.41", features = ["proptest-impl"] }
 zebra-network = { path = "../zebra-network", version = "1.0.0-beta.41", features = ["proptest-impl"] }
