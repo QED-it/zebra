@@ -15,7 +15,6 @@ use tracing::{error, info};
 #[derive(Debug, Component)]
 pub struct HealthEndpoint {}
 
-#[cfg(feature = "health-endpoint")]
 impl HealthEndpoint {
     /// Create the component.
     pub fn new(config: &Config) -> Result<Self, FrameworkError> {
