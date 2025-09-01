@@ -103,7 +103,6 @@ pub struct Config {
     pub endpoint_addr: Option<SocketAddr>,
 }
 
-#[cfg(feature = "health-endpoint")]
 impl Default for Config {
     fn default() -> Self {
         Self {
