@@ -107,7 +107,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            endpoint_addr: Some("127.0.0.1:8080".parse().unwrap()),
+            endpoint_addr: Some(SocketAddr::from(([127, 0, 0, 1], 8080))),
         }
     }
 }
