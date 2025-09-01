@@ -13,7 +13,6 @@ use tracing::{error, info};
 
 /// Abscissa component which runs a health endpoint.
 #[derive(Debug, Component)]
-#[cfg(feature = "health-endpoint")]
 pub struct HealthEndpoint {}
 
 #[cfg(feature = "health-endpoint")]
