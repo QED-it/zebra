@@ -80,7 +80,7 @@ impl HealthEndpoint {
             .status(StatusCode::OK)
             .header("Content-Type", "application/json")
             .body(response_body)
-            .unwrap())
+            .expect("response with should build successfully"))
     }
 }
 
