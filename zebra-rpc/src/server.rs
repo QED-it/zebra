@@ -220,7 +220,7 @@ impl RpcServer {
                         .request_middleware(middleware);
 
                     #[cfg(feature = "gethealthinfo-rpc")]
-                    let builder = builder.health_api(("health", "gethealthinfo"));
+                    let builder = builder.health_api(("/health", "gethealthinfo"));
 
                     let server_instance = builder
                         .start_http(&listen_addr)
