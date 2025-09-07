@@ -115,9 +115,13 @@ pub(super) const MAINNET_ACTIVATION_HEIGHTS: &[(block::Height, NetworkUpgrade)] 
     (block::Height(1_046_400), Canopy),
     (block::Height(1_687_104), Nu5),
     (block::Height(2_726_400), Nu6),
-    // FIXME: TODO: Use a proper value below.
-    #[cfg(zcash_unstable = "nu7" /* TODO nu7 */ )]
-    (block::Height(3_111_000), Nu7),
+    // FIXME: TODO: Uncomment the lines below and use the correct value
+    // once a height for Nu6_1 is defined. Having Nu7 without Nu6_1
+    // causes several tests to fail, because they assume the Nu7 height
+    // applies to Nu6_1.
+    //
+    //#[cfg(zcash_unstable = "nu7" /* TODO nu7 */ )]
+    //(block::Height(3_111_000), Nu7),
 ];
 
 /// Fake mainnet network upgrade activation heights, used in tests.
@@ -156,9 +160,13 @@ pub(super) const TESTNET_ACTIVATION_HEIGHTS: &[(block::Height, NetworkUpgrade)] 
     (block::Height(1_028_500), Canopy),
     (block::Height(1_842_420), Nu5),
     (block::Height(2_976_000), Nu6),
-    // FIXME: TODO: Use a proper value below.
-    #[cfg(zcash_unstable = "nu7" /* TODO nu7 */ )]
-    (block::Height(3_222_000), Nu7),
+    // FIXME: TODO: Uncomment the lines below and use the correct value
+    // once a height for Nu6_1 is defined. Having Nu7 without Nu6_1
+    // causes several tests to fail, because they assume the Nu7 height
+    // applies to Nu6_1.
+    //
+    //#[cfg(zcash_unstable = "nu7" /* TODO nu7 */ )]
+    //(block::Height(3_222_000), Nu7),
 ];
 
 /// Fake testnet network upgrade activation heights, used in tests.
