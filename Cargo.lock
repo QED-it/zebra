@@ -2591,6 +2591,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cd945864f07fe9f5371a27ad7b52a172b4b499999f1d97574c9fa68373937e12"
 
 [[package]]
+name = "linux-raw-sys"
+version = "0.9.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd945864f07fe9f5371a27ad7b52a172b4b499999f1d97574c9fa68373937e12"
+
+[[package]]
 name = "litrs"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2801,6 +2807,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "549e471b99ccaf2f89101bec68f4d244457d5a95a9c3d0672e9564124397741d"
 
 [[package]]
+name = "nonempty"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "549e471b99ccaf2f89101bec68f4d244457d5a95a9c3d0672e9564124397741d"
+
+[[package]]
 name = "nu-ansi-term"
 version = "0.46.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2942,7 +2954,7 @@ dependencies = [
  "k256",
  "lazy_static",
  "memuse",
- "nonempty",
+ "nonempty 0.11.0",
  "pasta_curves",
  "proptest",
  "rand 0.8.5",
@@ -3707,6 +3719,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "redjubjub"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "89b0ac1bc6bb3696d2c6f52cff8fba57238b81da8c0214ee6cd146eb8fde364e"
+dependencies = [
+ "rand_core 0.6.4",
+ "reddsa",
+ "thiserror",
+ "zeroize",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3960,6 +3984,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustix"
+version = "1.0.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11181fbabf243db407ef8df94a6ce0b2f9a733bd8be4ad02b4eda9602296cac8"
+dependencies = [
+ "bitflags 2.6.0",
+ "errno",
+ "libc",
+ "linux-raw-sys 0.9.4",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "rustls"
 version = "0.23.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4061,7 +4098,7 @@ dependencies = [
  "memuse",
  "rand 0.8.5",
  "rand_core 0.6.4",
- "redjubjub",
+ "redjubjub 0.8.0",
  "subtle",
  "tracing",
  "zcash_note_encryption",
@@ -4118,8 +4155,26 @@ version = "0.29.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9465315bc9d4566e1724f0fffcbcc446268cb522e60f9a27bcded6b19c108113"
 dependencies = [
- "secp256k1-sys",
+ "secp256k1-sys 0.8.1",
  "serde",
+]
+
+[[package]]
+name = "secp256k1"
+version = "0.29.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9465315bc9d4566e1724f0fffcbcc446268cb522e60f9a27bcded6b19c108113"
+dependencies = [
+ "secp256k1-sys 0.10.1",
+]
+
+[[package]]
+name = "secp256k1-sys"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4387882333d3aa8cb20530a17c69a3752e97837832f34f6dccc760e715001d9"
+dependencies = [
+ "cc",
 ]
 
 [[package]]
@@ -4676,7 +4731,7 @@ dependencies = [
  "fastrand",
  "getrandom 0.3.3",
  "once_cell",
- "rustix",
+ "rustix 0.38.37",
  "windows-sys 0.59.0",
 ]
 
@@ -5933,6 +5988,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "winsafe"
+version = "0.0.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d135d17ab770252ad95e9a872d365cf3090e3be864a34ab46f48555993efc904"
+
+[[package]]
 name = "wyz"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6000,7 +6061,7 @@ dependencies = [
  "time-core",
  "tonic-build 0.13.1",
  "tracing",
- "which",
+ "which 7.0.3",
  "zcash_address",
  "zcash_encoding",
  "zcash_keys",
@@ -6044,7 +6105,7 @@ dependencies = [
  "document-features",
  "group",
  "memuse",
- "nonempty",
+ "nonempty 0.11.0",
  "rand_core 0.6.4",
  "sapling-crypto",
  "secrecy",
@@ -6090,7 +6151,7 @@ dependencies = [
  "incrementalmerkletree",
  "jubjub",
  "memuse",
- "nonempty",
+ "nonempty 0.11.0",
  "orchard",
  "rand 0.8.5",
  "rand_core 0.6.4",
@@ -6125,7 +6186,7 @@ dependencies = [
  "known-folders",
  "lazy_static",
  "rand_core 0.6.4",
- "redjubjub",
+ "redjubjub 0.8.0",
  "sapling-crypto",
  "tracing",
  "xdg",
