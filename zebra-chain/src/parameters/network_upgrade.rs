@@ -28,9 +28,9 @@ const NETWORK_UPGRADES_IN_ORDER: &[NetworkUpgrade] = &[
     // FIXME: unify zebra-test/zcash_unstable nu7 usages,
     // check if the code is covered of those flags properly,
     // try to build with and without those flags
-    #[cfg(any(test, feature = "zebra-test"))]
+    #[cfg(any(test, feature = "zebra-test", zcash_unstable = "nu7"))]
     Nu6_1,
-    #[cfg(any(test, feature = "zebra-test"))]
+    #[cfg(any(test, feature = "zebra-test", zcash_unstable = "nu7"))]
     Nu7,
 ];
 
@@ -120,7 +120,7 @@ pub(super) const MAINNET_ACTIVATION_HEIGHTS: &[(block::Height, NetworkUpgrade)] 
     // causes several tests to fail, because they assume the Nu7 height
     // applies to Nu6_1.
     //
-    //#[cfg(zcash_unstable = "nu7" /* TODO nu7 */ )]
+    //#[cfg(zcash_unstable = "nu7")]
     //(block::Height(3_111_000), Nu7),
 ];
 
@@ -165,7 +165,7 @@ pub(super) const TESTNET_ACTIVATION_HEIGHTS: &[(block::Height, NetworkUpgrade)] 
     // causes several tests to fail, because they assume the Nu7 height
     // applies to Nu6_1.
     //
-    //#[cfg(zcash_unstable = "nu7" /* TODO nu7 */ )]
+    //#[cfg(zcash_unstable = "nu7")]
     //(block::Height(3_222_000), Nu7),
 ];
 
@@ -274,9 +274,9 @@ pub(crate) const CONSENSUS_BRANCH_IDS: &[(NetworkUpgrade, ConsensusBranchId)] = 
     (Canopy, ConsensusBranchId(0xe9ff75a6)),
     (Nu5, ConsensusBranchId(0xc2d6d0b4)),
     (Nu6, ConsensusBranchId(0xc8e71055)),
-    #[cfg(any(test, feature = "zebra-test"))]
+    #[cfg(any(test, feature = "zebra-test", zcash_unstable = "nu7"))]
     (Nu6_1, ConsensusBranchId(0x4dec4df0)),
-    #[cfg(any(test, feature = "zebra-test"))]
+    #[cfg(any(test, feature = "zebra-test", zcash_unstable = "nu7"))]
     (Nu7, ConsensusBranchId(0x77190ad8)),
 ];
 
