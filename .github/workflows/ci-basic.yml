@@ -31,10 +31,7 @@ jobs:
         # FIXME: investigate and fix the underlying flake; remove these skips once resolved.
         run: cargo test --locked --verbose -- --skip v4_with_sapling_spends --skip v5_with_sapling_spends
       # Run the skipped tests separately with constrained parallelism
-      - name: Run Sapling spend tests (serial)
-        env:
-          RUST_TEST_THREADS: 1
-          TOKIO_WORKER_THREADS: 2
+      - name: Run Sapling spend tests
         run: |
           cargo test -p zebra-consensus v4_with_sapling_spends -- --nocapture
           cargo test -p zebra-consensus v5_with_sapling_spends -- --nocapture
