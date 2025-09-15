@@ -47,11 +47,13 @@ pub const EXTENDED_LAUNCH_DELAY: Duration = Duration::from_secs(45);
 /// it is using for its RPCs.
 pub const LIGHTWALLETD_DELAY: Duration = Duration::from_secs(60);
 
+// FIXME: This value has been increased from 20 to 50 to fix zebra_rpc_conflict test failure in zebrad,
+// - should we consider other ways to resolve it?
 /// The amount of time we wait between launching two conflicting nodes.
 ///
 /// We use a longer time to make sure the first node has launched before the second starts,
 /// even if CI is under load.
-pub const BETWEEN_NODES_DELAY: Duration = Duration::from_secs(20);
+pub const BETWEEN_NODES_DELAY: Duration = Duration::from_secs(50);
 
 /// The amount of time we wait for lightwalletd to update to the tip.
 ///
