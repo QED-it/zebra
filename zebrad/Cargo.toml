@@ -52,7 +52,7 @@ features = [
 
 [features]
 # In release builds, don't compile debug logging code, to improve performance.
-default = ["release_max_level_info", "progress-bar", "getblocktemplate-rpcs", "gethealthinfo-rpc"]
+default = ["release_max_level_info", "progress-bar", "getblocktemplate-rpcs"]
 
 # Default features for official ZF binary release builds
 default-release-binaries = ["default", "sentry"]
@@ -71,10 +71,6 @@ getblocktemplate-rpcs = [
     "zebra-chain/getblocktemplate-rpcs",
 ]
 
-# Health RPC support
-gethealthinfo-rpc = [
-    "zebra-rpc/gethealthinfo-rpc"
-]
 
 # Experimental internal miner support
 internal-miner = [

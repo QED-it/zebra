@@ -213,16 +213,12 @@ impl RpcServer {
 
                     // Use a different tokio executor from the rest of Zebra,
                     // so that large RPCs and any task handling bugs don't impact Zebra.
-                    let builder = ServerBuilder::new(io)
+                    let server_instance = ServerBuilder::new(io)
                         .threads(parallel_cpu_threads)
                         // TODO: disable this security check if we see errors from lightwalletd
                         //.allowed_hosts(DomainsValidation::Disabled)
-                        .request_middleware(middleware);
-
-                    #[cfg(feature = "gethealthinfo-rpc")]
-                    let builder = builder.health_api(("/health", "gethealthinfo"));
-
-                    let server_instance = builder
+                        .request_middleware(middleware)
+                        .health_api(("/health", "gethealthinfo"))
                         .start_http(&listen_addr)
                         .expect("Unable to start RPC server");
 

@@ -59,23 +59,6 @@ mod tests;
 #[rpc(server)]
 /// RPC method signatures.
 pub trait Rpc {
-    // TODO: Consider mentioning this new method in the zcashd RPC docs and add a reference to it here.
-    /// Returns node health and build metadata, as a [`GetHealthInfo`] JSON struct.
-    ///
-    /// zcashd reference: none
-    /// method: post
-    /// tags: control
-    ///
-    /// # Notes
-    ///
-    /// - This method provides a simple liveness/readiness signal and basic build info.
-    /// - When the HTTP health endpoint is enabled via `ServerBuilder::health_api`,
-    ///   it is also available as `GET /health` (no parameters).
-    // NOTE: We can't put a cfg with a feature flag on this method because #[rpc] ignores it.
-    // So we have to provide a dummy struct and a dummy impl below to support builds without the feature.
-    #[rpc(name = "gethealthinfo")]
-    fn get_health_info(&self) -> Result<GetHealthInfo>;
-
     #[rpc(name = "getinfo")]
     /// Returns software information from the RPC server, as a [`GetInfo`] JSON struct.
     ///
@@ -319,6 +302,20 @@ pub trait Rpc {
         address_strings: AddressStrings,
     ) -> BoxFuture<Result<Vec<GetAddressUtxos>>>;
 
+    /// Returns node health and build metadata, as a [`GetHealthInfo`] JSON struct.
+    ///
+    /// zcashd reference: none
+    /// method: post
+    /// tags: control
+    ///
+    /// # Notes
+    ///
+    /// - This method provides a simple liveness/readiness signal and basic build info.
+    /// - When the HTTP health endpoint is enabled via `ServerBuilder::health_api`,
+    ///   it is also available as `GET /health` (no parameters).
+    #[rpc(name = "gethealthinfo")]
+    fn get_health_info(&self) -> Result<GetHealthInfo>;
+
     /// Stop the running zebrad process.
     ///
     /// # Notes
@@ -523,17 +520,6 @@ where
     State::Future: Send,
     Tip: ChainTip + Clone + Send + Sync + 'static,
 {
-    #[cfg(feature = "gethealthinfo-rpc")]
-    fn get_health_info(&self) -> Result<GetHealthInfo> {
-        Ok(GetHealthInfo::snapshot())
-    }
-
-    // Dummy impl: return MethodNotFound if the feature is disabled.
-    #[cfg(not(feature = "gethealthinfo-rpc"))]
-    fn get_health_info(&self) -> Result<GetHealthInfo> {
-        Err(jsonrpc_core::Error::method_not_found())
-    }
-
     fn get_info(&self) -> Result<GetInfo> {
         let response = GetInfo {
             build: self.build_version.clone(),
@@ -1386,6 +1372,10 @@ where
         .boxed()
     }
 
+    fn get_health_info(&self) -> Result<GetHealthInfo> {
+        Ok(GetHealthInfo::new())
+    }
+
     fn stop(&self) -> Result<String> {
         #[cfg(not(target_os = "windows"))]
         if self.network.is_regtest() {
@@ -1427,7 +1417,6 @@ where
 /// Response to a `gethealthinfo` RPC request.
 ///
 /// See the notes for the [`Rpc::get_health_info` method].
-#[cfg(feature = "gethealthinfo-rpc")]
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GetHealthInfo {
     /// Static health status string.
@@ -1442,24 +1431,18 @@ pub struct GetHealthInfo {
     timestamp: String,
 }
 
-// Dummy type so the trait always compiles when the feature is off.
-#[cfg(not(feature = "gethealthinfo-rpc"))]
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct GetHealthInfo;
-
-#[cfg(feature = "gethealthinfo-rpc")]
 impl GetHealthInfo {
-    /// Creates a snapshot of the node's health and build metadata.
+    /// Creates a new health info instance with current node status and build metadata.
     #[inline]
-    pub fn snapshot() -> Self {
+    pub fn new() -> Self {
         Self {
-            status: "healthy".to_string(),
+            status: "healthy".into(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             git_tag: option_env!("GIT_TAG").unwrap_or("unknown").to_string(),
             git_commit: option_env!("GIT_COMMIT_FULL")
                 .unwrap_or("unknown")
                 .to_string(),
-            timestamp: chrono::Utc::now().to_rfc3339(),
+            timestamp: Utc::now().to_rfc3339(),
         }
     }
 }
