@@ -40,7 +40,6 @@ getblocktemplate-rpcs = [
     "zebra-chain/getblocktemplate-rpcs",
 ]
 
-
 # Experimental internal miner support
 internal-miner = []
 

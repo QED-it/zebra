@@ -1437,11 +1437,11 @@ impl GetHealthInfo {
     pub fn new() -> Self {
         Self {
             status: "healthy".into(),
-            version: env!("CARGO_PKG_VERSION").to_string(),
-            git_tag: option_env!("GIT_TAG").unwrap_or("unknown").to_string(),
+            version: env!("CARGO_PKG_VERSION").into(),
+            git_tag: option_env!("GIT_TAG").unwrap_or("unknown").into(),
             git_commit: option_env!("GIT_COMMIT_FULL")
                 .unwrap_or("unknown")
-                .to_string(),
+                .into(),
             timestamp: Utc::now().to_rfc3339(),
         }
     }
