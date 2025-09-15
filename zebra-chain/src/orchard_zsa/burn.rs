@@ -22,7 +22,7 @@ impl ZcashSerialize for AssetBase {
 impl ZcashDeserialize for AssetBase {
     fn zcash_deserialize<R: io::Read>(mut reader: R) -> Result<Self, SerializationError> {
         Option::from(AssetBase::from_bytes(&reader.read_32_bytes()?))
-            .ok_or_else(|| SerializationError::Parse("Invalid orchard_zsa AssetBase!"))
+            .ok_or(SerializationError::Parse("Invalid orchard_zsa AssetBase!"))
     }
 }
 
