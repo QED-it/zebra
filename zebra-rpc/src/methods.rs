@@ -1431,6 +1431,12 @@ pub struct GetHealthInfo {
     timestamp: String,
 }
 
+impl Default for GetHealthInfo {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GetHealthInfo {
     /// Creates a new health info instance with current node status and build metadata.
     #[inline]
