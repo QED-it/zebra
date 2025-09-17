@@ -233,27 +233,42 @@ where
         // Check to see if the worker has returned or panicked.
         //
         // Correctness: Registers this task for wakeup when the worker finishes.
-        if let Some(worker_handle) = self
-            .worker_handle
-            .lock()
-            .expect("previous task panicked while holding the worker handle mutex")
-            .as_mut()
+        // FIXME; add a proper comment here
         {
-            match Pin::new(worker_handle).poll(cx) {
-                Poll::Ready(Ok(())) => return Poll::Ready(Err(self.get_worker_error())),
-                Poll::Ready(Err(task_cancelled)) if task_cancelled.is_cancelled() => {
-                    tracing::warn!(
-                        "batch task cancelled: {task_cancelled}\n\
-                         Is Zebra shutting down?"
-                    );
-
-                    return Poll::Ready(Err(task_cancelled.into()));
+            // Take the join handle out so we never poll a completed handle again.
+            let mut guard = self
+                .worker_handle
+                .lock()
+                .expect("previous task panicked while holding the worker handle mutex");
+            if let Some(mut handle) = guard.take() {
+                match Pin::new(&mut handle).poll(cx) {
+                    // Worker finished normally: treat as a closed/failed worker.
+                    // Do NOT put the handle back; it's completed and must not be polled again.
+                    Poll::Ready(Ok(())) => {
+                        drop(guard);
+                        return Poll::Ready(Err(self.get_worker_error()));
+                    }
+                    // Worker was cancelled (e.g., runtime shutdown). Also final; don't store it back.
+                    Poll::Ready(Err(task_cancelled)) if task_cancelled.is_cancelled() => {
+                        tracing::warn!(
+                            "batch task cancelled: {task_cancelled}\n\
+                             Is Zebra shutting down?"
+                        );
+                        drop(guard);
+                        return Poll::Ready(Err(task_cancelled.into()));
+                    }
+                    // Panic: resume unwind; also final.
+                    Poll::Ready(Err(task_panic)) => {
+                        drop(guard);
+                        std::panic::resume_unwind(task_panic.into_panic());
+                    }
+                    // Still running: put the handle back so other clones can poll it later.
+                    Poll::Pending => {
+                        *guard = Some(handle);
+                    }
                 }
-                Poll::Ready(Err(task_panic)) => {
-                    std::panic::resume_unwind(task_panic.into_panic());
-                }
-                Poll::Pending => {}
             }
+            // guard drops here
         }
 
         // Check if the worker has set an error and closed its channels.
