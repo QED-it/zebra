@@ -27,14 +27,8 @@ jobs:
       - name: Run tests
         env:
           RUST_BACKTRACE: 1
-        # Skip two tests that intermittently fail on CI (likely a race/ordering issue).
-        # FIXME: investigate and fix the underlying flake; remove these skips once resolved.
-        run: cargo test --locked --verbose -- --skip v4_with_sapling_spends --skip v5_with_sapling_spends
+        run: cargo test --locked --verbose
       # Run the skipped tests separately with constrained parallelism
-      - name: Run Sapling spend tests
-        run: |
-          cargo test -p zebra-consensus v4_with_sapling_spends -- --nocapture
-          cargo test -p zebra-consensus v5_with_sapling_spends -- --nocapture
       - name: Verify working directory is clean
         run: git diff --exit-code
       - name: Run doc check
