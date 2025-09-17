@@ -166,13 +166,9 @@ where
 
         // Clamp config to sensible values.
         let max_items_in_batch = max(max_items_in_batch, 1);
-        // Floor concurrency at 2 to avoid self-throttling on 1-core CI
-        let max_batches = max(
-            2,
-            max_batches
-                .into()
-                .unwrap_or_else(rayon::current_num_threads),
-        );
+        let max_batches = max_batches
+            .into()
+            .unwrap_or_else(rayon::current_num_threads);
         let max_batches_in_queue = max_batches.clamp(1, QUEUE_BATCH_LIMIT);
 
         // The semaphore bound limits the maximum number of concurrent requests
