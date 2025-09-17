@@ -193,6 +193,18 @@ where
     /// See [`Batch::new()`](crate::Batch::new) for details.
     pub async fn run(mut self) {
         loop {
+            // If all senders are dropped, make sure we flush any pending batch,
+            // even when `recv` is currently gated by `can_spawn_new_batches()`.
+            if self.rx.is_closed() {
+                if self.pending_items > 0 && self.can_spawn_new_batches() {
+                    self.pending_batch_timer = None;
+                    self.flush_service().await;
+                } else if self.pending_items == 0 && self.concurrent_batches.is_empty() {
+                    tracing::trace!("no pending items or running batches, exiting worker task");
+                    return;
+                }
+            }
+
             // Wait on either a new message or the batch timer.
             //
             // If both are ready, end the batch now, because the timer has elapsed.

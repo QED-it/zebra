@@ -4,7 +4,6 @@ use std::{
     cmp::max,
     fmt,
     future::Future,
-    pin::Pin,
     sync::{Arc, Mutex},
     task::{Context, Poll},
 };
@@ -230,37 +229,17 @@ where
     type Future = ResponseFuture<T::Future>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        // Check to see if the worker has returned or panicked.
-        //
-        // Correctness: Registers this task for wakeup when the worker finishes.
-        let mut worker_handle_guard = self
-            .worker_handle
-            .lock()
-            .expect("previous task panicked while holding the worker handle mutex");
-
-        if let Some(worker_handle) = worker_handle_guard.as_mut() {
-            match Pin::new(worker_handle).poll(cx) {
-                Poll::Ready(Ok(())) => {
-                    // Take the handle so it isn't polled again.
-                    worker_handle_guard.take();
+        // If the worker has *already* finished, treat it as closed; don't poll the handle.
+        {
+            let mut guard = self
+                .worker_handle
+                .lock()
+                .expect("previous task panicked while holding the worker handle mutex");
+            if let Some(handle) = guard.as_ref() {
+                if handle.is_finished() {
+                    guard.take(); // never touch it again
                     return Poll::Ready(Err(self.get_worker_error()));
                 }
-                Poll::Ready(Err(task_cancelled)) if task_cancelled.is_cancelled() => {
-                    tracing::warn!(
-                        "batch task cancelled: {task_cancelled}\n\
-                         Is Zebra shutting down?"
-                    );
-
-                    // Take the handle so it isn't polled again.
-                    worker_handle_guard.take();
-                    return Poll::Ready(Err(task_cancelled.into()));
-                }
-                Poll::Ready(Err(task_panic)) => {
-                    // The task panicked, so we must take the handle before resuming the unwind.
-                    worker_handle_guard.take();
-                    std::panic::resume_unwind(task_panic.into_panic());
-                }
-                Poll::Pending => {}
             }
         }
 
