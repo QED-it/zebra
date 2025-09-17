@@ -127,11 +127,14 @@ pub static OUTPUT_VERIFIER: Lazy<
         ServiceFn<fn(Item) -> BoxFuture<'static, Result<(), BoxError>>>,
     >,
 > = Lazy::new(|| {
+    let max_batches = std::cmp::max(2, rayon::current_num_threads());
     Fallback::new(
+        // Avoid self-starvation on tiny CI runners by guaranteeing >= 2 concurrent batches.
+        // Using Some(..) here keeps tower-batch-control tests unchanged elsewhere.
         Batch::new(
             Verifier::new(&GROTH16_PARAMETERS.sapling.output.vk),
             super::MAX_BATCH_SIZE,
-            None,
+            Some(max_batches),
             super::MAX_BATCH_LATENCY,
         ),
         // We want to fallback to individual verification if batch verification
