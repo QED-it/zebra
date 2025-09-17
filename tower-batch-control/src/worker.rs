@@ -276,8 +276,30 @@ where
                         }
                     }
                     None => {
-                        tracing::trace!("batch channel closed and emptied, exiting worker task");
+                        tracing::trace!(
+                            pending_items = self.pending_items,
+                            running_batches = self.concurrent_batches.len(),
+                            "batch channel closed (no more senders)"
+                        );
 
+                        // If there are pending items, flush them now.
+                        if self.pending_items > 0 {
+                            // Cancel any latency timer; we’ll flush immediately.
+                            self.pending_batch_timer = None;
+                            // Flush and then continue the loop to await completion.
+                            self.flush_service().await;
+                            continue;
+                        }
+
+                        // If there are still running batches, keep waiting for them to finish.
+                        if !self.concurrent_batches.is_empty() {
+                            // Yield so the `concurrent_batches.next()` branch can make progress.
+                            tokio::task::yield_now().await;
+                            continue;
+                        }
+
+                        // No pending items and no running batches: we can exit.
+                        tracing::trace!("no pending items or running batches, exiting worker task");
                         return;
                     }
                 },
