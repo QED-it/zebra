@@ -10,7 +10,10 @@
 use std::{fmt, panic};
 
 use cookie::Cookie;
-use jsonrpsee::server::{middleware::rpc::RpcServiceBuilder, Server, ServerHandle};
+use jsonrpsee::server::{
+    middleware::{http::ProxyGetRequestLayer, rpc::RpcServiceBuilder},
+    Server, ServerHandle,
+};
 use tokio::task::JoinHandle;
 use tower::Service;
 use tracing::*;
@@ -156,7 +159,11 @@ impl RpcServer {
             HttpRequestMiddlewareLayer::new(None)
         };
 
-        let http_middleware = tower::ServiceBuilder::new().layer(http_middleware_layer);
+        let http_middleware = tower::ServiceBuilder::new()
+            .layer(
+                ProxyGetRequestLayer::new("/health", "gethealthinfo").expect("valid health proxy"),
+            )
+            .layer(http_middleware_layer);
 
         let rpc_middleware = RpcServiceBuilder::new()
             .rpc_logger(1024)
