@@ -1,0 +1,45 @@
+name: Basic checks
+
+#on: [push, pull_request]
+on: [push]
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-24.04]
+
+    env:
+      # Use system-installed RocksDB library instead of building from scratch
+      ROCKSDB_LIB_DIR: /usr/lib
+      # Use system-installed Snappy library for compression in RocksDB
+      SNAPPY_LIB_DIR: /usr/lib/x86_64-linux-gnu
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies on Ubuntu
+        #run: sudo apt-get update && sudo apt-get install -y protobuf-compiler build-essential librocksdb-dev
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler librocksdb-dev
+      - name: Install formatting & linting tools
+        run: rustup component add rustfmt clippy
+      - name: Run tests
+        env:
+          RUST_BACKTRACE: 1
+        # Skip two tests that intermittently fail on CI (likely a race/ordering issue).
+        # FIXME: investigate and fix the underlying flake; remove these skips once resolved.
+        run: cargo test --locked --verbose -- --skip v4_with_sapling_spends --skip v5_with_sapling_spends
+      # Run the skipped tests separately with constrained parallelism
+      - name: Run Sapling spend tests
+        run: |
+          cargo test -p zebra-consensus v4_with_sapling_spends -- --nocapture
+          cargo test -p zebra-consensus v5_with_sapling_spends -- --nocapture
+      - name: Verify working directory is clean
+        run: git diff --exit-code
+      - name: Run doc check
+        run: cargo doc --all-features --document-private-items
+      - name: Run format check
+        run: cargo fmt -- --check
+      - name: Run clippy
+        run: cargo clippy --workspace --all-features --all-targets -- -D warnings
