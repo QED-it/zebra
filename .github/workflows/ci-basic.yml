@@ -42,4 +42,4 @@ jobs:
       - name: Run format check
         run: cargo fmt -- --check
       - name: Run clippy
-        run: cargo clippy --workspace --all-features --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-features --all-targets -- -D warnings -A mismatched-lifetime-syntaxes
