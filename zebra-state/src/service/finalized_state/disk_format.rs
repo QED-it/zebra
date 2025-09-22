@@ -13,20 +13,11 @@ pub mod shielded;
 pub mod transparent;
 pub mod upgrade;
 
-#[cfg(feature = "shielded-scan")]
-pub mod scan;
-
 #[cfg(any(test, feature = "proptest-impl"))]
 mod tests;
 
 pub use block::{TransactionIndex, TransactionLocation, MAX_ON_DISK_HEIGHT};
-pub use transparent::{OutputIndex, OutputLocation};
-
-#[cfg(feature = "shielded-scan")]
-pub use scan::{
-    SaplingScannedDatabaseEntry, SaplingScannedDatabaseIndex, SaplingScannedResult,
-    SaplingScanningKey,
-};
+pub use transparent::OutputLocation;
 
 #[cfg(any(test, feature = "proptest-impl"))]
 pub use tests::KV;
@@ -68,7 +59,7 @@ pub trait FromDisk: Sized {
 
 // Generic serialization impls
 
-impl<'a, T> IntoDisk for &'a T
+impl<T> IntoDisk for &T
 where
     T: IntoDisk,
 {

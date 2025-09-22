@@ -1,5 +1,5 @@
 //! Types and implementation for Testnet consensus parameters
-use std::{collections::BTreeMap, fmt};
+use std::{collections::BTreeMap, fmt, sync::Arc};
 
 use crate::{
     block::{self, Height, HeightDiff},
@@ -7,7 +7,7 @@ use crate::{
         constants::{magics, SLOW_START_INTERVAL, SLOW_START_SHIFT},
         network_upgrade::TESTNET_ACTIVATION_HEIGHTS,
         subsidy::{funding_stream_address_period, FUNDING_STREAM_RECEIVER_DENOMINATOR},
-        Network, NetworkKind, NetworkUpgrade, NETWORK_UPGRADES_IN_ORDER,
+        Network, NetworkKind, NetworkUpgrade,
     },
     work::difficulty::{ExpandedDifficulty, U256},
 };
@@ -22,11 +22,6 @@ use super::{
         PRE_NU6_FUNDING_STREAMS_TESTNET,
     },
 };
-
-/// The Regtest NU5 activation height in tests
-// TODO: Serialize testnet parameters in Config then remove this and use a configured NU5 activation height.
-#[cfg(any(test, feature = "proptest-impl"))]
-pub const REGTEST_NU5_ACTIVATION_HEIGHT: u32 = 100;
 
 /// Reserved network names that should not be allowed for configured Testnets.
 pub const RESERVED_NETWORK_NAMES: [&str; 6] = [
@@ -57,7 +52,7 @@ const TESTNET_GENESIS_HASH: &str =
 const PRE_BLOSSOM_REGTEST_HALVING_INTERVAL: HeightDiff = 144;
 
 /// Configurable funding stream recipient for configured Testnets.
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct ConfiguredFundingStreamRecipient {
     /// Funding stream receiver, see [`FundingStreams::recipients`] for more details.
@@ -79,13 +74,68 @@ impl ConfiguredFundingStreamRecipient {
 }
 
 /// Configurable funding streams for configured Testnets.
-#[derive(Deserialize, Clone, Default, Debug)]
+#[derive(Serialize, Deserialize, Clone, Default, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct ConfiguredFundingStreams {
     /// Start and end height for funding streams see [`FundingStreams::height_range`] for more details.
     pub height_range: Option<std::ops::Range<Height>>,
     /// Funding stream recipients, see [`FundingStreams::recipients`] for more details.
     pub recipients: Option<Vec<ConfiguredFundingStreamRecipient>>,
+}
+
+impl From<&FundingStreams> for ConfiguredFundingStreams {
+    fn from(value: &FundingStreams) -> Self {
+        Self {
+            height_range: Some(value.height_range().clone()),
+            recipients: Some(
+                value
+                    .recipients()
+                    .iter()
+                    .map(|(receiver, recipient)| ConfiguredFundingStreamRecipient {
+                        receiver: *receiver,
+                        numerator: recipient.numerator(),
+                        addresses: Some(
+                            recipient
+                                .addresses()
+                                .iter()
+                                .map(ToString::to_string)
+                                .collect(),
+                        ),
+                    })
+                    .collect(),
+            ),
+        }
+    }
+}
+
+impl From<&BTreeMap<Height, NetworkUpgrade>> for ConfiguredActivationHeights {
+    fn from(activation_heights: &BTreeMap<Height, NetworkUpgrade>) -> Self {
+        let mut configured_activation_heights = ConfiguredActivationHeights::default();
+
+        for (height, network_upgrade) in activation_heights.iter() {
+            let field = match network_upgrade {
+                NetworkUpgrade::BeforeOverwinter => {
+                    &mut configured_activation_heights.before_overwinter
+                }
+                NetworkUpgrade::Overwinter => &mut configured_activation_heights.overwinter,
+                NetworkUpgrade::Sapling => &mut configured_activation_heights.sapling,
+                NetworkUpgrade::Blossom => &mut configured_activation_heights.blossom,
+                NetworkUpgrade::Heartwood => &mut configured_activation_heights.heartwood,
+                NetworkUpgrade::Canopy => &mut configured_activation_heights.canopy,
+                NetworkUpgrade::Nu5 => &mut configured_activation_heights.nu5,
+                NetworkUpgrade::Nu6 => &mut configured_activation_heights.nu6,
+                NetworkUpgrade::Nu6_1 => &mut configured_activation_heights.nu6_1,
+                NetworkUpgrade::Nu7 => &mut configured_activation_heights.nu7,
+                NetworkUpgrade::Genesis => {
+                    continue;
+                }
+            };
+
+            *field = Some(height.0)
+        }
+
+        configured_activation_heights
+    }
 }
 
 impl ConfiguredFundingStreams {
@@ -185,7 +235,7 @@ fn check_funding_stream_address_period(funding_streams: &FundingStreams, network
 }
 
 /// Configurable activation heights for Regtest and configured Testnets.
-#[derive(Deserialize, Default, Clone)]
+#[derive(Serialize, Deserialize, Default, Clone)]
 #[serde(rename_all = "PascalCase", deny_unknown_fields)]
 pub struct ConfiguredActivationHeights {
     /// Activation height for `BeforeOverwinter` network upgrade.
@@ -206,6 +256,12 @@ pub struct ConfiguredActivationHeights {
     /// Activation height for `NU6` network upgrade.
     #[serde(rename = "NU6")]
     pub nu6: Option<u32>,
+<<<<<<< HEAD
+=======
+    /// Activation height for `NU6.1` network upgrade.
+    #[serde(rename = "NU6.1")]
+    pub nu6_1: Option<u32>,
+>>>>>>> zcash-v2.4.2
     /// Activation height for `NU7` network upgrade.
     #[serde(rename = "NU7")]
     pub nu7: Option<u32>,
@@ -235,6 +291,9 @@ pub struct ParametersBuilder {
     target_difficulty_limit: ExpandedDifficulty,
     /// A flag for disabling proof-of-work checks when Zebra is validating blocks
     disable_pow: bool,
+    /// Whether to allow transactions with transparent outputs to spend coinbase outputs,
+    /// similar to `fCoinbaseMustBeShielded` in zcashd.
+    should_allow_unshielded_coinbase_spends: bool,
     /// The pre-Blossom halving interval for this network
     pre_blossom_halving_interval: HeightDiff,
     /// The post-Blossom halving interval for this network
@@ -274,6 +333,7 @@ impl Default for ParametersBuilder {
             should_lock_funding_stream_address_period: false,
             pre_blossom_halving_interval: PRE_BLOSSOM_HALVING_INTERVAL,
             post_blossom_halving_interval: POST_BLOSSOM_HALVING_INTERVAL,
+            should_allow_unshielded_coinbase_spends: false,
         }
     }
 }
@@ -339,6 +399,10 @@ impl ParametersBuilder {
             canopy,
             nu5,
             nu6,
+<<<<<<< HEAD
+=======
+            nu6_1,
+>>>>>>> zcash-v2.4.2
             nu7,
         }: ConfiguredActivationHeights,
     ) -> Self {
@@ -362,6 +426,10 @@ impl ParametersBuilder {
             .chain(canopy.into_iter().map(|h| (h, Canopy)))
             .chain(nu5.into_iter().map(|h| (h, Nu5)))
             .chain(nu6.into_iter().map(|h| (h, Nu6)))
+<<<<<<< HEAD
+=======
+            .chain(nu6_1.into_iter().map(|h| (h, Nu6_1)))
+>>>>>>> zcash-v2.4.2
             .chain(nu7.into_iter().map(|h| (h, Nu7)))
             .map(|(h, nu)| (h.try_into().expect("activation height must be valid"), nu))
             .collect();
@@ -370,7 +438,7 @@ impl ParametersBuilder {
 
         // Check that the provided network upgrade activation heights are in the same order by height as the default testnet activation heights
         let mut activation_heights_iter = activation_heights.iter();
-        for expected_network_upgrade in NETWORK_UPGRADES_IN_ORDER {
+        for expected_network_upgrade in NetworkUpgrade::iter() {
             if !network_upgrades.contains(&expected_network_upgrade) {
                 continue;
             } else if let Some((&height, &network_upgrade)) = activation_heights_iter.next() {
@@ -382,7 +450,7 @@ impl ParametersBuilder {
 
                 assert!(
                     network_upgrade == expected_network_upgrade,
-                    "network upgrades must be activated in order, the correct order is {NETWORK_UPGRADES_IN_ORDER:?}"
+                    "network upgrades must be activated in order specified by the protocol"
                 );
             }
         }
@@ -444,6 +512,15 @@ impl ParametersBuilder {
         self
     }
 
+    /// Sets the `disable_pow` flag to be used in the [`Parameters`] being built.
+    pub fn with_unshielded_coinbase_spends(
+        mut self,
+        should_allow_unshielded_coinbase_spends: bool,
+    ) -> Self {
+        self.should_allow_unshielded_coinbase_spends = should_allow_unshielded_coinbase_spends;
+        self
+    }
+
     /// Sets the pre and post Blosssom halving intervals to be used in the [`Parameters`] being built.
     pub fn with_halving_interval(mut self, pre_blossom_halving_interval: HeightDiff) -> Self {
         if self.should_lock_funding_stream_address_period {
@@ -469,6 +546,7 @@ impl ParametersBuilder {
             should_lock_funding_stream_address_period: _,
             target_difficulty_limit,
             disable_pow,
+            should_allow_unshielded_coinbase_spends,
             pre_blossom_halving_interval,
             post_blossom_halving_interval,
         } = self;
@@ -483,6 +561,7 @@ impl ParametersBuilder {
             post_nu6_funding_streams,
             target_difficulty_limit,
             disable_pow,
+            should_allow_unshielded_coinbase_spends,
             pre_blossom_halving_interval,
             post_blossom_halving_interval,
         }
@@ -521,6 +600,7 @@ impl ParametersBuilder {
             should_lock_funding_stream_address_period: _,
             target_difficulty_limit,
             disable_pow,
+            should_allow_unshielded_coinbase_spends,
             pre_blossom_halving_interval,
             post_blossom_halving_interval,
         } = Self::default();
@@ -533,6 +613,8 @@ impl ParametersBuilder {
             && self.post_nu6_funding_streams == post_nu6_funding_streams
             && self.target_difficulty_limit == target_difficulty_limit
             && self.disable_pow == disable_pow
+            && self.should_allow_unshielded_coinbase_spends
+                == should_allow_unshielded_coinbase_spends
             && self.pre_blossom_halving_interval == pre_blossom_halving_interval
             && self.post_blossom_halving_interval == post_blossom_halving_interval
     }
@@ -565,6 +647,9 @@ pub struct Parameters {
     target_difficulty_limit: ExpandedDifficulty,
     /// A flag for disabling proof-of-work checks when Zebra is validating blocks
     disable_pow: bool,
+    /// Whether to allow transactions with transparent outputs to spend coinbase outputs,
+    /// similar to `fCoinbaseMustBeShielded` in zcashd.
+    should_allow_unshielded_coinbase_spends: bool,
     /// Pre-Blossom halving interval for this network
     pre_blossom_halving_interval: HeightDiff,
     /// Post-Blossom halving interval for this network
@@ -591,26 +676,37 @@ impl Parameters {
     ///
     /// Creates an instance of [`Parameters`] with `Regtest` values.
     pub fn new_regtest(
+<<<<<<< HEAD
         nu5_activation_height: Option<u32>,
         nu6_activation_height: Option<u32>,
         nu7_activation_height: Option<u32>,
+=======
+        ConfiguredActivationHeights { nu5, nu6, nu7, .. }: ConfiguredActivationHeights,
+>>>>>>> zcash-v2.4.2
     ) -> Self {
         #[cfg(any(test, feature = "proptest-impl"))]
-        let nu5_activation_height = nu5_activation_height.or(Some(100));
+        let nu5 = nu5.or(Some(100));
 
         let parameters = Self::build()
             .with_genesis_hash(REGTEST_GENESIS_HASH)
             // This value is chosen to match zcashd, see: <https://github.com/zcash/zcash/blob/master/src/chainparams.cpp#L654>
             .with_target_difficulty_limit(U256::from_big_endian(&[0x0f; 32]))
             .with_disable_pow(true)
+            .with_unshielded_coinbase_spends(true)
             .with_slow_start_interval(Height::MIN)
             // Removes default Testnet activation heights if not configured,
             // most network upgrades are disabled by default for Regtest in zcashd
             .with_activation_heights(ConfiguredActivationHeights {
                 canopy: Some(1),
+<<<<<<< HEAD
                 nu5: nu5_activation_height,
                 nu6: nu6_activation_height,
                 nu7: nu7_activation_height,
+=======
+                nu5,
+                nu6,
+                nu7,
+>>>>>>> zcash-v2.4.2
                 ..Default::default()
             })
             .with_halving_interval(PRE_BLOSSOM_REGTEST_HALVING_INTERVAL);
@@ -652,9 +748,14 @@ impl Parameters {
             post_nu6_funding_streams,
             target_difficulty_limit,
             disable_pow,
+            should_allow_unshielded_coinbase_spends,
             pre_blossom_halving_interval,
             post_blossom_halving_interval,
+<<<<<<< HEAD
         } = Self::new_regtest(None, None, None);
+=======
+        } = Self::new_regtest(Default::default());
+>>>>>>> zcash-v2.4.2
 
         self.network_name == network_name
             && self.genesis_hash == genesis_hash
@@ -664,6 +765,8 @@ impl Parameters {
             && self.post_nu6_funding_streams == post_nu6_funding_streams
             && self.target_difficulty_limit == target_difficulty_limit
             && self.disable_pow == disable_pow
+            && self.should_allow_unshielded_coinbase_spends
+                == should_allow_unshielded_coinbase_spends
             && self.pre_blossom_halving_interval == pre_blossom_halving_interval
             && self.post_blossom_halving_interval == post_blossom_halving_interval
     }
@@ -718,6 +821,12 @@ impl Parameters {
         self.disable_pow
     }
 
+    /// Returns true if this network should allow transactions with transparent outputs
+    /// that spend coinbase outputs.
+    pub fn should_allow_unshielded_coinbase_spends(&self) -> bool {
+        self.should_allow_unshielded_coinbase_spends
+    }
+
     /// Returns the pre-Blossom halving interval for this network
     pub fn pre_blossom_halving_interval(&self) -> HeightDiff {
         self.pre_blossom_halving_interval
@@ -730,6 +839,15 @@ impl Parameters {
 }
 
 impl Network {
+    /// Returns the parameters of this network if it is a Testnet.
+    pub fn parameters(&self) -> Option<Arc<Parameters>> {
+        if let Self::Testnet(parameters) = self {
+            Some(parameters.clone())
+        } else {
+            None
+        }
+    }
+
     /// Returns true if proof-of-work validation should be disabled for this network
     pub fn disable_pow(&self) -> bool {
         if let Self::Testnet(params) = self {
@@ -791,6 +909,16 @@ impl Network {
             self.pre_nu6_funding_streams()
         } else {
             self.post_nu6_funding_streams()
+        }
+    }
+
+    /// Returns true if this network should allow transactions with transparent outputs
+    /// that spend coinbase outputs.
+    pub fn should_allow_unshielded_coinbase_spends(&self) -> bool {
+        if let Self::Testnet(params) = self {
+            params.should_allow_unshielded_coinbase_spends()
+        } else {
+            false
         }
     }
 }

@@ -3,6 +3,7 @@
 use std::{fmt, io};
 
 use bitvec::prelude::*;
+use hex::{FromHex, FromHexError, ToHex};
 use jubjub::ExtendedPoint;
 use lazy_static::lazy_static;
 use rand_core::{CryptoRng, RngCore};
@@ -303,6 +304,17 @@ lazy_static! {
 #[cfg_attr(any(test, feature = "proptest-impl"), derive(Default))]
 pub struct NotSmallOrderValueCommitment(ValueCommitment);
 
+impl NotSmallOrderValueCommitment {
+    /// Return the hash bytes in big-endian byte-order suitable for printing out byte by byte.
+    ///
+    /// Zebra displays commitment value in big-endian byte-order,
+    /// following the convention set by zcashd.
+    pub fn bytes_in_display_order(&self) -> [u8; 32] {
+        let mut reversed_bytes = self.0 .0.to_bytes();
+        reversed_bytes.reverse();
+        reversed_bytes
+    }
+}
 impl TryFrom<ValueCommitment> for NotSmallOrderValueCommitment {
     type Error = &'static str;
 
@@ -362,6 +374,30 @@ impl ZcashDeserialize for NotSmallOrderValueCommitment {
         let vc = ValueCommitment::try_from(reader.read_32_bytes()?)
             .map_err(SerializationError::Parse)?;
         vc.try_into().map_err(SerializationError::Parse)
+    }
+}
+
+impl ToHex for &NotSmallOrderValueCommitment {
+    fn encode_hex<T: FromIterator<char>>(&self) -> T {
+        self.bytes_in_display_order().encode_hex()
+    }
+
+    fn encode_hex_upper<T: FromIterator<char>>(&self) -> T {
+        self.bytes_in_display_order().encode_hex_upper()
+    }
+}
+
+impl FromHex for NotSmallOrderValueCommitment {
+    type Error = FromHexError;
+
+    fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
+        // Parse hex string to 32 bytes
+        let mut bytes = <[u8; 32]>::from_hex(hex)?;
+        // Convert from big-endian (display) to little-endian (internal)
+        bytes.reverse();
+
+        Self::zcash_deserialize(io::Cursor::new(&bytes))
+            .map_err(|_| FromHexError::InvalidStringLength)
     }
 }
 
@@ -521,5 +557,38 @@ mod tests {
         let doubled_g = ValueCommitment(g_point.to_extended().double().into());
 
         assert_eq!(sum, doubled_g);
+    }
+
+    #[test]
+    fn value_commitment_hex_roundtrip() {
+        use hex::{FromHex, ToHex};
+
+        let _init_guard = zebra_test::init();
+
+        let g_point = jubjub::AffinePoint::from_raw_unchecked(
+            jubjub::Fq::from_raw([
+                0xe4b3_d35d_f1a7_adfe,
+                0xcaf5_5d1b_29bf_81af,
+                0x8b0f_03dd_d60a_8187,
+                0x62ed_cbb8_bf37_87c8,
+            ]),
+            jubjub::Fq::from_raw([
+                0x0000_0000_0000_000b,
+                0x0000_0000_0000_0000,
+                0x0000_0000_0000_0000,
+                0x0000_0000_0000_0000,
+            ]),
+        );
+
+        let value_commitment = ValueCommitment(g_point);
+        let original = NotSmallOrderValueCommitment::try_from(value_commitment)
+            .expect("constructed point must not be small order");
+
+        let hex_str = (&original).encode_hex::<String>();
+
+        let decoded = NotSmallOrderValueCommitment::from_hex(&hex_str)
+            .expect("hex string should decode successfully");
+
+        assert_eq!(original, decoded);
     }
 }

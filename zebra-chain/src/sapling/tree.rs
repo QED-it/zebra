@@ -18,9 +18,11 @@ use std::{
 };
 
 use bitvec::prelude::*;
-use bridgetree::NonEmptyFrontier;
 use hex::ToHex;
-use incrementalmerkletree::{frontier::Frontier, Hashable};
+use incrementalmerkletree::{
+    frontier::{Frontier, NonEmptyFrontier},
+    Hashable,
+};
 
 use lazy_static::lazy_static;
 use thiserror::Error;
@@ -144,6 +146,26 @@ impl TryFrom<[u8; 32]> for Root {
                 "Invalid jubjub::Base value for Sapling note commitment tree root",
             ))
         }
+    }
+}
+
+impl ToHex for &Root {
+    fn encode_hex<T: FromIterator<char>>(&self) -> T {
+        <[u8; 32]>::from(*self).encode_hex()
+    }
+
+    fn encode_hex_upper<T: FromIterator<char>>(&self) -> T {
+        <[u8; 32]>::from(*self).encode_hex_upper()
+    }
+}
+
+impl ToHex for Root {
+    fn encode_hex<T: FromIterator<char>>(&self) -> T {
+        (&self).encode_hex()
+    }
+
+    fn encode_hex_upper<T: FromIterator<char>>(&self) -> T {
+        (&self).encode_hex_upper()
     }
 }
 
@@ -617,7 +639,7 @@ impl NoteCommitmentTree {
 
     /// Serializes [`Self`] to a format matching `zcashd`'s RPCs.
     pub fn to_rpc_bytes(&self) -> Vec<u8> {
-        // Convert the tree from [`Frontier`](bridgetree::Frontier) to
+        // Convert the tree from [`Frontier`](incrementalmerkletree::frontier::Frontier) to
         // [`CommitmentTree`](merkle_tree::CommitmentTree).
         let tree = incrementalmerkletree::frontier::CommitmentTree::from_frontier(&self.inner);
 
@@ -646,7 +668,7 @@ impl Clone for NoteCommitmentTree {
 impl Default for NoteCommitmentTree {
     fn default() -> Self {
         Self {
-            inner: bridgetree::Frontier::empty(),
+            inner: incrementalmerkletree::frontier::Frontier::empty(),
             cached_root: Default::default(),
         }
     }

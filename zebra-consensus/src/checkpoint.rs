@@ -30,20 +30,22 @@ use tracing::instrument;
 use zebra_chain::{
     amount,
     block::{self, Block},
-    parameters::{subsidy::FundingStreamReceiver, Network, GENESIS_PREVIOUS_BLOCK_HASH},
+    parameters::{
+        subsidy::{block_subsidy, funding_stream_values, FundingStreamReceiver, SubsidyError},
+        Network, GENESIS_PREVIOUS_BLOCK_HASH,
+    },
     work::equihash,
 };
 use zebra_state::{self as zs, CheckpointVerifiedBlock};
 
 use crate::{
     block::VerifyBlockError,
-    block_subsidy,
     checkpoint::types::{
         Progress::{self, *},
         TargetHeight::{self, *},
     },
-    error::{BlockError, SubsidyError},
-    funding_stream_values, BoxError, ParameterCheckpoint as _,
+    error::BlockError,
+    BoxError, ParameterCheckpoint as _,
 };
 
 pub(crate) mod list;
@@ -86,7 +88,7 @@ type QueuedBlockList = Vec<QueuedBlock>;
 ///
 /// This value is a tradeoff between:
 /// - rejecting bad blocks: if we queue more blocks, we need fewer network
-///                         retries, but use a bit more CPU when verifying,
+///   retries, but use a bit more CPU when verifying,
 /// - avoiding a memory DoS: if we queue fewer blocks, we use less memory.
 ///
 /// Memory usage is controlled by the sync service, because it controls block
@@ -992,9 +994,9 @@ pub enum VerifyCheckpointError {
     CheckpointList(BoxError),
     #[error(transparent)]
     VerifyBlock(VerifyBlockError),
-    #[error("invalid block subsidy")]
+    #[error("invalid block subsidy: {0}")]
     SubsidyError(#[from] SubsidyError),
-    #[error("invalid amount")]
+    #[error("invalid amount: {0}")]
     AmountError(#[from] amount::Error),
     #[error("too many queued blocks at this height")]
     QueuedLimit,
@@ -1037,6 +1039,21 @@ impl VerifyCheckpointError {
             _ => false,
         }
     }
+
+    /// Returns a suggested misbehaviour score increment for a certain error.
+    pub fn misbehavior_score(&self) -> u32 {
+        // TODO: Adjust these values based on zcashd (#9258).
+        match self {
+            VerifyCheckpointError::VerifyBlock(verify_block_error) => {
+                verify_block_error.misbehavior_score()
+            }
+            VerifyCheckpointError::SubsidyError(_)
+            | VerifyCheckpointError::CoinbaseHeight { .. }
+            | VerifyCheckpointError::DuplicateTransaction
+            | VerifyCheckpointError::AmountError(_) => 100,
+            _other => 0,
+        }
+    }
 }
 
 /// The CheckpointVerifier service implementation.
@@ -1059,7 +1076,7 @@ where
     #[instrument(name = "checkpoint", skip(self, block))]
     fn call(&mut self, block: Arc<Block>) -> Self::Future {
         // Reset the verifier back to the state tip if requested
-        // (e.g. due to an error when committing a block to to the state)
+        // (e.g. due to an error when committing a block to the state)
         if let Ok(tip) = self.reset_receiver.try_recv() {
             self.reset_progress(tip);
         }
@@ -1149,7 +1166,6 @@ where
                 let tip = match state_service
                     .oneshot(zs::Request::Tip)
                     .await
-                    .map_err(Into::into)
                     .map_err(VerifyCheckpointError::Tip)?
                 {
                     zs::Response::Tip(tip) => tip,

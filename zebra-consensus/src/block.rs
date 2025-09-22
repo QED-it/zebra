@@ -8,6 +8,7 @@
 //! verification, where it may be accepted or rejected.
 
 use std::{
+    collections::HashSet,
     future::Future,
     pin::Pin,
     sync::Arc,
@@ -24,8 +25,11 @@ use tracing::Instrument;
 use zebra_chain::{
     amount::Amount,
     block,
-    parameters::{subsidy::FundingStreamReceiver, Network},
-    transparent,
+    parameters::{
+        subsidy::{FundingStreamReceiver, SubsidyError},
+        Network,
+    },
+    transaction, transparent,
     work::equihash,
 };
 use zebra_state as zs;
@@ -74,19 +78,18 @@ pub enum VerifyBlockError {
     #[error(transparent)]
     Time(zebra_chain::block::BlockTimeError),
 
-    #[error("unable to commit block after semantic verification")]
+    #[error("unable to commit block after semantic verification: {0}")]
     // TODO: make this into a concrete type, and add it to is_duplicate_request() (#2908)
     Commit(#[source] BoxError),
 
-    #[cfg(feature = "getblocktemplate-rpcs")]
-    #[error("unable to validate block proposal: failed semantic verification (proof of work is not checked for proposals)")]
+    #[error("unable to validate block proposal: failed semantic verification (proof of work is not checked for proposals): {0}")]
     // TODO: make this into a concrete type (see #5732)
     ValidateProposal(#[source] BoxError),
 
-    #[error("invalid transaction")]
+    #[error("invalid transaction: {0}")]
     Transaction(#[from] TransactionError),
 
-    #[error("invalid block subsidy")]
+    #[error("invalid block subsidy: {0}")]
     Subsidy(#[from] SubsidyError),
 }
 
@@ -97,6 +100,17 @@ impl VerifyBlockError {
         match self {
             VerifyBlockError::Block { source, .. } => source.is_duplicate_request(),
             _ => false,
+        }
+    }
+
+    /// Returns a suggested misbehaviour score increment for a certain error.
+    pub fn misbehavior_score(&self) -> u32 {
+        // TODO: Adjust these values based on zcashd (#9258).
+        use VerifyBlockError::*;
+        match self {
+            Block { source } => source.misbehavior_score(),
+            Equihash { .. } => 100,
+            _other => 0,
         }
     }
 }
@@ -216,7 +230,8 @@ where
                 .map_err(VerifyBlockError::Time)?;
             let coinbase_tx = check::coinbase_is_first(&block)?;
 
-            let expected_block_subsidy = subsidy::general::block_subsidy(height, &network)?;
+            let expected_block_subsidy =
+                zebra_chain::parameters::subsidy::block_subsidy(height, &network)?;
 
             check::subsidy_is_valid(&block, &network, expected_block_subsidy)?;
 
@@ -232,13 +247,21 @@ where
                 &block,
                 &transaction_hashes,
             ));
-            for transaction in &block.transactions {
+
+            let known_outpoint_hashes: Arc<HashSet<transaction::Hash>> =
+                Arc::new(known_utxos.keys().map(|outpoint| outpoint.hash).collect());
+
+            for (&transaction_hash, transaction) in
+                transaction_hashes.iter().zip(block.transactions.iter())
+            {
                 let rsp = transaction_verifier
                     .ready()
                     .await
                     .expect("transaction verifier is always ready")
                     .call(tx::Request::Block {
+                        transaction_hash,
                         transaction: transaction.clone(),
+                        known_outpoint_hashes: known_outpoint_hashes.clone(),
                         known_utxos: known_utxos.clone(),
                         height,
                         time: block.header.time,
@@ -285,7 +308,7 @@ where
             }
 
             // See [ZIP-1015](https://zips.z.cash/zip-1015).
-            let expected_deferred_amount = subsidy::funding_streams::funding_stream_values(
+            let expected_deferred_amount = zebra_chain::parameters::subsidy::funding_stream_values(
                 height,
                 &network,
                 expected_block_subsidy,
@@ -323,8 +346,7 @@ where
                 deferred_balance: Some(expected_deferred_amount),
             };
 
-            // Return early for proposal requests when getblocktemplate-rpcs feature is enabled
-            #[cfg(feature = "getblocktemplate-rpcs")]
+            // Return early for proposal requests.
             if request.is_proposal() {
                 return match state_service
                     .ready()

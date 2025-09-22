@@ -416,7 +416,7 @@ where
     }
 }
 
-// TODO: add infalliable impls for NonNegative <-> NegativeOrZero,
+// TODO: add infallible impls for NonNegative <-> NegativeOrZero,
 //       when Rust uses trait output types to disambiguate overlapping impls.
 impl<C> std::ops::Neg for Amount<C>
 where
@@ -538,6 +538,10 @@ impl Constraint for NegativeAllowed {
 /// );
 /// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Default)]
+#[cfg_attr(
+    any(test, feature = "proptest-impl"),
+    derive(proptest_derive::Arbitrary)
+)]
 pub struct NonNegative;
 
 impl Constraint for NonNegative {

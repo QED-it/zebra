@@ -84,10 +84,10 @@ use tracing_futures::Instrument;
 
 use zebra_chain::block::genesis::regtest_genesis_block;
 use zebra_consensus::{router::BackgroundTaskHandles, ParameterCheckpoint};
-use zebra_rpc::server::RpcServer;
+use zebra_rpc::{methods::RpcImpl, server::RpcServer, SubmitBlockChannel};
 
 use crate::{
-    application::{build_version, user_agent},
+    application::{build_version, user_agent, LAST_WARN_ERROR_LOG_SENDER},
     components::{
         inbound::{self, InboundSetupData, MAX_INBOUND_RESPONSE_TIME},
         mempool::{self, Mempool},
@@ -98,6 +98,9 @@ use crate::{
     config::ZebradConfig,
     prelude::*,
 };
+
+#[cfg(feature = "internal-miner")]
+use crate::components;
 
 /// Start the application (default command)
 #[derive(Command, Debug, Default, clap::Parser)]
@@ -170,7 +173,7 @@ impl StartCmd {
                 setup_rx,
             ));
 
-        let (peer_set, address_book) = zebra_network::init(
+        let (peer_set, address_book, misbehavior_sender) = zebra_network::init(
             config.network.clone(),
             inbound,
             latest_chain_tip.clone(),
@@ -179,11 +182,13 @@ impl StartCmd {
         .await;
 
         info!("initializing verifiers");
+        let (tx_verifier_setup_tx, tx_verifier_setup_rx) = oneshot::channel();
         let (block_verifier_router, tx_verifier, consensus_task_handles, max_checkpoint_height) =
             zebra_consensus::router::init(
                 config.consensus.clone(),
                 &config.network.network,
                 state.clone(),
+                tx_verifier_setup_rx,
             )
             .await;
 
@@ -195,10 +200,11 @@ impl StartCmd {
             block_verifier_router.clone(),
             state.clone(),
             latest_chain_tip.clone(),
+            misbehavior_sender.clone(),
         );
 
         info!("initializing mempool");
-        let (mempool, mempool_transaction_receiver) = Mempool::new(
+        let (mempool, mempool_transaction_subscriber) = Mempool::new(
             &config.mempool,
             peer_set.clone(),
             state.clone(),
@@ -206,11 +212,16 @@ impl StartCmd {
             sync_status.clone(),
             latest_chain_tip.clone(),
             chain_tip_change.clone(),
+            misbehavior_sender.clone(),
         );
         let mempool = BoxService::new(mempool);
         let mempool = ServiceBuilder::new()
             .buffer(mempool::downloads::MAX_INBOUND_CONCURRENCY)
             .service(mempool);
+
+        if tx_verifier_setup_tx.send(mempool.clone()).is_err() {
+            warn!("error setting up the transaction verifier with a handle to the mempool service");
+        };
 
         info!("fully initializing inbound peer request handler");
         // Fully start the inbound service as soon as possible
@@ -221,6 +232,7 @@ impl StartCmd {
             mempool: mempool.clone(),
             state: state.clone(),
             latest_chain_tip: latest_chain_tip.clone(),
+            misbehavior_sender,
         };
         setup_tx
             .send(setup_data)
@@ -228,40 +240,45 @@ impl StartCmd {
         // And give it time to clear its queue
         tokio::task::yield_now().await;
 
-        #[cfg(not(feature = "getblocktemplate-rpcs"))]
-        if config.mining != zebra_rpc::config::mining::Config::default() {
-            warn!(
-                "Unused mining section in config,\
-                 compile with 'getblocktemplate-rpcs' feature to use mining RPCs"
-            );
-        }
+        // Create a channel to send mined blocks to the gossip task
+        let submit_block_channel = SubmitBlockChannel::new();
 
         // Launch RPC server
-        info!("spawning RPC server");
-        let (rpc_task_handle, rpc_tx_queue_task_handle, rpc_server) = RpcServer::spawn(
-            config.rpc.clone(),
+        let (rpc_impl, mut rpc_tx_queue_handle) = RpcImpl::new(
+            config.network.network.clone(),
             config.mining.clone(),
+            config.rpc.debug_force_finished_sync,
             build_version(),
             user_agent(),
             mempool.clone(),
+            state.clone(),
             read_only_state_service.clone(),
             block_verifier_router.clone(),
             sync_status.clone(),
-            address_book.clone(),
             latest_chain_tip.clone(),
-            config.network.network.clone(),
+            address_book.clone(),
+            LAST_WARN_ERROR_LOG_SENDER.subscribe(),
+            Some(submit_block_channel.sender()),
         );
+
+        let rpc_task_handle = if config.rpc.listen_addr.is_some() {
+            RpcServer::start(rpc_impl.clone(), config.rpc.clone())
+                .await
+                .expect("server should start")
+        } else {
+            tokio::spawn(std::future::pending().in_current_span())
+        };
 
         // TODO: Add a shutdown signal and start the server with `serve_with_incoming_shutdown()` if
         //       any related unit tests sometimes crash with memory errors
-        #[cfg(feature = "indexer-rpcs")]
-        let indexer_rpc_task_handle =
+        let indexer_rpc_task_handle = {
             if let Some(indexer_listen_addr) = config.rpc.indexer_listen_addr {
                 info!("spawning indexer RPC server");
                 let (indexer_rpc_task_handle, _listen_addr) = zebra_rpc::indexer::server::init(
                     indexer_listen_addr,
                     read_only_state_service.clone(),
                     latest_chain_tip.clone(),
+                    mempool_transaction_subscriber.clone(),
                 )
                 .await
                 .map_err(|err| eyre!(err))?;
@@ -270,12 +287,8 @@ impl StartCmd {
             } else {
                 warn!("configure an indexer_listen_addr to start the indexer RPC server");
                 tokio::spawn(std::future::pending().in_current_span())
-            };
-
-        #[cfg(not(feature = "indexer-rpcs"))]
-        // Spawn a dummy indexer rpc task which doesn't do anything and never finishes.
-        let indexer_rpc_task_handle: tokio::task::JoinHandle<Result<(), tower::BoxError>> =
-            tokio::spawn(std::future::pending().in_current_span());
+            }
+        };
 
         // Start concurrent tasks which don't add load to other tasks
         info!("spawning block gossip task");
@@ -284,6 +297,7 @@ impl StartCmd {
                 sync_status.clone(),
                 chain_tip_change.clone(),
                 peer_set.clone(),
+                Some(submit_block_channel.receiver()),
             )
             .in_current_span(),
         );
@@ -293,8 +307,11 @@ impl StartCmd {
 
         info!("spawning mempool transaction gossip task");
         let tx_gossip_task_handle = tokio::spawn(
-            mempool::gossip_mempool_transaction_id(mempool_transaction_receiver, peer_set.clone())
-                .in_current_span(),
+            mempool::gossip_mempool_transaction_id(
+                mempool_transaction_subscriber.subscribe(),
+                peer_set.clone(),
+            )
+            .in_current_span(),
         );
 
         info!("spawning delete old databases task");
@@ -365,18 +382,7 @@ impl StartCmd {
         #[cfg(feature = "internal-miner")]
         let miner_task_handle = if config.mining.is_internal_miner_enabled() {
             info!("spawning Zcash miner");
-            let rpc = zebra_rpc::methods::get_block_template_rpcs::GetBlockTemplateRpcImpl::new(
-                &config.network.network,
-                config.mining.clone(),
-                mempool,
-                read_only_state_service,
-                latest_chain_tip,
-                block_verifier_router,
-                sync_status,
-                address_book,
-            );
-
-            crate::components::miner::spawn_init(&config.network.network, &config.mining, rpc)
+            components::miner::spawn_init(&config.metrics, rpc_impl)
         } else {
             tokio::spawn(std::future::pending().in_current_span())
         };
@@ -393,7 +399,6 @@ impl StartCmd {
         // ongoing tasks
         pin!(rpc_task_handle);
         pin!(indexer_rpc_task_handle);
-        pin!(rpc_tx_queue_task_handle);
         pin!(syncer_task_handle);
         pin!(block_gossip_task_handle);
         pin!(mempool_crawler_task_handle);
@@ -419,24 +424,24 @@ impl StartCmd {
             let mut exit_when_task_finishes = true;
 
             let result = select! {
-                rpc_result = &mut rpc_task_handle => {
-                    rpc_result
+                rpc_join_result = &mut rpc_task_handle => {
+                    let rpc_server_result = rpc_join_result
                         .expect("unexpected panic in the rpc task");
-                    info!("rpc task exited");
+                    info!(?rpc_server_result, "rpc task exited");
+                    Ok(())
+                }
+
+                rpc_tx_queue_result = &mut rpc_tx_queue_handle => {
+                    rpc_tx_queue_result
+                        .expect("unexpected panic in the rpc transaction queue task");
+                    info!("rpc transaction queue task exited");
                     Ok(())
                 }
 
                 indexer_rpc_join_result = &mut indexer_rpc_task_handle => {
                     let indexer_rpc_server_result = indexer_rpc_join_result
-                        .expect("unexpected panic in the rpc task");
+                        .expect("unexpected panic in the indexer task");
                     info!(?indexer_rpc_server_result, "indexer rpc task exited");
-                    Ok(())
-                }
-
-                rpc_tx_queue_result = &mut rpc_tx_queue_task_handle => {
-                    rpc_tx_queue_result
-                        .expect("unexpected panic in the rpc transaction queue task");
-                    info!("rpc transaction queue task exited");
                     Ok(())
                 }
 
@@ -516,7 +521,7 @@ impl StartCmd {
 
         // ongoing tasks
         rpc_task_handle.abort();
-        rpc_tx_queue_task_handle.abort();
+        rpc_tx_queue_handle.abort();
         syncer_task_handle.abort();
         block_gossip_task_handle.abort();
         mempool_crawler_task_handle.abort();
@@ -530,16 +535,9 @@ impl StartCmd {
         state_checkpoint_verify_handle.abort();
         old_databases_task_handle.abort();
 
-        // Wait until the RPC server shuts down.
-        // This can take around 150 seconds.
-        //
-        // Without this shutdown, Zebra's RPC unit tests sometimes crashed with memory errors.
-        if let Some(rpc_server) = rpc_server {
-            info!("waiting for RPC server to shut down");
-            rpc_server.shutdown_blocking();
-        }
-
-        info!("exiting Zebra: all tasks have been asked to stop, waiting for remaining tasks to finish");
+        info!(
+            "exiting Zebra: all tasks have been asked to stop, waiting for remaining tasks to finish"
+        );
 
         exit_status
     }

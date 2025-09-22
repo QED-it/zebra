@@ -57,6 +57,7 @@ where
                 let mut memo: [u8; 512] = [0; 512];
                 memo[0] = 0xF6;
                 builder
+<<<<<<< HEAD
                     .add_output(
                         None,
                         recipient,
@@ -65,6 +66,9 @@ where
                         AssetBase::native(),
                         memo,
                     )
+=======
+                    .add_output(None, recipient, NoteValue::from_raw(note_value), memo)
+>>>>>>> zcash-v2.4.2
                     .unwrap();
             }
 
