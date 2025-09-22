@@ -1,10 +1,7 @@
 //! Signature hashes for Zcash transactions
 
-<<<<<<< HEAD
-=======
 use std::sync::Arc;
 
->>>>>>> zcash-v2.4.2
 use zcash_transparent::sighash::SighashType;
 
 use super::Transaction;
@@ -36,12 +33,6 @@ bitflags::bitflags! {
     }
 }
 
-<<<<<<< HEAD
-// FIXME (for future reviewers): Copied from upstream Zebra v2.4.2 to fix a librustzcash
-// breaking change. Keep the code (or update it accordingly) and remove this note when we
-// merge with upstream Zebra.
-=======
->>>>>>> zcash-v2.4.2
 impl TryFrom<HashType> for SighashType {
     type Error = ();
 

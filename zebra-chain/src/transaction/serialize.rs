@@ -826,19 +826,13 @@ impl ZcashSerialize for Transaction {
                 outputs,
                 sapling_shielded_data,
                 orchard_shielded_data,
-<<<<<<< HEAD
                 orchard_zsa_issue_data,
-            } => {
-                // Denoted as `nVersionGroupId` in the spec.
-                writer.write_u32::<LittleEndian>(TX_V6_VERSION_GROUP_ID)?;
-=======
             } => {
                 // Transaction V6 spec:
                 // https://zips.z.cash/zip-0230#specification
 
                 // Denoted as `nVersionGroupId` in the spec.
-                writer.write_u32::<LittleEndian>(TX_V5_VERSION_GROUP_ID)?;
->>>>>>> zcash-v2.4.2
+                writer.write_u32::<LittleEndian>(TX_V6_VERSION_GROUP_ID)?;
 
                 // Denoted as `nConsensusBranchId` in the spec.
                 writer.write_u32::<LittleEndian>(u32::from(
@@ -870,13 +864,9 @@ impl ZcashSerialize for Transaction {
                 // `proofsOrchard`, `vSpendAuthSigsOrchard`, and `bindingSigOrchard`.
                 orchard_shielded_data.zcash_serialize(&mut writer)?;
 
-<<<<<<< HEAD
                 // A bundle of OrchardZSA issuance fields denoted in the spec as `nIssueActions`,
                 // `vIssueActions`, `ik`, and `issueAuthSig`.
                 orchard_zsa_issue_data.zcash_serialize(&mut writer)?;
-=======
-                // TODO: Add the rest of v6 transaction fields.
->>>>>>> zcash-v2.4.2
             }
         }
         Ok(())
@@ -1142,12 +1132,7 @@ impl ZcashDeserialize for Transaction {
                 // Denoted as `nConsensusBranchId` in the spec.
                 // Convert it to a NetworkUpgrade
                 let network_upgrade =
-                    NetworkUpgrade::from_branch_id(limited_reader.read_u32::<LittleEndian>()?)
-                        .ok_or_else(|| {
-                            SerializationError::Parse(
-                                "expected a valid network upgrade from the consensus branch id",
-                            )
-                        })?;
+                    NetworkUpgrade::try_from(limited_reader.read_u32::<LittleEndian>()?)?;
 
                 // Denoted as `lock_time` in the spec.
                 let lock_time = LockTime::zcash_deserialize(&mut limited_reader)?;

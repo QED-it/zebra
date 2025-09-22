@@ -11,6 +11,7 @@ use hex::ToHex;
 use zebra_chain::{
     amount::{self, Amount, NegativeOrZero, NonNegative},
     block::{self, merkle::AUTH_DIGEST_PLACEHOLDER, Height},
+    orchard::{self, ShieldedDataFlavor},
     parameters::Network,
     primitives::ed25519,
     sapling::NotSmallOrderValueCommitment,
@@ -216,6 +217,7 @@ pub struct TransactionObject {
     #[getter(copy)]
     pub(crate) joinsplit_sig: Option<[u8; ed25519::Signature::BYTE_SIZE]>,
 
+    // TODO: Consider also adding pub(crate) orchard_zsa_issue: Option<OrchardZSAIssue>
     /// Orchard actions of the transaction.
     #[serde(rename = "orchard", skip_serializing_if = "Option::is_none")]
     pub(crate) orchard: Option<Orchard>,
@@ -468,14 +470,40 @@ pub struct OrchardAction {
     #[serde(rename = "ephemeralKey", with = "hex")]
     ephemeral_key: [u8; 32],
     /// The output note encrypted to the recipient.
-    #[serde(rename = "encCiphertext", with = "arrayhex")]
-    enc_ciphertext: [u8; 580],
+    #[serde(rename = "encCiphertext")]
+    enc_ciphertext: Vec<u8>,
     /// A ciphertext enabling the sender to recover the output note.
     #[serde(rename = "spendAuthSig", with = "hex")]
     spend_auth_sig: [u8; 64],
     /// A signature authorizing the spend in this Action.
     #[serde(rename = "outCiphertext", with = "hex")]
     out_ciphertext: [u8; 80],
+}
+
+impl<'a, Flavor: ShieldedDataFlavor> From<&'a orchard::AuthorizedAction<Flavor>> for OrchardAction {
+    fn from(authorized_action: &'a orchard::AuthorizedAction<Flavor>) -> Self {
+        let action = &authorized_action.action;
+
+        let cv: [u8; 32] = action.cv.into();
+        let nullifier: [u8; 32] = action.nullifier.into();
+        let rk: [u8; 32] = action.rk.into();
+        let cm_x: [u8; 32] = action.cm_x.into();
+        let ephemeral_key: [u8; 32] = action.ephemeral_key.into();
+        let enc_ciphertext = action.enc_ciphertext.as_ref().to_vec();
+        let spend_auth_sig: [u8; 64] = authorized_action.spend_auth_sig.into();
+        let out_ciphertext: [u8; 80] = action.out_ciphertext.into();
+
+        OrchardAction {
+            cv,
+            nullifier,
+            rk,
+            cm_x,
+            ephemeral_key,
+            enc_ciphertext,
+            spend_auth_sig,
+            out_ciphertext,
+        }
+    }
 }
 
 impl Default for TransactionObject {
@@ -636,47 +664,37 @@ impl TransactionObject {
             orchard: if !tx.has_orchard_shielded_data() {
                 None
             } else {
+                let mut actions = Vec::new();
+
+                match &*tx {
+                    // Do nothing for non V5/V6 transactions as they don't contain orchard actions
+                    Transaction::V1 { .. }
+                    | Transaction::V2 { .. }
+                    | Transaction::V3 { .. }
+                    | Transaction::V4 { .. } => {}
+
+                    Transaction::V5 {
+                        orchard_shielded_data,
+                        ..
+                    } => actions.extend(
+                        orchard_shielded_data
+                            .iter()
+                            .flat_map(|shielded_data| shielded_data.actions.iter())
+                            .map(|action| action.into()),
+                    ),
+                    Transaction::V6 {
+                        orchard_shielded_data,
+                        ..
+                    } => actions.extend(
+                        orchard_shielded_data
+                            .iter()
+                            .flat_map(|shielded_data| shielded_data.actions.iter())
+                            .map(|action| action.into()),
+                    ),
+                }
+
                 Some(Orchard {
-                    actions: tx
-                        .orchard_actions()
-                        .collect::<Vec<_>>()
-                        .iter()
-                        .map(|action| {
-                            let spend_auth_sig: [u8; 64] = tx
-                                .orchard_shielded_data()
-                                .and_then(|shielded_data| {
-                                    shielded_data
-                                        .actions
-                                        .iter()
-                                        .find(|authorized_action| {
-                                            authorized_action.action == **action
-                                        })
-                                        .map(|authorized_action| {
-                                            authorized_action.spend_auth_sig.into()
-                                        })
-                                })
-                                .unwrap_or([0; 64]);
-
-                            let cv: [u8; 32] = action.cv.into();
-                            let nullifier: [u8; 32] = action.nullifier.into();
-                            let rk: [u8; 32] = action.rk.into();
-                            let cm_x: [u8; 32] = action.cm_x.into();
-                            let ephemeral_key: [u8; 32] = action.ephemeral_key.into();
-                            let enc_ciphertext: [u8; 580] = action.enc_ciphertext.into();
-                            let out_ciphertext: [u8; 80] = action.out_ciphertext.into();
-
-                            OrchardAction {
-                                cv,
-                                nullifier,
-                                rk,
-                                cm_x,
-                                ephemeral_key,
-                                enc_ciphertext,
-                                spend_auth_sig,
-                                out_ciphertext,
-                            }
-                        })
-                        .collect(),
+                    actions,
                     value_balance: Zec::from(tx.orchard_value_balance().orchard_amount())
                         .lossy_zec(),
                     value_balance_zat: tx.orchard_value_balance().orchard_amount().zatoshis(),

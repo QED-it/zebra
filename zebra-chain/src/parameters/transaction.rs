@@ -13,14 +13,9 @@ pub const SAPLING_VERSION_GROUP_ID: u32 = 0x892F_2085;
 pub const TX_V5_VERSION_GROUP_ID: u32 = 0x26A7_270A;
 
 /// The version group ID for version 6 transactions.
-<<<<<<< HEAD
-///
-/// OrchardZSA transactions must use transaction version 6 and this version
-/// group ID.
-// TODO: FIXME: use a proper value!
-#[cfg(feature = "tx_v6")]
-pub const TX_V6_VERSION_GROUP_ID: u32 = 0x7777_7777;
-=======
 /// TODO: update this after it's chosen
-pub const TX_V6_VERSION_GROUP_ID: u32 = 0xFFFF_FFFF;
->>>>>>> zcash-v2.4.2
+// FIXME: The upstream version uses 0xFFFF_FFFF for TX_V6_VERSION_GROUP_ID,
+// but it was changed here to 0x7777_7777 for compatibility with the value of
+// V6_VERSION_GROUP_ID in the ZSA version of librustzcash/zcash_protocol.
+// Update to the proper value once it's fixed in librustzcash.
+pub const TX_V6_VERSION_GROUP_ID: u32 = 0x7777_7777;

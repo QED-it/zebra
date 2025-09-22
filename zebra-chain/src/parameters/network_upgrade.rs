@@ -15,11 +15,7 @@ use hex::{FromHex, ToHex};
 use proptest_derive::Arbitrary;
 
 /// A list of network upgrades in the order that they must be activated.
-<<<<<<< HEAD
-pub const NETWORK_UPGRADES_IN_ORDER: [NetworkUpgrade; 10] = [
-=======
 const NETWORK_UPGRADES_IN_ORDER: &[NetworkUpgrade] = &[
->>>>>>> zcash-v2.4.2
     Genesis,
     BeforeOverwinter,
     Overwinter,
@@ -29,12 +25,12 @@ const NETWORK_UPGRADES_IN_ORDER: &[NetworkUpgrade] = &[
     Canopy,
     Nu5,
     Nu6,
-<<<<<<< HEAD
-=======
-    #[cfg(any(test, feature = "zebra-test"))]
+    // FIXME: unify zebra-test/zcash_unstable nu7 usages,
+    // check if the code is covered of those flags properly,
+    // try to build with and without those flags
+    #[cfg(any(test, feature = "zebra-test", zcash_unstable = "nu7"))]
     Nu6_1,
-    #[cfg(any(test, feature = "zebra-test"))]
->>>>>>> zcash-v2.4.2
+    #[cfg(any(test, feature = "zebra-test", zcash_unstable = "nu7"))]
     Nu7,
 ];
 
@@ -72,11 +68,6 @@ pub enum NetworkUpgrade {
     /// The Zcash protocol after the NU6 upgrade.
     #[serde(rename = "NU6")]
     Nu6,
-<<<<<<< HEAD
-    /// The Zcash protocol after the NU7 upgrade.
-    #[serde(rename = "NU7")]
-    Nu7,
-=======
     /// The Zcash protocol after the NU6.1 upgrade.
     #[serde(rename = "NU6.1")]
     Nu6_1,
@@ -95,7 +86,6 @@ impl TryFrom<u32> for NetworkUpgrade {
             .map(|nu| nu.0)
             .ok_or(Self::Error::InvalidConsensusBranchId)
     }
->>>>>>> zcash-v2.4.2
 }
 
 impl fmt::Display for NetworkUpgrade {
@@ -125,9 +115,13 @@ pub(super) const MAINNET_ACTIVATION_HEIGHTS: &[(block::Height, NetworkUpgrade)] 
     (block::Height(1_046_400), Canopy),
     (block::Height(1_687_104), Nu5),
     (block::Height(2_726_400), Nu6),
-    // FIXME: TODO: Use a proper value below.
-    #[cfg(zcash_unstable = "nu7")]
-    (block::Height(3_111_000), Nu7),
+    // FIXME: TODO: Uncomment the lines below and use the correct value
+    // once a height for Nu6_1 is defined. Having Nu7 without Nu6_1
+    // causes several tests to fail, because they assume the Nu7 height
+    // applies to Nu6_1.
+    //
+    //#[cfg(zcash_unstable = "nu7")]
+    //(block::Height(3_111_000), Nu7),
 ];
 
 /// Fake mainnet network upgrade activation heights, used in tests.
@@ -142,12 +136,8 @@ const FAKE_MAINNET_ACTIVATION_HEIGHTS: &[(block::Height, NetworkUpgrade)] = &[
     (block::Height(30), Canopy),
     (block::Height(35), Nu5),
     (block::Height(40), Nu6),
-<<<<<<< HEAD
-    (block::Height(45), Nu7),
-=======
     (block::Height(45), Nu6_1),
     (block::Height(50), Nu7),
->>>>>>> zcash-v2.4.2
 ];
 
 /// Testnet network upgrade activation heights.
@@ -170,9 +160,13 @@ pub(super) const TESTNET_ACTIVATION_HEIGHTS: &[(block::Height, NetworkUpgrade)] 
     (block::Height(1_028_500), Canopy),
     (block::Height(1_842_420), Nu5),
     (block::Height(2_976_000), Nu6),
-    // FIXME: TODO: Use a proper value below.
-    #[cfg(zcash_unstable = "nu7")]
-    (block::Height(3_222_000), Nu7),
+    // FIXME: TODO: Uncomment the lines below and use the correct value
+    // once a height for Nu6_1 is defined. Having Nu7 without Nu6_1
+    // causes several tests to fail, because they assume the Nu7 height
+    // applies to Nu6_1.
+    //
+    //#[cfg(zcash_unstable = "nu7")]
+    //(block::Height(3_222_000), Nu7),
 ];
 
 /// Fake testnet network upgrade activation heights, used in tests.
@@ -187,12 +181,8 @@ const FAKE_TESTNET_ACTIVATION_HEIGHTS: &[(block::Height, NetworkUpgrade)] = &[
     (block::Height(30), Canopy),
     (block::Height(35), Nu5),
     (block::Height(40), Nu6),
-<<<<<<< HEAD
-    (block::Height(45), Nu7),
-=======
     (block::Height(45), Nu6_1),
     (block::Height(50), Nu7),
->>>>>>> zcash-v2.4.2
 ];
 
 /// The Consensus Branch Id, used to bind transactions and blocks to a
@@ -284,14 +274,9 @@ pub(crate) const CONSENSUS_BRANCH_IDS: &[(NetworkUpgrade, ConsensusBranchId)] = 
     (Canopy, ConsensusBranchId(0xe9ff75a6)),
     (Nu5, ConsensusBranchId(0xc2d6d0b4)),
     (Nu6, ConsensusBranchId(0xc8e71055)),
-<<<<<<< HEAD
-    // FIXME: TODO: Use a proper value below.
-    #[cfg(zcash_unstable = "nu7")]
-=======
-    #[cfg(any(test, feature = "zebra-test"))]
+    #[cfg(any(test, feature = "zebra-test", zcash_unstable = "nu7"))]
     (Nu6_1, ConsensusBranchId(0x4dec4df0)),
-    #[cfg(any(test, feature = "zebra-test"))]
->>>>>>> zcash-v2.4.2
+    #[cfg(any(test, feature = "zebra-test", zcash_unstable = "nu7"))]
     (Nu7, ConsensusBranchId(0x77190ad8)),
 ];
 
@@ -400,27 +385,12 @@ impl NetworkUpgrade {
 
     /// Returns the next expected network upgrade after this network upgrade.
     pub fn next_upgrade(self) -> Option<Self> {
-<<<<<<< HEAD
-        match self {
-            Genesis => Some(BeforeOverwinter),
-            BeforeOverwinter => Some(Overwinter),
-            Overwinter => Some(Sapling),
-            Sapling => Some(Blossom),
-            Blossom => Some(Heartwood),
-            Heartwood => Some(Canopy),
-            Canopy => Some(Nu5),
-            Nu5 => Some(Nu6),
-            Nu6 => Some(Nu7),
-            Nu7 => None,
-        }
-=======
         Self::iter().skip_while(|&nu| self != nu).nth(1)
     }
 
     /// Returns the previous network upgrade before this network upgrade.
     pub fn previous_upgrade(self) -> Option<Self> {
         Self::iter().rev().skip_while(|&nu| self != nu).nth(1)
->>>>>>> zcash-v2.4.2
     }
 
     /// Returns the next network upgrade for `network` and `height`.
@@ -496,11 +466,7 @@ impl NetworkUpgrade {
     pub fn target_spacing(&self) -> Duration {
         let spacing_seconds = match self {
             Genesis | BeforeOverwinter | Overwinter | Sapling => PRE_BLOSSOM_POW_TARGET_SPACING,
-<<<<<<< HEAD
-            Blossom | Heartwood | Canopy | Nu5 | Nu6 | Nu7 => {
-=======
             Blossom | Heartwood | Canopy | Nu5 | Nu6 | Nu6_1 | Nu7 => {
->>>>>>> zcash-v2.4.2
                 POST_BLOSSOM_POW_TARGET_SPACING.into()
             }
         };
@@ -621,13 +587,7 @@ impl From<zcash_protocol::consensus::NetworkUpgrade> for NetworkUpgrade {
             zcash_protocol::consensus::NetworkUpgrade::Canopy => Self::Canopy,
             zcash_protocol::consensus::NetworkUpgrade::Nu5 => Self::Nu5,
             zcash_protocol::consensus::NetworkUpgrade::Nu6 => Self::Nu6,
-<<<<<<< HEAD
-            // TODO: Use a proper value below.
-            #[cfg(zcash_unstable = "nu7")]
             zcash_protocol::consensus::NetworkUpgrade::Nu7 => Self::Nu7,
-=======
-            // zcash_protocol::consensus::NetworkUpgrade::Nu7 => Self::Nu7,
->>>>>>> zcash-v2.4.2
         }
     }
 }

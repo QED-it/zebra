@@ -875,10 +875,7 @@ impl Arbitrary for Transaction {
             NetworkUpgrade::Blossom | NetworkUpgrade::Heartwood | NetworkUpgrade::Canopy => {
                 Self::v4_strategy(ledger_state)
             }
-            NetworkUpgrade::Nu5
-            | NetworkUpgrade::Nu6
-            | NetworkUpgrade::Nu6_1
-            | NetworkUpgrade::Nu7 => prop_oneof![
+            NetworkUpgrade::Nu5 | NetworkUpgrade::Nu6 | NetworkUpgrade::Nu6_1 => prop_oneof![
                 Self::v4_strategy(ledger_state.clone()),
                 Self::v5_strategy(ledger_state)
             ]
@@ -897,6 +894,8 @@ impl Arbitrary for Transaction {
                     prop_oneof![
                         Self::v4_strategy(ledger_state.clone()),
                         Self::v5_strategy(ledger_state.clone()),
+                        // FIXME: should the next line (v6_strategy) be here? ZF implemention does
+                        // not have it.
                         Self::v6_strategy(ledger_state),
                     ]
                     .boxed()
@@ -1044,11 +1043,7 @@ pub fn transaction_to_fake_v5(
         },
         v5 @ V5 { .. } => v5.clone(),
         #[cfg(feature = "tx_v6")]
-<<<<<<< HEAD
-        _ => panic!(" other transaction versions are not supported"),
-=======
         v6 @ V6 { .. } => v6.clone(),
->>>>>>> zcash-v2.4.2
     }
 }
 

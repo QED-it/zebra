@@ -2900,11 +2900,7 @@ async fn fully_synced_rpc_z_getsubtreesbyindex_snapshot_test() -> Result<()> {
 async fn validate_regtest_genesis_block() {
     let _init_guard = zebra_test::init();
 
-<<<<<<< HEAD
-    let network = Network::new_regtest(None, None, None);
-=======
     let network = Network::new_regtest(Default::default());
->>>>>>> zcash-v2.4.2
     let state = zebra_state::init_test(&network);
     let (
         block_verifier_router,
@@ -2976,14 +2972,10 @@ async fn trusted_chain_sync_handles_forks_correctly() -> Result<()> {
     use common::regtest::MiningRpcMethods;
 
     let _init_guard = zebra_test::init();
-<<<<<<< HEAD
-    let mut config = os_assigned_rpc_port_config(false, &Network::new_regtest(None, None, None))?;
-=======
 
     let network = Network::new_regtest(Default::default());
     let mut config = os_assigned_rpc_port_config(false, &network)?;
 
->>>>>>> zcash-v2.4.2
     config.state.ephemeral = false;
     config.rpc.indexer_listen_addr = Some(std::net::SocketAddr::from(([127, 0, 0, 1], 0)));
 
@@ -3384,12 +3376,7 @@ async fn nu6_funding_streams_and_coinbase_balance() -> Result<()> {
         )
     };
 
-<<<<<<< HEAD
-    // FIXME: Would this work after Nu7 activation?
-    let proposal_block = proposal_block_from_template(&block_template, None, NetworkUpgrade::Nu6)?;
-=======
     let proposal_block = proposal_block_from_template(&block_template, None, &network)?;
->>>>>>> zcash-v2.4.2
     let hex_proposal_block = HexData(proposal_block.zcash_serialize_to_vec()?);
 
     // Check that the block template is a valid block proposal
@@ -3516,21 +3503,7 @@ async fn nu6_funding_streams_and_coinbase_balance() -> Result<()> {
         block_template.submit_old(),
     );
 
-<<<<<<< HEAD
-    let block_template = GetBlockTemplate {
-        coinbase_txn,
-        block_commitments_hash: default_roots.block_commitments_hash,
-        light_client_root_hash: default_roots.block_commitments_hash,
-        final_sapling_root_hash: default_roots.block_commitments_hash,
-        default_roots,
-        ..(*block_template)
-    };
-
-    // FIXME: Would this work after Nu7 activation?
-    let proposal_block = proposal_block_from_template(&block_template, None, NetworkUpgrade::Nu6)?;
-=======
     let proposal_block = proposal_block_from_template(&block_template, None, &network)?;
->>>>>>> zcash-v2.4.2
 
     // Submit the invalid block with an excessive coinbase output value
     let submit_block_response = rpc
@@ -3588,21 +3561,7 @@ async fn nu6_funding_streams_and_coinbase_balance() -> Result<()> {
         block_template.submit_old(),
     );
 
-<<<<<<< HEAD
-    let block_template = GetBlockTemplate {
-        coinbase_txn,
-        block_commitments_hash: default_roots.block_commitments_hash,
-        light_client_root_hash: default_roots.block_commitments_hash,
-        final_sapling_root_hash: default_roots.block_commitments_hash,
-        default_roots,
-        ..block_template
-    };
-
-    // FIXME: Would this work after Nu7 activation?
-    let proposal_block = proposal_block_from_template(&block_template, None, NetworkUpgrade::Nu6)?;
-=======
     let proposal_block = proposal_block_from_template(&block_template, None, &network)?;
->>>>>>> zcash-v2.4.2
 
     // Submit the invalid block with an excessive coinbase input value
     let submit_block_response = rpc

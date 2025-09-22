@@ -156,13 +156,6 @@ tx_v6 = ["zebra-chain/tx_v6", "zebra-state/tx_v6", "zebra-consensus/tx_v6"]
 # details. This should be only used for testing.
 comparison-interpreter = ["zebra-script/comparison-interpreter"]
 
-# Support for transaction version 6
-tx_v6 = [
-    "zebra-consensus/tx_v6",
-    "zebra-state/tx_v6",
-    "zebra-chain/tx_v6"
-]
-
 [dependencies]
 zebra-chain = { path = "../zebra-chain", version = "1.0.0" }
 zebra-consensus = { path = "../zebra-consensus", version = "1.0.0" }

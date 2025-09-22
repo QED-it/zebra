@@ -1604,21 +1604,6 @@ impl Chain {
                     &None,
                     orchard_shielded_data,
                 ),
-                #[cfg(feature="tx_v6")]
-                V6 {
-                    inputs,
-                    outputs,
-                    sapling_shielded_data,
-                    orchard_shielded_data,
-                    ..
-                } => (
-                    inputs,
-                    outputs,
-                    &None,
-                    &None,
-                    sapling_shielded_data,
-                    orchard_shielded_data,
-                ),
 
                 V1 { .. } | V2 { .. } | V3 { .. } => unreachable!(
                     "older transaction versions only exist in finalized blocks, because of the mandatory canopy checkpoint",
@@ -1662,14 +1647,6 @@ impl Chain {
             self.update_chain_tip_with(&(inputs, &transaction_hash, spent_outputs))?;
 
             // add the shielded data
-<<<<<<< HEAD
-            self.update_chain_tip_with(joinsplit_data)?;
-            self.update_chain_tip_with(sapling_shielded_data_per_spend_anchor)?;
-            self.update_chain_tip_with(sapling_shielded_data_shared_anchor)?;
-            self.update_chain_tip_with(orchard_shielded_data_vanilla)?;
-            #[cfg(feature = "tx_v6")]
-            self.update_chain_tip_with(orchard_shielded_data_zsa)?;
-=======
 
             #[cfg(not(feature = "indexer"))]
             let transaction_hash = ();
@@ -1680,8 +1657,9 @@ impl Chain {
                 &transaction_hash,
             ))?;
             self.update_chain_tip_with(&(sapling_shielded_data_shared_anchor, &transaction_hash))?;
-            self.update_chain_tip_with(&(orchard_shielded_data, &transaction_hash))?;
->>>>>>> zcash-v2.4.2
+            self.update_chain_tip_with(&(orchard_shielded_data_vanilla, &transaction_hash))?;
+            #[cfg(feature = "tx_v6")]
+            self.update_chain_tip_with(&(orchard_shielded_data_zsa, &transaction_hash))?;
         }
 
         // update the chain value pool balances
@@ -1790,21 +1768,23 @@ impl UpdateWith<ContextuallyVerifiedBlock> for Chain {
         for (transaction, transaction_hash) in
             block.transactions.iter().zip(transaction_hashes.iter())
         {
-            let (
-                inputs,
-                outputs,
-                joinsplit_data,
-                sapling_shielded_data_per_spend_anchor,
-                sapling_shielded_data_shared_anchor,
-                orchard_shielded_data,
-            ) = match transaction.deref() {
+            let transaction_data = match transaction.deref() {
                 V4 {
                     inputs,
                     outputs,
                     joinsplit_data,
                     sapling_shielded_data,
                     ..
-                } => (inputs, outputs, joinsplit_data, sapling_shielded_data, &None, &None),
+                } => (
+                    inputs,
+                    outputs,
+                    joinsplit_data,
+                    sapling_shielded_data,
+                    &None,
+                    &None,
+                    #[cfg(feature ="tx_v6")]
+                    &None
+                ),
                 V5 {
                     inputs,
                     outputs,
@@ -1818,21 +1798,15 @@ impl UpdateWith<ContextuallyVerifiedBlock> for Chain {
                     &None,
                     sapling_shielded_data,
                     orchard_shielded_data,
+                    #[cfg(feature ="tx_v6")]
+                    &None
                 ),
-<<<<<<< HEAD
-                #[cfg(feature = "tx_v6")]
-=======
                 #[cfg(feature="tx_v6")]
->>>>>>> zcash-v2.4.2
                 V6 {
                     inputs,
                     outputs,
                     sapling_shielded_data,
-<<<<<<< HEAD
-                    orchard_shielded_data: _,
-=======
                     orchard_shielded_data,
->>>>>>> zcash-v2.4.2
                     ..
                 } => (
                     inputs,
@@ -1840,19 +1814,35 @@ impl UpdateWith<ContextuallyVerifiedBlock> for Chain {
                     &None,
                     &None,
                     sapling_shielded_data,
-<<<<<<< HEAD
-                    // FIXME: support V6 shielded data?
-                    &None, //orchard_shielded_data,
-                ),
-=======
+                    &None,
                     orchard_shielded_data,
                 ),
 
->>>>>>> zcash-v2.4.2
                 V1 { .. } | V2 { .. } | V3 { .. } => unreachable!(
                     "older transaction versions only exist in finalized blocks, because of the mandatory canopy checkpoint",
                 ),
             };
+
+            #[cfg(not(feature = "tx_v6"))]
+            let (
+                inputs,
+                outputs,
+                joinsplit_data,
+                sapling_shielded_data_per_spend_anchor,
+                sapling_shielded_data_shared_anchor,
+                orchard_shielded_data_vanilla,
+            ) = transaction_data;
+
+            #[cfg(feature = "tx_v6")]
+            let (
+                inputs,
+                outputs,
+                joinsplit_data,
+                sapling_shielded_data_per_spend_anchor,
+                sapling_shielded_data_shared_anchor,
+                orchard_shielded_data_vanilla,
+                orchard_shielded_data_zsa,
+            ) = transaction_data;
 
             // remove the utxos this produced
             self.revert_chain_with(&(outputs, transaction_hash, new_outputs), position);
@@ -1880,7 +1870,9 @@ impl UpdateWith<ContextuallyVerifiedBlock> for Chain {
                 &(sapling_shielded_data_shared_anchor, transaction_hash),
                 position,
             );
-            self.revert_chain_with(&(orchard_shielded_data, transaction_hash), position);
+            self.revert_chain_with(&(orchard_shielded_data_vanilla, transaction_hash), position);
+            #[cfg(feature = "tx_v6")]
+            self.revert_chain_with(&(orchard_shielded_data_zsa, transaction_hash), position);
         }
 
         // TODO: move these to the shielded UpdateWith.revert...()?
@@ -2226,24 +2218,19 @@ where
     }
 }
 
-<<<<<<< HEAD
-impl<Flavor: orchard::ShieldedDataFlavor> UpdateWith<Option<orchard::ShieldedData<Flavor>>>
-    for Chain
+impl<Flavor: orchard::ShieldedDataFlavor>
+    UpdateWith<(
+        &Option<orchard::ShieldedData<Flavor>>,
+        &SpendingTransactionId,
+    )> for Chain
 {
     #[instrument(skip(self, orchard_shielded_data))]
     fn update_chain_tip_with(
         &mut self,
-        orchard_shielded_data: &Option<orchard::ShieldedData<Flavor>>,
-=======
-impl UpdateWith<(&Option<orchard::ShieldedData>, &SpendingTransactionId)> for Chain {
-    #[instrument(skip(self, orchard_shielded_data))]
-    fn update_chain_tip_with(
-        &mut self,
         &(orchard_shielded_data, revealing_tx_id): &(
-            &Option<orchard::ShieldedData>,
+            &Option<orchard::ShieldedData<Flavor>>,
             &SpendingTransactionId,
         ),
->>>>>>> zcash-v2.4.2
     ) -> Result<(), ValidateContextError> {
         if let Some(orchard_shielded_data) = orchard_shielded_data {
             // We do note commitment tree updates in parallel rayon threads.
@@ -2265,14 +2252,10 @@ impl UpdateWith<(&Option<orchard::ShieldedData>, &SpendingTransactionId)> for Ch
     #[instrument(skip(self, orchard_shielded_data))]
     fn revert_chain_with(
         &mut self,
-<<<<<<< HEAD
-        orchard_shielded_data: &Option<orchard::ShieldedData<Flavor>>,
-=======
         (orchard_shielded_data, _revealing_tx_id): &(
-            &Option<orchard::ShieldedData>,
+            &Option<orchard::ShieldedData<Flavor>>,
             &SpendingTransactionId,
         ),
->>>>>>> zcash-v2.4.2
         _position: RevertPosition,
     ) {
         if let Some(orchard_shielded_data) = orchard_shielded_data {

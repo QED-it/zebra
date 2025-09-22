@@ -30,11 +30,7 @@ impl zcash_transparent::bundle::Authorization for TransparentAuth {
 
 // In this block we convert our Output to a librustzcash to TxOut.
 // (We could do the serialize/deserialize route but it's simple enough to convert manually)
-<<<<<<< HEAD
-impl zcash_transparent::sighash::TransparentAuthorizingContext for TransparentAuth<'_> {
-=======
 impl zcash_transparent::sighash::TransparentAuthorizingContext for TransparentAuth {
->>>>>>> zcash-v2.4.2
     fn input_amounts(&self) -> Vec<zcash_protocol::value::Zatoshis> {
         self.all_prev_outputs
             .iter()
@@ -159,59 +155,6 @@ impl zp_tx::Authorization for PrecomputedAuth {
 
 // End of (mostly) copied code
 
-<<<<<<< HEAD
-impl TryFrom<&Transaction> for zp_tx::Transaction {
-    type Error = io::Error;
-
-    /// Convert a Zebra transaction into a librustzcash one.
-    ///
-    /// # Panics
-    ///
-    /// If the transaction is not V5/V6. (Currently there is no need for this
-    /// conversion for other versions.)
-    #[allow(clippy::unwrap_in_result)]
-    fn try_from(trans: &Transaction) -> Result<Self, Self::Error> {
-        let network_upgrade = match trans {
-            Transaction::V5 {
-                network_upgrade, ..
-            } => network_upgrade,
-            #[cfg(feature = "tx_v6")]
-            Transaction::V6 {
-                network_upgrade, ..
-            } => network_upgrade,
-            Transaction::V1 { .. }
-            | Transaction::V2 { .. }
-            | Transaction::V3 { .. }
-            | Transaction::V4 { .. } => {
-                panic!("Zebra only uses librustzcash for V5/V6 transactions");
-            }
-        };
-
-        convert_tx_to_librustzcash(
-            trans,
-            network_upgrade
-                .branch_id()
-                .expect("V5/V6 txs have branch IDs"),
-        )
-    }
-}
-
-pub(crate) fn convert_tx_to_librustzcash(
-    trans: &Transaction,
-    branch_id: ConsensusBranchId,
-) -> Result<zp_tx::Transaction, io::Error> {
-    let serialized_tx = trans.zcash_serialize_to_vec()?;
-    let branch_id: u32 = branch_id.into();
-    // We've already parsed this transaction, so its network upgrade must be valid.
-    let branch_id: zcash_primitives::consensus::BranchId = branch_id
-        .try_into()
-        .expect("zcash_primitives and Zebra have the same branch ids");
-    let alt_tx = zp_tx::Transaction::read(&serialized_tx[..], branch_id)?;
-    Ok(alt_tx)
-}
-
-=======
->>>>>>> zcash-v2.4.2
 /// Convert a Zebra transparent::Output into a librustzcash one.
 impl TryFrom<&transparent::Output> for zcash_transparent::bundle::TxOut {
     type Error = io::Error;
@@ -318,16 +261,10 @@ impl PrecomputedTxData {
                 all_prev_outputs: all_previous_outputs.clone(),
             },
         };
-<<<<<<< HEAD
-        let tx_data: zp_tx::TransactionData<PrecomputedAuth> = alt_tx
-            .into_data()
-            .map_authorization(f_transparent, IdentityMap, IdentityMap, IdentityMap);
-=======
->>>>>>> zcash-v2.4.2
 
         let tx_data: zp_tx::TransactionData<PrecomputedAuth> =
             tx.into_data()
-                .map_authorization(f_transparent, IdentityMap, IdentityMap);
+                .map_authorization(f_transparent, IdentityMap, IdentityMap, IdentityMap);
 
         Ok(PrecomputedTxData {
             tx_data,
@@ -395,38 +332,6 @@ pub(crate) fn sighash(
 pub(crate) fn auth_digest(tx: &Transaction) -> AuthDigest {
     let nu = tx.network_upgrade().expect("V5 tx has a network upgrade");
 
-<<<<<<< HEAD
-    let digest_bytes: [u8; 32] = alt_tx
-        .auth_commitment()
-        .as_ref()
-        .try_into()
-        .expect("digest has the correct size");
-
-    AuthDigest(digest_bytes)
-}
-
-/// Return the destination address from a transparent output.
-///
-/// Returns None if the address type is not valid or unrecognized.
-pub(crate) fn transparent_output_address(
-    output: &transparent::Output,
-    network: &Network,
-) -> Option<transparent::Address> {
-    let tx_out = zcash_transparent::bundle::TxOut::try_from(output)
-        .expect("zcash_primitives and Zebra transparent output formats must be compatible");
-
-    let alt_addr = tx_out.recipient_address();
-
-    match alt_addr {
-        Some(zcash_primitives::legacy::TransparentAddress::PublicKeyHash(pub_key_hash)) => Some(
-            transparent::Address::from_pub_key_hash(network.kind(), pub_key_hash),
-        ),
-        Some(zcash_primitives::legacy::TransparentAddress::ScriptHash(script_hash)) => Some(
-            transparent::Address::from_script_hash(network.kind(), script_hash),
-        ),
-        None => None,
-    }
-=======
     AuthDigest(
         tx.to_librustzcash(nu)
             .expect("V5 tx is convertible to its `zcash_params` equivalent")
@@ -435,5 +340,4 @@ pub(crate) fn transparent_output_address(
             .try_into()
             .expect("digest has the correct size"),
     )
->>>>>>> zcash-v2.4.2
 }

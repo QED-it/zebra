@@ -256,12 +256,9 @@ pub struct ConfiguredActivationHeights {
     /// Activation height for `NU6` network upgrade.
     #[serde(rename = "NU6")]
     pub nu6: Option<u32>,
-<<<<<<< HEAD
-=======
     /// Activation height for `NU6.1` network upgrade.
     #[serde(rename = "NU6.1")]
     pub nu6_1: Option<u32>,
->>>>>>> zcash-v2.4.2
     /// Activation height for `NU7` network upgrade.
     #[serde(rename = "NU7")]
     pub nu7: Option<u32>,
@@ -399,10 +396,7 @@ impl ParametersBuilder {
             canopy,
             nu5,
             nu6,
-<<<<<<< HEAD
-=======
             nu6_1,
->>>>>>> zcash-v2.4.2
             nu7,
         }: ConfiguredActivationHeights,
     ) -> Self {
@@ -426,10 +420,7 @@ impl ParametersBuilder {
             .chain(canopy.into_iter().map(|h| (h, Canopy)))
             .chain(nu5.into_iter().map(|h| (h, Nu5)))
             .chain(nu6.into_iter().map(|h| (h, Nu6)))
-<<<<<<< HEAD
-=======
             .chain(nu6_1.into_iter().map(|h| (h, Nu6_1)))
->>>>>>> zcash-v2.4.2
             .chain(nu7.into_iter().map(|h| (h, Nu7)))
             .map(|(h, nu)| (h.try_into().expect("activation height must be valid"), nu))
             .collect();
@@ -676,13 +667,7 @@ impl Parameters {
     ///
     /// Creates an instance of [`Parameters`] with `Regtest` values.
     pub fn new_regtest(
-<<<<<<< HEAD
-        nu5_activation_height: Option<u32>,
-        nu6_activation_height: Option<u32>,
-        nu7_activation_height: Option<u32>,
-=======
         ConfiguredActivationHeights { nu5, nu6, nu7, .. }: ConfiguredActivationHeights,
->>>>>>> zcash-v2.4.2
     ) -> Self {
         #[cfg(any(test, feature = "proptest-impl"))]
         let nu5 = nu5.or(Some(100));
@@ -698,15 +683,9 @@ impl Parameters {
             // most network upgrades are disabled by default for Regtest in zcashd
             .with_activation_heights(ConfiguredActivationHeights {
                 canopy: Some(1),
-<<<<<<< HEAD
-                nu5: nu5_activation_height,
-                nu6: nu6_activation_height,
-                nu7: nu7_activation_height,
-=======
                 nu5,
                 nu6,
                 nu7,
->>>>>>> zcash-v2.4.2
                 ..Default::default()
             })
             .with_halving_interval(PRE_BLOSSOM_REGTEST_HALVING_INTERVAL);
@@ -751,11 +730,7 @@ impl Parameters {
             should_allow_unshielded_coinbase_spends,
             pre_blossom_halving_interval,
             post_blossom_halving_interval,
-<<<<<<< HEAD
-        } = Self::new_regtest(None, None, None);
-=======
         } = Self::new_regtest(Default::default());
->>>>>>> zcash-v2.4.2
 
         self.network_name == network_name
             && self.genesis_hash == genesis_hash

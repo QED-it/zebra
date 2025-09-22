@@ -348,11 +348,7 @@ fn sanitize_transaction_version(
             Overwinter => 3,
             Sapling | Blossom | Heartwood | Canopy => 4,
             // FIXME: Use 6 for Nu7
-<<<<<<< HEAD
-            Nu5 | Nu6 | Nu7 => 5,
-=======
             Nu5 | Nu6 | Nu6_1 | Nu7 => 5,
->>>>>>> zcash-v2.4.2
         }
     };
 

@@ -16,13 +16,8 @@ use tower::{buffer::Buffer, service_fn, ServiceExt};
 use zebra_chain::{
     amount::{Amount, NonNegative},
     block::{self, Block, Height},
-<<<<<<< HEAD
-    orchard::{AuthorizedAction, OrchardVanilla},
-    parameters::{Network, NetworkUpgrade},
-=======
-    orchard::{Action, AuthorizedAction, Flags},
+    orchard::{Action, AuthorizedAction, Flags, OrchardVanilla},
     parameters::{testnet::ConfiguredActivationHeights, Network, NetworkUpgrade},
->>>>>>> zcash-v2.4.2
     primitives::{ed25519, x25519, Groth16Proof},
     sapling,
     serialization::{DateTime32, ZcashDeserialize, ZcashDeserializeInto},
@@ -81,7 +76,7 @@ fn v5_transaction_with_orchard_actions_has_inputs_and_outputs() {
             })
             .expect("V5 tx with only Orchard shielded data");
 
-        tx.orchard_shielded_data_mut().unwrap().flags = Flags::empty();
+        *tx.orchard_flags_mut().unwrap() = Flags::empty();
 
         // The check will fail if the transaction has no flags
         assert_eq!(
@@ -90,7 +85,7 @@ fn v5_transaction_with_orchard_actions_has_inputs_and_outputs() {
         );
 
         // If we add ENABLE_SPENDS flag it will pass the inputs check but fails with the outputs
-        tx.orchard_shielded_data_mut().unwrap().flags = Flags::ENABLE_SPENDS;
+        *tx.orchard_flags_mut().unwrap() = Flags::ENABLE_SPENDS;
 
         assert_eq!(
             check::has_inputs_and_outputs(&tx),
@@ -98,7 +93,7 @@ fn v5_transaction_with_orchard_actions_has_inputs_and_outputs() {
         );
 
         // If we add ENABLE_OUTPUTS flag it will pass the outputs check but fails with the inputs
-        tx.orchard_shielded_data_mut().unwrap().flags = Flags::ENABLE_OUTPUTS;
+        *tx.orchard_flags_mut().unwrap() = Flags::ENABLE_OUTPUTS;
 
         assert_eq!(
             check::has_inputs_and_outputs(&tx),
@@ -106,8 +101,7 @@ fn v5_transaction_with_orchard_actions_has_inputs_and_outputs() {
         );
 
         // Finally make it valid by adding both required flags
-        tx.orchard_shielded_data_mut().unwrap().flags =
-            Flags::ENABLE_SPENDS | Flags::ENABLE_OUTPUTS;
+        *tx.orchard_flags_mut().unwrap() = Flags::ENABLE_SPENDS | Flags::ENABLE_OUTPUTS;
 
         assert!(check::has_inputs_and_outputs(&tx).is_ok());
     }
@@ -126,7 +120,7 @@ fn v5_transaction_with_orchard_actions_has_flags() {
             })
             .expect("V5 tx with only Orchard actions");
 
-        tx.orchard_shielded_data_mut().unwrap().flags = Flags::empty();
+        *tx.orchard_flags_mut().unwrap() = Flags::empty();
 
         // The check will fail if the transaction has no flags
         assert_eq!(
@@ -135,52 +129,30 @@ fn v5_transaction_with_orchard_actions_has_flags() {
         );
 
         // If we add ENABLE_SPENDS flag it will pass.
-        tx.orchard_shielded_data_mut().unwrap().flags = Flags::ENABLE_SPENDS;
+        *tx.orchard_flags_mut().unwrap() = Flags::ENABLE_SPENDS;
         assert!(check::has_enough_orchard_flags(&tx).is_ok());
 
-        tx.orchard_shielded_data_mut().unwrap().flags = Flags::empty();
+        *tx.orchard_flags_mut().unwrap() = Flags::empty();
 
         // If we add ENABLE_OUTPUTS flag instead, it will pass.
-        tx.orchard_shielded_data_mut().unwrap().flags = Flags::ENABLE_OUTPUTS;
+        *tx.orchard_flags_mut().unwrap() = Flags::ENABLE_OUTPUTS;
         assert!(check::has_enough_orchard_flags(&tx).is_ok());
 
-        tx.orchard_shielded_data_mut().unwrap().flags = Flags::empty();
+        *tx.orchard_flags_mut().unwrap() = Flags::empty();
 
         // If we add BOTH ENABLE_SPENDS and ENABLE_OUTPUTS flags it will pass.
-        tx.orchard_shielded_data_mut().unwrap().flags =
-            Flags::ENABLE_SPENDS | Flags::ENABLE_OUTPUTS;
+        *tx.orchard_flags_mut().unwrap() = Flags::ENABLE_SPENDS | Flags::ENABLE_OUTPUTS;
         assert!(check::has_enough_orchard_flags(&tx).is_ok());
     }
 }
 
 #[test]
-<<<<<<< HEAD
-fn v5_transaction_with_no_inputs_fails_validation() {
-    let transaction = fake_v5_transactions_for_network(
-        &Network::Mainnet,
-        zebra_test::vectors::MAINNET_BLOCKS.iter(),
-    )
-    .rev()
-    .find(|transaction| {
-        transaction.inputs().is_empty()
-            && transaction.sapling_spends_per_anchor().next().is_none()
-            && transaction.orchard_action_count() == 0
-            && transaction.joinsplit_count() == 0
-            && (!transaction.outputs().is_empty() || transaction.sapling_outputs().next().is_some())
-    })
-    .expect("At least one fake v5 transaction with no inputs in the test vectors");
-
-    assert_eq!(
-        check::has_inputs_and_outputs(&transaction),
-        Err(TransactionError::NoInputs)
-=======
 fn v5_transaction_with_no_inputs_fails_verification() {
     let (_, output, _) = mock_transparent_transfer(
         Height(1),
         true,
         0,
         Amount::try_from(1).expect("valid value"),
->>>>>>> zcash-v2.4.2
     );
 
     for net in Network::iter() {
@@ -1219,32 +1191,6 @@ async fn state_error_converted_correctly() {
 }
 
 #[test]
-<<<<<<< HEAD
-fn v5_transaction_with_no_outputs_fails_validation() {
-    let transaction = fake_v5_transactions_for_network(
-        &Network::Mainnet,
-        zebra_test::vectors::MAINNET_BLOCKS.iter(),
-    )
-    .rev()
-    .find(|transaction| {
-        transaction.outputs().is_empty()
-            && transaction.sapling_outputs().next().is_none()
-            && transaction.orchard_action_count() == 0
-            && transaction.joinsplit_count() == 0
-            && (!transaction.inputs().is_empty()
-                || transaction.sapling_spends_per_anchor().next().is_some())
-    })
-    .expect("At least one fake v5 transaction with no outputs in the test vectors");
-
-    assert_eq!(
-        check::has_inputs_and_outputs(&transaction),
-        Err(TransactionError::NoOutputs)
-    );
-}
-
-#[test]
-=======
->>>>>>> zcash-v2.4.2
 fn v5_coinbase_transaction_without_enable_spends_flag_passes_validation() {
     for net in Network::iter() {
         let mut tx = v5_transactions(net.block_iter())
@@ -2843,18 +2789,45 @@ async fn v5_with_duplicate_orchard_action() {
 
         let height = tx.expiry_height().expect("expiry height");
 
-        let orchard_shielded_data = tx
-            .orchard_shielded_data_mut()
-            .expect("tx without transparent, Sprout, or Sapling outputs must have Orchard actions");
-
         // Enable spends
-        orchard_shielded_data.flags = Flags::ENABLE_SPENDS | Flags::ENABLE_OUTPUTS;
+        *tx.orchard_flags_mut().unwrap() = Flags::ENABLE_SPENDS | Flags::ENABLE_OUTPUTS;
 
-        let duplicate_action = orchard_shielded_data.actions.first().clone();
-        let duplicate_nullifier = duplicate_action.action.nullifier;
+        // Duplicate the first action and get its nullifier
+        let duplicate_nullifier = match &mut tx {
+            Transaction::V1 { .. }
+            | Transaction::V2 { .. }
+            | Transaction::V3 { .. }
+            | Transaction::V4 { .. } => unimplemented!("Transaction version is not supported"),
 
-        // Duplicate the first action
-        orchard_shielded_data.actions.push(duplicate_action);
+            Transaction::V5 {
+                orchard_shielded_data,
+                ..
+            } => {
+                let orchard_shielded_data = orchard_shielded_data
+                    .as_mut()
+                    .expect("Transaction has orchard_shielded_data");
+                let duplicate_action = orchard_shielded_data.actions.first().clone();
+                let duplicate_nullifier = duplicate_action.action.nullifier;
+                orchard_shielded_data.actions.push(duplicate_action);
+
+                duplicate_nullifier
+            }
+
+            #[cfg(feature = "tx_v6")]
+            Transaction::V6 {
+                orchard_shielded_data,
+                ..
+            } => {
+                let orchard_shielded_data = orchard_shielded_data
+                    .as_mut()
+                    .expect("Transaction has orchard_shielded_data");
+                let duplicate_action = orchard_shielded_data.actions.first().clone();
+                let duplicate_nullifier = duplicate_action.action.nullifier;
+                orchard_shielded_data.actions.push(duplicate_action);
+
+                duplicate_nullifier
+            }
+        };
 
         let verifier = Verifier::new_for_tests(
             &net,
@@ -3380,32 +3353,10 @@ fn coinbase_outputs_are_decryptable() -> Result<(), Report> {
             let is_heartwood = height >= NetworkUpgrade::Heartwood.activation_height(&net).unwrap();
             let coinbase = block.transactions.first().expect("coinbase transaction");
 
-<<<<<<< HEAD
-        // Check if the coinbase outputs are decryptable with an all-zero key.
-        if heartwood_onward
-            && (coinbase_tx.sapling_outputs().count() > 0 || coinbase_tx.orchard_action_count() > 0)
-        {
-            // We are only truly decrypting something if it's Heartwood-onward
-            // and there are relevant outputs.
-            tested_coinbase_txs += 1;
-        }
-        check::coinbase_outputs_are_decryptable(coinbase_tx, &network, height)
-            .expect("coinbase outputs must be decryptable with an all-zero key");
-
-        // For remaining transactions, check if existing outputs are NOT decryptable
-        // with an all-zero key, if applicable.
-        for tx in block.transactions.iter().skip(1) {
-            let has_outputs = tx.sapling_outputs().count() > 0 || tx.orchard_action_count() > 0;
-            if has_outputs && heartwood_onward {
-                tested_non_coinbase_txs += 1;
-                check::coinbase_outputs_are_decryptable(tx, &network, height).expect_err(
-                    "decrypting a non-coinbase output with an all-zero key should fail",
-=======
             if coinbase.has_shielded_outputs() && is_heartwood {
                 tested_post_heartwood_shielded_coinbase_tx = true;
                 check::coinbase_outputs_are_decryptable(coinbase, &net, height).expect(
                     "post-Heartwood shielded coinbase outputs must be decryptable with the zero key",
->>>>>>> zcash-v2.4.2
                 );
             }
 
@@ -3476,15 +3427,9 @@ fn coinbase_outputs_are_decryptable() -> Result<(), Report> {
 /// Given an Orchard action as a base, fill fields related to note encryption
 /// from the given test vector and returned the modified action.
 fn fill_action_with_note_encryption_test_vector(
-<<<<<<< HEAD
-    action: &zebra_chain::orchard::Action<OrchardVanilla>,
+    action: &Action<OrchardVanilla>,
     v: &zebra_test::vectors::TestVector,
-) -> zebra_chain::orchard::Action<OrchardVanilla> {
-=======
-    action: &Action,
-    v: &zebra_test::vectors::TestVector,
-) -> Action {
->>>>>>> zcash-v2.4.2
+) -> Action<OrchardVanilla> {
     let mut action = action.clone();
     action.cv = v.cv_net.try_into().expect("test vector must be valid");
     action.cm_x = pallas::Base::from_repr(v.cmx).unwrap();

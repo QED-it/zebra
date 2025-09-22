@@ -42,12 +42,10 @@ pub mod transparent;
 pub mod value_balance;
 pub mod work;
 
-<<<<<<< HEAD
 #[cfg(feature = "tx_v6")]
 pub mod orchard_zsa;
-=======
+
 pub use error::Error;
->>>>>>> zcash-v2.4.2
 
 #[cfg(any(test, feature = "proptest-impl"))]
 pub use block::LedgerState;

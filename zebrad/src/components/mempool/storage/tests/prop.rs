@@ -597,11 +597,6 @@ impl SpendConflictTestInput {
 
                 // No JoinSplits
                 Transaction::V1 { .. } | Transaction::V5 { .. } => {}
-<<<<<<< HEAD
-
-                // No JoinSplits
-=======
->>>>>>> zcash-v2.4.2
                 #[cfg(feature = "tx_v6")]
                 Transaction::V6 { .. } => {}
             }

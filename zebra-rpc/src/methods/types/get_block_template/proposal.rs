@@ -210,23 +210,10 @@ pub fn proposal_block_from_template(
         transactions.push(tx_template.data.as_ref().zcash_deserialize_into()?);
     }
 
-<<<<<<< HEAD:zebra-rpc/src/methods/get_block_template_rpcs/types/get_block_template/proposal.rs
-    let commitment_bytes = match network_upgrade {
-        NetworkUpgrade::Genesis
-        | NetworkUpgrade::BeforeOverwinter
-        | NetworkUpgrade::Overwinter
-        | NetworkUpgrade::Sapling
-        | NetworkUpgrade::Blossom
-        | NetworkUpgrade::Heartwood => panic!("pre-Canopy block templates not supported"),
-        NetworkUpgrade::Canopy => chain_history_root.bytes_in_serialized_order().into(),
-        NetworkUpgrade::Nu5 | NetworkUpgrade::Nu6 | NetworkUpgrade::Nu7 => {
-            block_commitments_hash.bytes_in_serialized_order().into()
-=======
     let commitment_bytes = match NetworkUpgrade::current(network, height) {
         NetworkUpgrade::Canopy => chain_history_root.bytes_in_serialized_order(),
         NetworkUpgrade::Nu5 | NetworkUpgrade::Nu6 | NetworkUpgrade::Nu6_1 | NetworkUpgrade::Nu7 => {
             block_commitments_hash.bytes_in_serialized_order()
->>>>>>> zcash-v2.4.2:zebra-rpc/src/methods/types/get_block_template/proposal.rs
         }
         _ => Err(SerializationError::Parse(
             "Zebra does not support generating pre-Canopy block templates",

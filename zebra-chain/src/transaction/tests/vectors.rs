@@ -336,210 +336,6 @@ fn empty_v6_round_trip() {
     tx_round_trip(&EMPTY_V6_TX)
 }
 
-fn tx_librustzcash_round_trip(tx: &Transaction) {
-    let _init_guard = zebra_test::init();
-
-<<<<<<< HEAD
-    let _alt_tx: zcash_primitives::transaction::Transaction = tx.try_into().expect(
-=======
-    let tx: &Transaction = &EMPTY_V5_TX;
-    let nu = tx.network_upgrade().expect("network upgrade");
-
-    tx.to_librustzcash(nu).expect(
->>>>>>> zcash-v2.4.2
-        "librustzcash deserialization might work for empty zebra serialized transactions. \
-        Hint: if empty transactions fail, but other transactions work, delete this test",
-    );
-}
-
-<<<<<<< HEAD
-/// Check if an empty V5 transaction can be deserialized by librustzcash too.
-#[test]
-fn empty_v5_librustzcash_round_trip() {
-    tx_librustzcash_round_trip(&EMPTY_V5_TX);
-}
-
-#[cfg(feature = "tx_v6")]
-/// Check if an empty V6 transaction can be deserialized by librustzcash too.
-#[test]
-fn empty_v6_librustzcash_round_trip() {
-    tx_librustzcash_round_trip(&EMPTY_V6_TX);
-}
-
-/// Do a round-trip test on fake v5 transactions created from v4 transactions
-/// in the block test vectors.
-///
-/// Covers Sapling only, Transparent only, and Sapling/Transparent v5
-/// transactions.
-#[test]
-fn fake_v5_round_trip() {
-    let _init_guard = zebra_test::init();
-    for network in Network::iter() {
-        fake_v5_round_trip_for_network(network);
-    }
-}
-
-fn fake_v5_round_trip_for_network(network: Network) {
-    let block_iter = network.block_iter();
-
-    let overwinter_activation_height = NetworkUpgrade::Overwinter
-        .activation_height(&network)
-        .expect("a valid height")
-        .0;
-
-    // skip blocks that are before overwinter as they will not have a valid consensus branch id
-    let blocks_after_overwinter =
-        block_iter.skip_while(|(height, _)| **height < overwinter_activation_height);
-
-    for (height, original_bytes) in blocks_after_overwinter {
-        let original_block = original_bytes
-            .zcash_deserialize_into::<Block>()
-            .expect("block is structurally valid");
-
-        // skip this block if it only contains v5 transactions,
-        // the block round-trip test covers it already
-        if original_block
-            .transactions
-            .iter()
-            .all(|trans| matches!(trans.as_ref(), &Transaction::V5 { .. }))
-        {
-            continue;
-        }
-
-        let mut fake_block = original_block.clone();
-        fake_block.transactions = fake_block
-            .transactions
-            .iter()
-            .map(AsRef::as_ref)
-            .map(|t| arbitrary::transaction_to_fake_v5(t, &network, Height(*height)))
-            .map(Into::into)
-            .collect();
-
-        // test each transaction
-        for (original_tx, fake_tx) in original_block
-            .transactions
-            .iter()
-            .zip(fake_block.transactions.iter())
-        {
-            assert_ne!(
-                &original_tx, &fake_tx,
-                "v1-v4 transactions must change when converted to fake v5"
-            );
-
-            let fake_bytes = fake_tx
-                .zcash_serialize_to_vec()
-                .expect("vec serialization is infallible");
-
-            assert_ne!(
-                &original_bytes[..],
-                fake_bytes,
-                "v1-v4 transaction data must change when converted to fake v5"
-            );
-
-            let fake_tx2 = fake_bytes
-                .zcash_deserialize_into::<Transaction>()
-                .expect("tx is structurally valid");
-
-            assert_eq!(fake_tx.as_ref(), &fake_tx2);
-
-            let fake_bytes2 = fake_tx2
-                .zcash_serialize_to_vec()
-                .expect("vec serialization is infallible");
-
-            assert_eq!(
-                fake_bytes, fake_bytes2,
-                "data must be equal if structs are equal"
-            );
-        }
-
-        // test full blocks
-        assert_ne!(
-            &original_block, &fake_block,
-            "v1-v4 transactions must change when converted to fake v5"
-        );
-
-        let fake_bytes = fake_block
-            .zcash_serialize_to_vec()
-            .expect("vec serialization is infallible");
-
-        assert_ne!(
-            &original_bytes[..],
-            fake_bytes,
-            "v1-v4 transaction data must change when converted to fake v5"
-        );
-
-        // skip fake blocks which exceed the block size limit
-        if fake_bytes.len() > MAX_BLOCK_BYTES.try_into().unwrap() {
-            continue;
-        }
-
-        let fake_block2 = fake_bytes
-            .zcash_deserialize_into::<Block>()
-            .expect("block is structurally valid");
-
-        assert_eq!(fake_block, fake_block2);
-
-        let fake_bytes2 = fake_block2
-            .zcash_serialize_to_vec()
-            .expect("vec serialization is infallible");
-
-        assert_eq!(
-            fake_bytes, fake_bytes2,
-            "data must be equal if structs are equal"
-        );
-    }
-}
-
-#[cfg(feature = "tx_v6")]
-/// Do a serialization round-trip on OrchardZSA workflow blocks and their V6
-/// transactions.
-#[test]
-fn v6_round_trip() {
-    use zebra_test::vectors::ORCHARD_ZSA_WORKFLOW_BLOCKS;
-
-    let _init_guard = zebra_test::init();
-
-    for block_bytes in ORCHARD_ZSA_WORKFLOW_BLOCKS.iter() {
-        let block = block_bytes
-            .zcash_deserialize_into::<Block>()
-            .expect("block is structurally valid");
-
-        // test full blocks
-        let block_bytes2 = block
-            .zcash_serialize_to_vec()
-            .expect("vec serialization is infallible");
-
-        assert_eq!(
-            block_bytes, &block_bytes2,
-            "data must be equal if structs are equal"
-        );
-
-        // test each transaction
-        for tx in &block.transactions {
-            let tx_bytes = tx
-                .zcash_serialize_to_vec()
-                .expect("vec serialization is infallible");
-
-            let tx2 = tx_bytes
-                .zcash_deserialize_into::<Transaction>()
-                .expect("tx is structurally valid");
-
-            assert_eq!(tx.as_ref(), &tx2);
-
-            let tx_bytes2 = tx2
-                .zcash_serialize_to_vec()
-                .expect("vec serialization is infallible");
-
-            assert_eq!(
-                tx_bytes, tx_bytes2,
-                "data must be equal if structs are equal"
-            );
-        }
-    }
-}
-
-=======
->>>>>>> zcash-v2.4.2
 #[test]
 fn invalid_orchard_nullifier() {
     let _init_guard = zebra_test::init();
@@ -660,9 +456,11 @@ fn v6_librustzcash_tx_conversion() {
             .iter()
             .filter(|tx| matches!(tx.as_ref(), &Transaction::V6 { .. }))
         {
+            let nu = tx.network_upgrade().expect("network upgrade");
+
             let _alt_tx: zcash_primitives::transaction::Transaction = tx
                 .as_ref()
-                .try_into()
+                .to_librustzcash(nu)
                 .expect("librustzcash conversion must work for zebra transactions");
         }
     }
@@ -1245,27 +1043,6 @@ fn binding_signatures() {
 
                             at_least_one_v5_checked = true;
                         }
-                    }
-                }
-                #[cfg(feature = "tx_v6")]
-                Transaction::V6 {
-                    sapling_shielded_data,
-                    ..
-                } => {
-                    if let Some(sapling_shielded_data) = sapling_shielded_data {
-                        let shielded_sighash =
-                            tx.sighash(upgrade.branch_id().unwrap(), HashType::ALL, &[], None);
-
-                        let bvk = redjubjub::VerificationKey::try_from(
-                            sapling_shielded_data.binding_verification_key(),
-                        )
-                        .expect("a valid redjubjub::VerificationKey");
-
-                        bvk.verify(
-                            shielded_sighash.as_ref(),
-                            &sapling_shielded_data.binding_sig,
-                        )
-                        .expect("must pass verification");
                     }
                 }
             }

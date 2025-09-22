@@ -1,8 +1,3 @@
-<<<<<<< HEAD
 # TODO: Upstream specifies `channel = "stable"` — consider restoring it before final merge.
 [toolchain]
-channel = "1.82.0"
-=======
-[toolchain]
-channel = "stable"
->>>>>>> zcash-v2.4.2
+channel = "1.85.0"

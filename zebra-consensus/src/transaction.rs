@@ -517,7 +517,7 @@ where
                     orchard_shielded_data,
                     ..
                 }
-                => Self::verify_v5_and_v6_transaction(
+                => Self::verify_v5_transaction(
                     &req,
                     &network,
                     script_verifier,
@@ -526,19 +526,6 @@ where
                     orchard_shielded_data,
                 )?,
                 #[cfg(feature = "tx_v6")]
-                Transaction::V6 {
-                    sapling_shielded_data,
-                    orchard_shielded_data,
-                    ..
-                } => Self::verify_v5_and_v6_transaction(
-                    &req,
-                    &network,
-                    script_verifier,
-                    cached_ffi_transaction.clone(),
-                    sapling_shielded_data,
-                    orchard_shielded_data,
-                )?,
-                #[cfg(feature="tx_v6")]
                 Transaction::V6 {
                     sapling_shielded_data,
                     orchard_shielded_data,
@@ -639,30 +626,7 @@ where
     }
 }
 
-<<<<<<< HEAD
-trait OrchardTransaction {
-    const SUPPORTED_NETWORK_UPGRADES: &'static [NetworkUpgrade];
-}
-
-impl OrchardTransaction for orchard::OrchardVanilla {
-    // FIXME: is this a correct set of Nu values?
-    const SUPPORTED_NETWORK_UPGRADES: &'static [NetworkUpgrade] = &[
-        NetworkUpgrade::Nu5,
-        NetworkUpgrade::Nu6,
-        #[cfg(feature = "tx_v6")]
-        NetworkUpgrade::Nu7,
-    ];
-}
-
-#[cfg(feature = "tx_v6")]
-impl OrchardTransaction for orchard::OrchardZSA {
-    const SUPPORTED_NETWORK_UPGRADES: &'static [NetworkUpgrade] = &[NetworkUpgrade::Nu7];
-}
-
-impl<ZS> Verifier<ZS>
-=======
 impl<ZS, Mempool> Verifier<ZS, Mempool>
->>>>>>> zcash-v2.4.2
 where
     ZS: Service<zs::Request, Response = zs::Response, Error = BoxError> + Send + Clone + 'static,
     ZS::Future: Send + 'static,
@@ -973,10 +937,7 @@ where
             | NetworkUpgrade::Canopy
             | NetworkUpgrade::Nu5
             | NetworkUpgrade::Nu6
-<<<<<<< HEAD
-=======
             | NetworkUpgrade::Nu6_1
->>>>>>> zcash-v2.4.2
             | NetworkUpgrade::Nu7 => Ok(()),
 
             // Does not support V4 transactions
@@ -1009,7 +970,7 @@ where
     /// - the sapling shielded data of the transaction, if any
     /// - the orchard shielded data of the transaction, if any
     #[allow(clippy::unwrap_in_result)]
-    fn verify_v5_and_v6_transaction<V: primitives::halo2::OrchardVerifier + OrchardTransaction>(
+    fn verify_v5_transaction<V: primitives::halo2::OrchardVerifier>(
         request: &Request,
         network: &Network,
         script_verifier: script::Verifier,
@@ -1020,11 +981,7 @@ where
         let transaction = request.transaction();
         let nu = request.upgrade(network);
 
-<<<<<<< HEAD
-        Self::verify_v5_and_v6_transaction_network_upgrade::<V>(&transaction, upgrade)?;
-=======
         Self::verify_v5_transaction_network_upgrade(&transaction, nu)?;
->>>>>>> zcash-v2.4.2
 
         let shielded_sighash = cached_ffi_transaction
             .sighasher()
@@ -1045,20 +1002,13 @@ where
         )?))
     }
 
-    /// Verifies if a V5/V6 `transaction` is supported by `network_upgrade`.
-    fn verify_v5_and_v6_transaction_network_upgrade<
-        V: primitives::halo2::OrchardVerifier + OrchardTransaction,
-    >(
+    /// Verifies if a V5 `transaction` is supported by `network_upgrade`.
+    fn verify_v5_transaction_network_upgrade(
         transaction: &Transaction,
         network_upgrade: NetworkUpgrade,
     ) -> Result<(), TransactionError> {
-        if V::SUPPORTED_NETWORK_UPGRADES.contains(&network_upgrade) {
-            // FIXME: Extend this comment to include V6. Also, it may be confusing to
-            // mention version group IDs and other rules here since they aren’t actually
-            // checked. This function only verifies compatibility between the transaction
-            // version and the network upgrade.
-
-            // Supports V5/V6 transactions
+        match network_upgrade {
+            // Supports V5 transactions
             //
             // # Consensus
             //
@@ -1070,12 +1020,6 @@ where
             //
             // Note: Here we verify the transaction version number of the above rule, the group
             // id is checked in zebra-chain crate, in the transaction serialize.
-<<<<<<< HEAD
-            Ok(())
-        } else {
-            // Does not support V5/V6 transactions
-            Err(TransactionError::UnsupportedByNetworkUpgrade(
-=======
             NetworkUpgrade::Nu5
             | NetworkUpgrade::Nu6
             | NetworkUpgrade::Nu6_1
@@ -1089,22 +1033,22 @@ where
             | NetworkUpgrade::Blossom
             | NetworkUpgrade::Heartwood
             | NetworkUpgrade::Canopy => Err(TransactionError::UnsupportedByNetworkUpgrade(
->>>>>>> zcash-v2.4.2
                 transaction.version(),
                 network_upgrade,
-            ))
+            )),
         }
     }
 
     /// Passthrough to verify_v5_transaction, but for V6 transactions.
+    // FIXME: Specify OrchardZS explicitlhy instead of making this generic
     #[cfg(feature = "tx_v6")]
-    fn verify_v6_transaction(
+    fn verify_v6_transaction<V: primitives::halo2::OrchardVerifier>(
         request: &Request,
         network: &Network,
         script_verifier: script::Verifier,
         cached_ffi_transaction: Arc<CachedFfiTransaction>,
         sapling_shielded_data: &Option<sapling::ShieldedData<sapling::SharedAnchor>>,
-        orchard_shielded_data: &Option<orchard::ShieldedData>,
+        orchard_shielded_data: &Option<orchard::ShieldedData<V>>,
     ) -> Result<AsyncChecks, TransactionError> {
         Self::verify_v5_transaction(
             request,

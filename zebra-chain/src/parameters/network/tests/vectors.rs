@@ -145,11 +145,7 @@ fn activates_network_upgrades_correctly() {
         (Network::Mainnet, MAINNET_ACTIVATION_HEIGHTS),
         (Network::new_default_testnet(), TESTNET_ACTIVATION_HEIGHTS),
         (
-<<<<<<< HEAD
-            Network::new_regtest(None, None, None),
-=======
             Network::new_regtest(Default::default()),
->>>>>>> zcash-v2.4.2
             expected_default_regtest_activation_heights,
         ),
     ] {
@@ -200,11 +196,7 @@ fn check_configured_network_name() {
         "Mainnet should be displayed as 'Mainnet'"
     );
     assert_eq!(
-<<<<<<< HEAD
-        Network::new_regtest(None, None, None).to_string(),
-=======
         Network::new_regtest(Default::default()).to_string(),
->>>>>>> zcash-v2.4.2
         "Regtest",
         "Regtest should be displayed as 'Regtest'"
     );

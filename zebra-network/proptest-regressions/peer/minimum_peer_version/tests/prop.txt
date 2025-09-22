@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 5678865ceeaa402517ea865cce77dd8e030093ffac6e0af95df784d8b84dd60b # shrinks to network = Mainnet, block_height = Some(Height(3111000))

@@ -36,6 +36,8 @@ proptest-impl = [
     "zebra-chain/proptest-impl",
 ]
 
+tx_v6 = []
+
 [dependencies]
 chrono = { workspace = true, features = ["clock", "std"] }
 futures = { workspace = true }
@@ -79,15 +81,8 @@ nix = { workspace = true, features = ["signal"] }
 zcash_address = { workspace = true }
 zcash_keys = { workspace = true }
 zcash_primitives = { workspace = true, features = ["transparent-inputs"] }
-<<<<<<< HEAD
-zcash_protocol.workspace = true
-
-# ECC deps used by getblocktemplate-rpcs feature
-zcash_address = { workspace = true, optional = true}
-=======
 zcash_protocol = { workspace = true }
 zcash_transparent = { workspace = true }
->>>>>>> zcash-v2.4.2
 
 # Test-only feature proptest-impl
 proptest = { workspace = true, optional = true }

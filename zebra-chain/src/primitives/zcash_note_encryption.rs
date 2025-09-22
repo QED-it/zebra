@@ -46,8 +46,7 @@ pub fn decrypts_successfully(tx: &Transaction, network: &Network, height: Height
         }
     }
 
-<<<<<<< HEAD
-    if let Some(bundle) = alt_tx.orchard_bundle() {
+    if let Some(bundle) = tx.orchard_bundle() {
         let is_decrypted_successfully = match bundle {
             OrchardBundle::OrchardVanilla(bundle) => orchard_bundle_decrypts_successfully(bundle),
             OrchardBundle::OrchardZSA(bundle) => orchard_bundle_decrypts_successfully(bundle),
@@ -55,21 +54,6 @@ pub fn decrypts_successfully(tx: &Transaction, network: &Network, height: Height
 
         if !is_decrypted_successfully {
             return false;
-=======
-    if let Some(bundle) = tx.orchard_bundle() {
-        for act in bundle.actions() {
-            if zcash_note_encryption::try_output_recovery_with_ovk(
-                &orchard::note_encryption::OrchardDomain::for_action(act),
-                &orchard::keys::OutgoingViewingKey::from([0u8; 32]),
-                act,
-                act.cv_net(),
-                &act.encrypted_note().out_ciphertext,
-            )
-            .is_none()
-            {
-                return false;
-            }
->>>>>>> zcash-v2.4.2
         }
     }
 

@@ -102,14 +102,10 @@ impl NonEmptyHistoryTree {
                 )?;
                 InnerHistoryTree::PreOrchard(tree)
             }
-<<<<<<< HEAD
-            NetworkUpgrade::Nu5 | NetworkUpgrade::Nu6 | NetworkUpgrade::Nu7 => {
-=======
             NetworkUpgrade::Nu5
             | NetworkUpgrade::Nu6
             | NetworkUpgrade::Nu6_1
             | NetworkUpgrade::Nu7 => {
->>>>>>> zcash-v2.4.2
                 let tree = Tree::<OrchardOnward>::new_from_cache(
                     network,
                     network_upgrade,
@@ -163,14 +159,10 @@ impl NonEmptyHistoryTree {
                 )?;
                 (InnerHistoryTree::PreOrchard(tree), entry)
             }
-<<<<<<< HEAD
-            NetworkUpgrade::Nu5 | NetworkUpgrade::Nu6 | NetworkUpgrade::Nu7 => {
-=======
             NetworkUpgrade::Nu5
             | NetworkUpgrade::Nu6
             | NetworkUpgrade::Nu6_1
             | NetworkUpgrade::Nu7 => {
->>>>>>> zcash-v2.4.2
                 let (tree, entry) = Tree::<OrchardOnward>::new_from_block(
                     network,
                     block,
