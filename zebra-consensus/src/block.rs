@@ -25,7 +25,7 @@ use tracing::Instrument;
 use zebra_chain::{
     amount::Amount,
     block,
-    parameters::{subsidy::FundingStreamReceiver, Network},
+    parameters::{subsidy::SubsidyError, Network},
     transaction, transparent,
     work::equihash,
 };
@@ -79,7 +79,6 @@ pub enum VerifyBlockError {
     // TODO: make this into a concrete type, and add it to is_duplicate_request() (#2908)
     Commit(#[source] BoxError),
 
-    #[cfg(feature = "getblocktemplate-rpcs")]
     #[error("unable to validate block proposal: failed semantic verification (proof of work is not checked for proposals): {0}")]
     // TODO: make this into a concrete type (see #5732)
     ValidateProposal(#[source] BoxError),
@@ -120,7 +119,7 @@ impl VerifyBlockError {
 ///
 /// See:
 /// <https://github.com/zcash/zcash/blob/bad7f7eadbbb3466bebe3354266c7f69f607fcfd/src/consensus/consensus.h#L30>
-pub const MAX_BLOCK_SIGOPS: u64 = 20_000;
+pub const MAX_BLOCK_SIGOPS: u32 = 20_000;
 
 impl<S, V> SemanticBlockVerifier<S, V>
 where
@@ -228,9 +227,12 @@ where
                 .map_err(VerifyBlockError::Time)?;
             let coinbase_tx = check::coinbase_is_first(&block)?;
 
-            let expected_block_subsidy = subsidy::general::block_subsidy(height, &network)?;
+            let expected_block_subsidy =
+                zebra_chain::parameters::subsidy::block_subsidy(height, &network)?;
 
-            check::subsidy_is_valid(&block, &network, expected_block_subsidy)?;
+            // See [ZIP-1015](https://zips.z.cash/zip-1015).
+            let deferred_pool_balance_change =
+                check::subsidy_is_valid(&block, &network, expected_block_subsidy)?;
 
             // Now do the slower checks
 
@@ -270,7 +272,7 @@ where
             // Get the transaction results back from the transaction verifier.
 
             // Sum up some block totals from the transaction responses.
-            let mut legacy_sigop_count = 0;
+            let mut sigops = 0;
             let mut block_miner_fees = Ok(Amount::zero());
 
             use futures::StreamExt;
@@ -285,7 +287,7 @@ where
                     "unexpected response from transaction verifier: {response:?}"
                 );
 
-                legacy_sigop_count += response.legacy_sigop_count();
+                sigops += response.sigops();
 
                 // Coinbase transactions consume the miner fee,
                 // so they don't add any value to the block's total miner fee.
@@ -296,23 +298,13 @@ where
 
             // Check the summed block totals
 
-            if legacy_sigop_count > MAX_BLOCK_SIGOPS {
+            if sigops > MAX_BLOCK_SIGOPS {
                 Err(BlockError::TooManyTransparentSignatureOperations {
                     height,
                     hash,
-                    legacy_sigop_count,
+                    sigops,
                 })?;
             }
-
-            // See [ZIP-1015](https://zips.z.cash/zip-1015).
-            let expected_deferred_amount = subsidy::funding_streams::funding_stream_values(
-                height,
-                &network,
-                expected_block_subsidy,
-            )
-            .expect("we always expect a funding stream hashmap response even if empty")
-            .remove(&FundingStreamReceiver::Deferred)
-            .unwrap_or_default();
 
             let block_miner_fees =
                 block_miner_fees.map_err(|amount_error| BlockError::SummingMinerFees {
@@ -326,7 +318,7 @@ where
                 height,
                 block_miner_fees,
                 expected_block_subsidy,
-                expected_deferred_amount,
+                deferred_pool_balance_change,
                 &network,
             )?;
 
@@ -340,11 +332,10 @@ where
                 height,
                 new_outputs,
                 transaction_hashes,
-                deferred_balance: Some(expected_deferred_amount),
+                deferred_pool_balance_change: Some(deferred_pool_balance_change),
             };
 
-            // Return early for proposal requests when getblocktemplate-rpcs feature is enabled
-            #[cfg(feature = "getblocktemplate-rpcs")]
+            // Return early for proposal requests.
             if request.is_proposal() {
                 return match state_service
                     .ready()

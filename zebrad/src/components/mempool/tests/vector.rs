@@ -53,8 +53,15 @@ async fn mempool_service_basic_single() -> Result<(), Report> {
     // inserted except one (the genesis block transaction).
     let cost_limit = more_transactions.iter().map(|tx| tx.cost()).sum();
 
-    let (mut service, _peer_set, _state_service, _chain_tip_change, _tx_verifier, mut recent_syncs) =
-        setup(&network, cost_limit, true).await;
+    let (
+        mut service,
+        _peer_set,
+        _state_service,
+        _chain_tip_change,
+        _tx_verifier,
+        mut recent_syncs,
+        _mempool_transaction_receiver,
+    ) = setup(&network, cost_limit, true).await;
 
     // Enable the mempool
     service.enable(&mut recent_syncs).await;
@@ -170,6 +177,41 @@ async fn mempool_service_basic_single() -> Result<(), Report> {
     assert!(queued_responses[0].is_ok());
     assert_eq!(service.tx_downloads().in_flight(), 1);
 
+    // Test `Request::QueueStats`
+    let response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(Request::QueueStats)
+        .await
+        .unwrap();
+
+    let (actual_size, actual_bytes, actual_usage) = match response {
+        Response::QueueStats {
+            size,
+            bytes,
+            usage,
+            fully_notified: None,
+        } => (size, bytes, usage),
+        _ => unreachable!("expected QueueStats response"),
+    };
+
+    // Expected values based on storage contents
+    let expected_size = service.storage().transaction_count();
+    let expected_bytes: usize = service
+        .storage()
+        .transactions()
+        .values()
+        .map(|tx| tx.transaction.size)
+        .sum();
+
+    // TODO: Derive memory usage when available
+    let expected_usage = expected_bytes;
+
+    assert_eq!(actual_size, expected_size, "QueueStats size mismatch");
+    assert_eq!(actual_bytes, expected_bytes, "QueueStats bytes mismatch");
+    assert_eq!(actual_usage, expected_usage, "QueueStats usage mismatch");
+
     Ok(())
 }
 
@@ -202,8 +244,15 @@ async fn mempool_queue_single() -> Result<(), Report> {
         .map(|tx| tx.cost())
         .sum();
 
-    let (mut service, _peer_set, _state_service, _chain_tip_change, _tx_verifier, mut recent_syncs) =
-        setup(&network, cost_limit, true).await;
+    let (
+        mut service,
+        _peer_set,
+        _state_service,
+        _chain_tip_change,
+        _tx_verifier,
+        mut recent_syncs,
+        _mempool_transaction_receiver,
+    ) = setup(&network, cost_limit, true).await;
 
     // Enable the mempool
     service.enable(&mut recent_syncs).await;
@@ -276,8 +325,15 @@ async fn mempool_service_disabled() -> Result<(), Report> {
     // Using the mainnet for now
     let network = Network::Mainnet;
 
-    let (mut service, _peer_set, _state_service, _chain_tip_change, _tx_verifier, mut recent_syncs) =
-        setup(&network, u64::MAX, true).await;
+    let (
+        mut service,
+        _peer_set,
+        _state_service,
+        _chain_tip_change,
+        _tx_verifier,
+        mut recent_syncs,
+        _mempool_transaction_receiver,
+    ) = setup(&network, u64::MAX, true).await;
 
     // get the genesis block transactions from the Zcash blockchain.
     let mut unmined_transactions = network.unmined_transactions_in_blocks(1..=10);
@@ -378,6 +434,33 @@ async fn mempool_service_disabled() -> Result<(), Report> {
         MempoolError::Disabled
     );
 
+    // Test if mempool returns to QueueStats request correctly when disabled
+    let response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(Request::QueueStats)
+        .await
+        .unwrap();
+
+    let (size, bytes, usage, fully_notified) = match response {
+        Response::QueueStats {
+            size,
+            bytes,
+            usage,
+            fully_notified,
+        } => (size, bytes, usage, fully_notified),
+        _ => unreachable!("expected QueueStats response"),
+    };
+
+    assert_eq!(size, 0, "size should be zero when mempool is disabled");
+    assert_eq!(bytes, 0, "bytes should be zero when mempool is disabled");
+    assert_eq!(usage, 0, "usage should be zero when mempool is disabled");
+    assert_eq!(
+        fully_notified, None,
+        "fully_notified should be None when mempool is disabled"
+    );
+
     Ok(())
 }
 
@@ -400,6 +483,7 @@ async fn mempool_cancel_mined() -> Result<(), Report> {
         mut chain_tip_change,
         _tx_verifier,
         mut recent_syncs,
+        mut mempool_transaction_receiver,
     ) = setup(&network, u64::MAX, true).await;
 
     // Enable the mempool
@@ -506,6 +590,16 @@ async fn mempool_cancel_mined() -> Result<(), Report> {
         "queued tx should fail to download and verify due to chain tip change"
     );
 
+    let mempool_change = timeout(Duration::from_secs(3), mempool_transaction_receiver.recv())
+        .await
+        .expect("should not timeout")
+        .expect("recv should return Ok");
+
+    assert_eq!(
+        mempool_change,
+        MempoolChange::invalidated([txid].into_iter().collect())
+    );
+
     Ok(())
 }
 
@@ -528,6 +622,7 @@ async fn mempool_cancel_downloads_after_network_upgrade() -> Result<(), Report> 
         mut chain_tip_change,
         _tx_verifier,
         mut recent_syncs,
+        _mempool_transaction_receiver,
     ) = setup(&network, u64::MAX, true).await;
 
     // Enable the mempool
@@ -615,6 +710,7 @@ async fn mempool_failed_verification_is_rejected() -> Result<(), Report> {
         _chain_tip_change,
         mut tx_verifier,
         mut recent_syncs,
+        mut mempool_transaction_receiver,
     ) = setup(&network, u64::MAX, true).await;
 
     // Get transactions to use in the test
@@ -674,6 +770,16 @@ async fn mempool_failed_verification_is_rejected() -> Result<(), Report> {
         MempoolError::StorageExactTip(ExactTipRejectionError::FailedVerification(_))
     ));
 
+    let mempool_change = timeout(Duration::from_secs(3), mempool_transaction_receiver.recv())
+        .await
+        .expect("should not timeout")
+        .expect("recv should return Ok");
+
+    assert_eq!(
+        mempool_change,
+        MempoolChange::invalidated([rejected_tx.transaction.id].into_iter().collect())
+    );
+
     Ok(())
 }
 
@@ -690,6 +796,7 @@ async fn mempool_failed_download_is_not_rejected() -> Result<(), Report> {
         _chain_tip_change,
         _tx_verifier,
         mut recent_syncs,
+        mut mempool_transaction_receiver,
     ) = setup(&network, u64::MAX, true).await;
 
     // Get transactions to use in the test
@@ -749,6 +856,16 @@ async fn mempool_failed_download_is_not_rejected() -> Result<(), Report> {
     assert_eq!(queued_responses.len(), 1);
     assert!(queued_responses[0].is_ok());
 
+    let mempool_change = timeout(Duration::from_secs(3), mempool_transaction_receiver.recv())
+        .await
+        .expect("should not timeout")
+        .expect("recv should return Ok");
+
+    assert_eq!(
+        mempool_change,
+        MempoolChange::invalidated([rejected_valid_tx.transaction.id].into_iter().collect())
+    );
+
     Ok(())
 }
 
@@ -775,6 +892,7 @@ async fn mempool_reverifies_after_tip_change() -> Result<(), Report> {
         mut chain_tip_change,
         mut tx_verifier,
         mut recent_syncs,
+        _mempool_transaction_receiver,
     ) = setup(&network, u64::MAX, true).await;
 
     // Enable the mempool
@@ -936,6 +1054,7 @@ async fn mempool_responds_to_await_output() -> Result<(), Report> {
         _chain_tip_change,
         mut tx_verifier,
         mut recent_syncs,
+        mut mempool_transaction_receiver,
     ) = setup(&network, u64::MAX, true).await;
     mempool.enable(&mut recent_syncs).await;
 
@@ -945,6 +1064,7 @@ async fn mempool_responds_to_await_output() -> Result<(), Report> {
         .expect("should have at least 1 tx with transparent outputs");
 
     let unmined_tx = verified_unmined_tx.transaction.clone();
+    let unmined_tx_id = unmined_tx.id;
     let output_index = 0;
     let outpoint = OutPoint::from_usize(unmined_tx.id.mined_id(), output_index);
     let expected_output = unmined_tx
@@ -1042,6 +1162,16 @@ async fn mempool_responds_to_await_output() -> Result<(), Report> {
         "AwaitOutput response should match expected output"
     );
 
+    let mempool_change = timeout(Duration::from_secs(3), mempool_transaction_receiver.recv())
+        .await
+        .expect("should not timeout")
+        .expect("recv should return Ok");
+
+    assert_eq!(
+        mempool_change,
+        MempoolChange::added([unmined_tx_id].into_iter().collect())
+    );
+
     Ok(())
 }
 
@@ -1057,6 +1187,7 @@ async fn setup(
     ChainTipChange,
     MockTxVerifier,
     RecentSyncLengths,
+    tokio::sync::broadcast::Receiver<MempoolChange>,
 ) {
     let peer_set = MockService::build().for_unit_tests();
 
@@ -1064,13 +1195,13 @@ async fn setup(
     let state_config = StateConfig::ephemeral();
     let (state, _read_only_state_service, latest_chain_tip, mut chain_tip_change) =
         zebra_state::init(state_config, network, Height::MAX, 0);
-    let mut state_service = ServiceBuilder::new().buffer(1).service(state);
+    let mut state_service = ServiceBuilder::new().buffer(10).service(state);
 
     let tx_verifier = MockService::build().for_unit_tests();
 
     let (sync_status, recent_syncs) = SyncStatus::new();
     let (misbehavior_tx, _misbehavior_rx) = tokio::sync::mpsc::channel(1);
-    let (mempool, mut mempool_transaction_receiver) = Mempool::new(
+    let (mempool, mempool_transaction_subscriber) = Mempool::new(
         &mempool::Config {
             tx_cost_limit,
             ..Default::default()
@@ -1084,6 +1215,7 @@ async fn setup(
         misbehavior_tx,
     );
 
+    let mut mempool_transaction_receiver = mempool_transaction_subscriber.subscribe();
     tokio::spawn(async move { while mempool_transaction_receiver.recv().await.is_ok() {} });
 
     if should_commit_genesis_block {
@@ -1116,5 +1248,6 @@ async fn setup(
         chain_tip_change,
         tx_verifier,
         recent_syncs,
+        mempool_transaction_subscriber.subscribe(),
     )
 }

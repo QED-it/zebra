@@ -20,9 +20,9 @@
 //! - `GetTaddressBalanceStream`: Covered.
 //!
 //! - `GetMempoolTx`: Covered by the send_transaction_test,
-//!                   currently disabled by `lightwalletd`.
+//!   currently disabled by `lightwalletd`.
 //! - `GetMempoolStream`: Covered by the send_transaction_test,
-//!                       currently disabled by `lightwalletd`.
+//!   currently disabled by `lightwalletd`.
 //!
 //! - `GetTreeState`: Covered.
 //!
@@ -301,7 +301,12 @@ pub async fn run() -> Result<()> {
 
     let mut all_stream_addresses = Vec::new();
     let mut all_balance_streams = Vec::new();
-    for &fs_receiver in network.funding_streams(lwd_tip_height).recipients().keys() {
+    for &fs_receiver in network
+        .funding_streams(lwd_tip_height)
+        .unwrap_or(network.all_funding_streams().last().unwrap())
+        .recipients()
+        .keys()
+    {
         let Some(fs_address) = funding_stream_address(lwd_tip_height, &network, fs_receiver) else {
             // Skip if the lightwalletd tip height is above the funding stream end height.
             continue;

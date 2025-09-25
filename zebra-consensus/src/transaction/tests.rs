@@ -11,13 +11,14 @@ use chrono::{DateTime, TimeZone, Utc};
 use color_eyre::eyre::Report;
 use futures::{FutureExt, TryFutureExt};
 use halo2::pasta::{group::ff::PrimeField, pallas};
+use tokio::time::timeout;
 use tower::{buffer::Buffer, service_fn, ServiceExt};
 
 use zebra_chain::{
     amount::{Amount, NonNegative},
     block::{self, Block, Height},
     orchard::{Action, AuthorizedAction, Flags},
-    parameters::{Network, NetworkUpgrade},
+    parameters::{testnet::ConfiguredActivationHeights, Network, NetworkUpgrade},
     primitives::{ed25519, x25519, Groth16Proof},
     sapling,
     serialization::{DateTime32, ZcashDeserialize, ZcashDeserializeInto},
@@ -712,7 +713,7 @@ async fn mempool_request_with_unmined_output_spends_is_accepted() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn skips_verification_of_block_transactions_in_mempool() {
     let mut state: MockService<_, _, _, _> = MockService::build().for_prop_tests();
     let mempool: MockService<_, _, _, _> = MockService::build().for_prop_tests();
@@ -797,6 +798,9 @@ async fn skips_verification_of_block_transactions_in_mempool() {
             .respond(mempool::Response::UnspentOutput(output));
     });
 
+    // Briefly yield and sleep so the spawned task can first expect an await output request.
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
     let verifier_response = verifier
         .clone()
         .oneshot(Request::Mempool {
@@ -826,7 +830,7 @@ async fn skips_verification_of_block_transactions_in_mempool() {
 
     let mut mempool_clone = mempool.clone();
     tokio::spawn(async move {
-        for _ in 0..3 {
+        for _ in 0..2 {
             mempool_clone
                 .expect_request(mempool::Request::TransactionWithDepsByMinedId(tx_hash))
                 .await
@@ -846,6 +850,9 @@ async fn skips_verification_of_block_transactions_in_mempool() {
         height,
         time: Utc::now(),
     };
+
+    // Briefly yield and sleep so the spawned task can first expect the requests.
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
     let crate::transaction::Response::Block { .. } = verifier
         .clone()
@@ -873,27 +880,13 @@ async fn skips_verification_of_block_transactions_in_mempool() {
         panic!("unexpected response variant from transaction verifier for Block request")
     };
 
-    let verifier_response_err = *verifier
-        .clone()
-        .oneshot(make_request(Arc::new(HashSet::new())))
-        .await
-        .expect_err("should return Err without calling state service")
-        .downcast::<TransactionError>()
-        .expect("tx verifier error type should be TransactionError");
-
-    assert_eq!(
-        verifier_response_err,
-        TransactionError::TransparentInputNotFound,
-        "should be a transparent input not found error"
-    );
-
     tokio::time::sleep(POLL_MEMPOOL_DELAY * 2).await;
     // polled before AwaitOutput request, after a mempool transaction with transparent outputs,
     // is successfully verified, and twice more when checking if a transaction in a block is
     // already the mempool.
     assert_eq!(
         mempool.poll_count(),
-        5,
+        4,
         "the mempool service should have been polled 4 times"
     );
 }
@@ -1007,7 +1000,15 @@ async fn mempool_request_with_immature_spend_is_rejected() {
 async fn mempool_request_with_transparent_coinbase_spend_is_accepted_on_regtest() {
     let _init_guard = zebra_test::init();
 
-    let network = Network::new_regtest(None, Some(1_000));
+    let network = Network::new_regtest(
+        ConfiguredActivationHeights {
+            canopy: Some(1),
+            nu5: Some(100),
+            nu6: Some(1_000),
+            ..Default::default()
+        }
+        .into(),
+    );
     let mut state: MockService<_, _, _, _> = MockService::build().for_unit_tests();
     let verifier = Verifier::new_for_tests(&network, state.clone());
 
@@ -1796,7 +1797,9 @@ fn v4_transaction_with_conflicting_sprout_nullifier_inside_joinsplit_is_rejected
         };
 
         // Sign the transaction
-        let sighash = transaction.sighash(nu, HashType::ALL, &[], None);
+        let sighash = transaction
+            .sighash(nu, HashType::ALL, Arc::new(Vec::new()), None)
+            .expect("network upgrade should be valid for tx");
 
         match &mut transaction {
             Transaction::V4 {
@@ -1869,7 +1872,9 @@ fn v4_transaction_with_conflicting_sprout_nullifier_across_joinsplits_is_rejecte
         };
 
         // Sign the transaction
-        let sighash = transaction.sighash(nu, HashType::ALL, &[], None);
+        let sighash = transaction
+            .sighash(nu, HashType::ALL, Arc::new(Vec::new()), None)
+            .expect("network upgrade should be valid for tx");
 
         match &mut transaction {
             Transaction::V4 {
@@ -2127,8 +2132,9 @@ async fn v5_coinbase_transaction_expiry_height() {
 
     // Setting the new expiry height as the block height will activate NU6, so we need to set NU6
     // for the tx as well.
+    let height = new_expiry_height;
     new_transaction
-        .update_network_upgrade(NetworkUpgrade::Nu6)
+        .update_network_upgrade(NetworkUpgrade::current(&network, height))
         .expect("updating the network upgrade for a V5 tx should succeed");
 
     let verification_result = verifier
@@ -2138,7 +2144,7 @@ async fn v5_coinbase_transaction_expiry_height() {
             transaction: Arc::new(new_transaction.clone()),
             known_utxos: Arc::new(HashMap::new()),
             known_outpoint_hashes: Arc::new(HashSet::new()),
-            height: new_expiry_height,
+            height,
             time: DateTime::<Utc>::MAX_UTC,
         })
         .await;
@@ -2505,8 +2511,10 @@ async fn v4_with_joinsplit_is_rejected_for_modification(
 
     let (height, mut transaction) = test_transactions(&network)
         .rev()
-        .filter(|(_, transaction)| !transaction.is_coinbase() && transaction.inputs().is_empty())
-        .find(|(_, transaction)| transaction.sprout_groth16_joinsplits().next().is_some())
+        .filter(|(_, tx)| {
+            !tx.is_coinbase() && tx.inputs().is_empty() && !tx.has_sapling_shielded_data()
+        })
+        .find(|(_, tx)| tx.sprout_groth16_joinsplits().next().is_some())
         .expect("There should be a tx with Groth16 JoinSplits.");
 
     let expected_error = Err(expected_error);
@@ -2585,16 +2593,19 @@ fn v4_with_sapling_spends() {
         let verifier = Verifier::new_for_tests(&network, state_service);
 
         // Test the transaction verifier
-        let result = verifier
-            .oneshot(Request::Block {
+        let result = timeout(
+            std::time::Duration::from_secs(30),
+            verifier.oneshot(Request::Block {
                 transaction_hash: transaction.hash(),
                 transaction,
                 known_utxos: Arc::new(HashMap::new()),
                 known_outpoint_hashes: Arc::new(HashSet::new()),
                 height,
                 time: DateTime::<Utc>::MAX_UTC,
-            })
-            .await;
+            }),
+        )
+        .await
+        .expect("timeout expired");
 
         assert_eq!(
             result.expect("unexpected error response").tx_id(),
@@ -2717,8 +2728,9 @@ async fn v5_with_sapling_spends() {
         );
 
         assert_eq!(
-            verifier
-                .oneshot(Request::Block {
+            timeout(
+                std::time::Duration::from_secs(30),
+                verifier.oneshot(Request::Block {
                     transaction_hash: tx.hash(),
                     transaction: Arc::new(tx),
                     known_utxos: Arc::new(HashMap::new()),
@@ -2726,9 +2738,11 @@ async fn v5_with_sapling_spends() {
                     height,
                     time: DateTime::<Utc>::MAX_UTC,
                 })
-                .await
-                .expect("unexpected error response")
-                .tx_id(),
+            )
+            .await
+            .expect("timeout expired")
+            .expect("unexpected error response")
+            .tx_id(),
             expected_hash
         );
     }
@@ -2865,7 +2879,12 @@ async fn v5_consensus_branch_ids() {
 
         while let Some(next_nu) = network_upgrade.next_upgrade() {
             // Check an outdated network upgrade.
-            let height = next_nu.activation_height(&network).expect("height");
+            let Some(height) = next_nu.activation_height(&network) else {
+                tracing::warn!(?next_nu, "missing activation height",);
+                // Shift the network upgrade for the next loop iteration.
+                network_upgrade = next_nu;
+                continue;
+            };
 
             let block_req = verifier
                 .clone()

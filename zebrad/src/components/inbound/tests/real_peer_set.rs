@@ -21,8 +21,7 @@ use zebra_network::{
     Config as NetworkConfig, InventoryResponse, PeerError, Request, Response, SharedPeerError,
 };
 use zebra_node_services::mempool;
-#[cfg(feature = "getblocktemplate-rpcs")]
-use zebra_rpc::methods::get_block_template_rpcs::types::submit_block::SubmitBlockChannel;
+use zebra_rpc::SubmitBlockChannel;
 use zebra_state::Config as StateConfig;
 use zebra_test::mock_service::{MockService, PanicAssertion};
 
@@ -185,10 +184,10 @@ async fn inbound_block_empty_state_notfound() -> Result<(), crate::BoxError> {
         assert_eq!(missing_error.inner_debug(), expected.inner_debug());
     } else {
         unreachable!(
-                "peer::Connection should map missing `BlocksByHash` responses as `Err(SharedPeerError(NotFoundResponse(_)))`, \
+            "peer::Connection should map missing `BlocksByHash` responses as `Err(SharedPeerError(NotFoundResponse(_)))`, \
              actual result: {:?}",
-                response
-            )
+            response
+        )
     };
 
     let block_gossip_result = block_gossip_task_handle.now_or_never();
@@ -304,10 +303,10 @@ async fn inbound_tx_empty_state_notfound() -> Result<(), crate::BoxError> {
             }
         } else {
             unreachable!(
-                        "peer::Connection should map missing `TransactionsById` responses as `Err(SharedPeerError(NotFoundResponse(_)))`, \
+                "peer::Connection should map missing `TransactionsById` responses as `Err(SharedPeerError(NotFoundResponse(_)))`, \
                  actual result: {:?}",
-                        response
-                    )
+                response
+            )
         };
     }
 
@@ -421,10 +420,10 @@ async fn outbound_tx_unrelated_response_notfound() -> Result<(), crate::BoxError
             }
         } else {
             unreachable!(
-                        "peer::Connection should map missing `TransactionsById` responses as `Err(SharedPeerError(NotFoundResponse(_)))`, \
+                "peer::Connection should map missing `TransactionsById` responses as `Err(SharedPeerError(NotFoundResponse(_)))`, \
                  actual result: {:?}",
-                        response
-                    )
+                response
+            )
         };
 
         // The peer set only does routing for single-transaction requests.
@@ -698,7 +697,7 @@ async fn setup(
     // Mempool
     let (misbehavior_tx, _misbehavior_rx) = tokio::sync::mpsc::channel(1);
     let mempool_config = MempoolConfig::default();
-    let (mut mempool_service, transaction_receiver) = Mempool::new(
+    let (mut mempool_service, transaction_subscriber) = Mempool::new(
         &mempool_config,
         peer_set.clone(),
         state_service.clone(),
@@ -733,21 +732,17 @@ async fn setup(
     // We can't expect or unwrap because the returned Result does not implement Debug
     assert!(r.is_ok(), "unexpected setup channel send failure");
 
-    #[cfg(feature = "getblocktemplate-rpcs")]
     let submitblock_channel = SubmitBlockChannel::new();
 
     let block_gossip_task_handle = tokio::spawn(sync::gossip_best_tip_block_hashes(
         sync_status.clone(),
         chain_tip_change,
         peer_set.clone(),
-        #[cfg(feature = "getblocktemplate-rpcs")]
         Some(submitblock_channel.receiver()),
-        #[cfg(not(feature = "getblocktemplate-rpcs"))]
-        None,
     ));
 
     let tx_gossip_task_handle = tokio::spawn(gossip_mempool_transaction_id(
-        transaction_receiver,
+        transaction_subscriber.subscribe(),
         peer_set.clone(),
     ));
 
@@ -798,12 +793,12 @@ async fn setup(
     )
 }
 
-#[cfg(feature = "getblocktemplate-rpcs")]
 mod submitblock_test {
     use std::io;
     use std::sync::{Arc, Mutex};
     use tracing::{Instrument, Level};
     use tracing_subscriber::fmt;
+    use zebra_rpc::SubmitBlockChannel;
 
     use super::*;
 

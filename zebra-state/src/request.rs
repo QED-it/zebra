@@ -2,13 +2,13 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    ops::{Deref, DerefMut, RangeInclusive},
+    ops::{Add, Deref, DerefMut, RangeInclusive},
     sync::Arc,
 };
 
 use zebra_chain::{
-    amount::{Amount, NegativeAllowed, NonNegative},
-    block::{self, Block},
+    amount::{DeferredPoolBalanceChange, NegativeAllowed},
+    block::{self, Block, HeightDiff},
     history_tree::HistoryTree,
     orchard,
     parallel::tree::NoteCommitmentTrees,
@@ -133,6 +133,42 @@ impl HashOrHeight {
             None
         }
     }
+
+    /// Constructs a new [`HashOrHeight`] from a string containing a hash or a positive or negative
+    /// height.
+    ///
+    /// When the provided `hash_or_height` contains a negative height, the `tip_height` parameter
+    /// needs to be `Some` since height `-1` points to the tip.
+    pub fn new(hash_or_height: &str, tip_height: Option<block::Height>) -> Result<Self, String> {
+        hash_or_height
+            .parse()
+            .map(Self::Hash)
+            .or_else(|_| hash_or_height.parse().map(Self::Height))
+            .or_else(|_| {
+                hash_or_height
+                    .parse()
+                    .map_err(|_| "could not parse negative height")
+                    .and_then(|d: HeightDiff| {
+                        if d.is_negative() {
+                            {
+                                Ok(HashOrHeight::Height(
+                                    tip_height
+                                        .ok_or("missing tip height")?
+                                        .add(d)
+                                        .ok_or("underflow when adding negative height to tip")?
+                                        .next()
+                                        .map_err(|_| "height -1 needs to point to tip")?,
+                                ))
+                            }
+                        } else {
+                            Err("height was not negative")
+                        }
+                    })
+            })
+            .map_err(|_| {
+                "parse error: could not convert the input string to a hash or height".to_string()
+            })
+    }
 }
 
 impl std::fmt::Display for HashOrHeight {
@@ -215,8 +251,8 @@ pub struct SemanticallyVerifiedBlock {
     /// A precomputed list of the hashes of the transactions in this block,
     /// in the same order as `block.transactions`.
     pub transaction_hashes: Arc<[transaction::Hash]>,
-    /// This block's contribution to the deferred pool.
-    pub deferred_balance: Option<Amount<NonNegative>>,
+    /// This block's deferred pool value balance change.
+    pub deferred_pool_balance_change: Option<DeferredPoolBalanceChange>,
 }
 
 /// A block ready to be committed directly to the finalized state with
@@ -295,7 +331,7 @@ impl Treestate {
         sprout: Arc<sprout::tree::NoteCommitmentTree>,
         sapling: Arc<sapling::tree::NoteCommitmentTree>,
         orchard: Arc<orchard::tree::NoteCommitmentTree>,
-        sapling_subtree: Option<NoteCommitmentSubtree<sapling::tree::Node>>,
+        sapling_subtree: Option<NoteCommitmentSubtree<sapling_crypto::Node>>,
         orchard_subtree: Option<NoteCommitmentSubtree<orchard::tree::Node>>,
         history_tree: Arc<HistoryTree>,
     ) -> Self {
@@ -345,8 +381,8 @@ pub struct FinalizedBlock {
     pub(super) transaction_hashes: Arc<[transaction::Hash]>,
     /// The tresstate associated with the block.
     pub(super) treestate: Treestate,
-    /// This block's contribution to the deferred pool.
-    pub(super) deferred_balance: Option<Amount<NonNegative>>,
+    /// This block's deferred pool value balance change.
+    pub(super) deferred_pool_balance_change: Option<DeferredPoolBalanceChange>,
 }
 
 impl FinalizedBlock {
@@ -372,7 +408,7 @@ impl FinalizedBlock {
             new_outputs: block.new_outputs,
             transaction_hashes: block.transaction_hashes,
             treestate,
-            deferred_balance: block.deferred_balance,
+            deferred_pool_balance_change: block.deferred_pool_balance_change,
         }
     }
 }
@@ -445,7 +481,7 @@ impl ContextuallyVerifiedBlock {
             height,
             new_outputs,
             transaction_hashes,
-            deferred_balance,
+            deferred_pool_balance_change,
         } = semantically_verified;
 
         // This is redundant for the non-finalized state,
@@ -463,7 +499,7 @@ impl ContextuallyVerifiedBlock {
             transaction_hashes,
             chain_value_pool_change: block.chain_value_pool_change(
                 &utxos_from_ordered_utxos(spent_outputs),
-                deferred_balance,
+                deferred_pool_balance_change,
             )?,
         })
     }
@@ -475,10 +511,10 @@ impl CheckpointVerifiedBlock {
     pub fn new(
         block: Arc<Block>,
         hash: Option<block::Hash>,
-        deferred_balance: Option<Amount<NonNegative>>,
+        deferred_pool_balance_change: Option<DeferredPoolBalanceChange>,
     ) -> Self {
         let mut block = Self::with_hash(block.clone(), hash.unwrap_or(block.hash()));
-        block.deferred_balance = deferred_balance;
+        block.deferred_pool_balance_change = deferred_pool_balance_change;
         block
     }
     /// Creates a block that's ready to be committed to the finalized state,
@@ -506,13 +542,16 @@ impl SemanticallyVerifiedBlock {
             height,
             new_outputs,
             transaction_hashes,
-            deferred_balance: None,
+            deferred_pool_balance_change: None,
         }
     }
 
     /// Sets the deferred balance in the block.
-    pub fn with_deferred_balance(mut self, deferred_balance: Option<Amount<NonNegative>>) -> Self {
-        self.deferred_balance = deferred_balance;
+    pub fn with_deferred_pool_balance_change(
+        mut self,
+        deferred_pool_balance_change: Option<DeferredPoolBalanceChange>,
+    ) -> Self {
+        self.deferred_pool_balance_change = deferred_pool_balance_change;
         self
     }
 }
@@ -538,7 +577,7 @@ impl From<Arc<Block>> for SemanticallyVerifiedBlock {
             height,
             new_outputs,
             transaction_hashes,
-            deferred_balance: None,
+            deferred_pool_balance_change: None,
         }
     }
 }
@@ -551,13 +590,9 @@ impl From<ContextuallyVerifiedBlock> for SemanticallyVerifiedBlock {
             height: valid.height,
             new_outputs: valid.new_outputs,
             transaction_hashes: valid.transaction_hashes,
-            deferred_balance: Some(
-                valid
-                    .chain_value_pool_change
-                    .deferred_amount()
-                    .constrain::<NonNegative>()
-                    .expect("deferred balance in a block must me non-negative"),
-            ),
+            deferred_pool_balance_change: Some(DeferredPoolBalanceChange::new(
+                valid.chain_value_pool_change.deferred_amount(),
+            )),
         }
     }
 }
@@ -570,7 +605,7 @@ impl From<FinalizedBlock> for SemanticallyVerifiedBlock {
             height: finalized.height,
             new_outputs: finalized.new_outputs,
             transaction_hashes: finalized.transaction_hashes,
-            deferred_balance: finalized.deferred_balance,
+            deferred_pool_balance_change: finalized.deferred_pool_balance_change,
         }
     }
 }
@@ -715,6 +750,14 @@ pub enum Request {
     /// [`block::Height`] using `.into()`.
     Block(HashOrHeight),
 
+    //// Same as Block, but also returns serialized block size.
+    ////
+    /// Returns
+    ///
+    /// * [`ReadResponse::BlockAndSize(Some((Arc<Block>, usize)))`](ReadResponse::BlockAndSize) if the block is in the best chain;
+    /// * [`ReadResponse::BlockAndSize(None)`](ReadResponse::BlockAndSize) otherwise.
+    BlockAndSize(HashOrHeight),
+
     /// Looks up a block header by hash or height in the current best chain.
     ///
     /// Returns
@@ -734,7 +777,7 @@ pub enum Request {
     /// This request is purely informational, and there are no guarantees about
     /// whether the UTXO remains unspent or is on the best chain, or any chain.
     /// Its purpose is to allow asynchronous script verification or to wait until
-    /// the UTXO arrives in the state before validating dependant transactions.
+    /// the UTXO arrives in the state before validating dependent transactions.
     ///
     /// # Correctness
     ///
@@ -816,7 +859,13 @@ pub enum Request {
     /// Returns [`Response::KnownBlock(None)`](Response::KnownBlock) otherwise.
     KnownBlock(block::Hash),
 
-    #[cfg(feature = "getblocktemplate-rpcs")]
+    /// Invalidates a block in the non-finalized state with the provided hash if one is present, removing it and
+    /// its child blocks, and rejecting it during contextual validation if it's resubmitted to the state.
+    InvalidateBlock(block::Hash),
+
+    /// Reconsiders a previously invalidated block in the non-finalized state with the provided hash if one is present.
+    ReconsiderBlock(block::Hash),
+
     /// Performs contextual validation of the given block, but does not commit it to the state.
     ///
     /// Returns [`Response::ValidBlockProposal`] when successful.
@@ -837,6 +886,7 @@ impl Request {
             Request::Transaction(_) => "transaction",
             Request::UnspentBestChainUtxo { .. } => "unspent_best_chain_utxo",
             Request::Block(_) => "block",
+            Request::BlockAndSize(_) => "block_and_size",
             Request::BlockHeader(_) => "block_header",
             Request::FindBlockHashes { .. } => "find_block_hashes",
             Request::FindBlockHeaders { .. } => "find_block_headers",
@@ -846,7 +896,8 @@ impl Request {
             Request::BestChainNextMedianTimePast => "best_chain_next_median_time_past",
             Request::BestChainBlockHash(_) => "best_chain_block_hash",
             Request::KnownBlock(_) => "known_block",
-            #[cfg(feature = "getblocktemplate-rpcs")]
+            Request::InvalidateBlock(_) => "invalidate_block",
+            Request::ReconsiderBlock(_) => "reconsider_block",
             Request::CheckBlockProposalValidity(_) => "check_block_proposal_validity",
         }
     }
@@ -875,8 +926,14 @@ pub enum ReadRequest {
     Tip,
 
     /// Returns [`ReadResponse::TipPoolValues(Option<(Height, block::Hash, ValueBalance)>)`](ReadResponse::TipPoolValues)
-    /// with the current best chain tip.
+    /// with the pool values of the current best chain tip.
     TipPoolValues,
+
+    /// Looks up the block info after a block by hash or height in the current best chain.
+    ///
+    /// * [`ReadResponse::BlockInfo(Some(pool_values))`](ReadResponse::BlockInfo) if the block is in the best chain;
+    /// * [`ReadResponse::BlockInfo(None)`](ReadResponse::BlockInfo) otherwise.
+    BlockInfo(HashOrHeight),
 
     /// Computes the depth in the current best chain of the block identified by the given hash.
     ///
@@ -896,6 +953,14 @@ pub enum ReadRequest {
     /// Note: the [`HashOrHeight`] can be constructed from a [`block::Hash`] or
     /// [`block::Height`] using `.into()`.
     Block(HashOrHeight),
+
+    //// Same as Block, but also returns serialized block size.
+    ////
+    /// Returns
+    ///
+    /// * [`ReadResponse::BlockAndSize(Some((Arc<Block>, usize)))`](ReadResponse::BlockAndSize) if the block is in the best chain;
+    /// * [`ReadResponse::BlockAndSize(None)`](ReadResponse::BlockAndSize) otherwise.
+    BlockAndSize(HashOrHeight),
 
     /// Looks up a block header by hash or height in the current best chain.
     ///
@@ -1047,7 +1112,7 @@ pub enum ReadRequest {
 
     /// Looks up the balance of a set of transparent addresses.
     ///
-    /// Returns an [`Amount`] with the total
+    /// Returns an [`Amount`](zebra_chain::amount::Amount) with the total
     /// balance of the set of addresses.
     AddressBalance(HashSet<transparent::Address>),
 
@@ -1107,7 +1172,6 @@ pub enum ReadRequest {
     /// best chain state information.
     ChainInfo,
 
-    #[cfg(feature = "getblocktemplate-rpcs")]
     /// Get the average solution rate in the best chain.
     ///
     /// Returns [`ReadResponse::SolutionRate`]
@@ -1119,7 +1183,6 @@ pub enum ReadRequest {
         height: Option<block::Height>,
     },
 
-    #[cfg(feature = "getblocktemplate-rpcs")]
     /// Performs contextual validation of the given block, but does not commit it to the state.
     ///
     /// It is the caller's responsibility to perform semantic validation.
@@ -1129,10 +1192,13 @@ pub enum ReadRequest {
     /// the block fails contextual validation.
     CheckBlockProposalValidity(SemanticallyVerifiedBlock),
 
-    #[cfg(feature = "getblocktemplate-rpcs")]
     /// Returns [`ReadResponse::TipBlockSize(usize)`](ReadResponse::TipBlockSize)
     /// with the current best chain tip block size in bytes.
     TipBlockSize,
+
+    /// Returns [`ReadResponse::NonFinalizedBlocksListener`] with a channel receiver
+    /// allowing the caller to listen for new blocks in the non-finalized state.
+    NonFinalizedBlocksListener,
 }
 
 impl ReadRequest {
@@ -1141,8 +1207,10 @@ impl ReadRequest {
             ReadRequest::UsageInfo => "usage_info",
             ReadRequest::Tip => "tip",
             ReadRequest::TipPoolValues => "tip_pool_values",
+            ReadRequest::BlockInfo(_) => "block_info",
             ReadRequest::Depth(_) => "depth",
             ReadRequest::Block(_) => "block",
+            ReadRequest::BlockAndSize(_) => "block_and_size",
             ReadRequest::BlockHeader(_) => "block_header",
             ReadRequest::Transaction(_) => "transaction",
             ReadRequest::TransactionIdsForBlock(_) => "transaction_ids_for_block",
@@ -1166,12 +1234,10 @@ impl ReadRequest {
             #[cfg(feature = "indexer")]
             ReadRequest::SpendingTransactionId(_) => "spending_transaction_id",
             ReadRequest::ChainInfo => "chain_info",
-            #[cfg(feature = "getblocktemplate-rpcs")]
             ReadRequest::SolutionRate { .. } => "solution_rate",
-            #[cfg(feature = "getblocktemplate-rpcs")]
             ReadRequest::CheckBlockProposalValidity(_) => "check_block_proposal_validity",
-            #[cfg(feature = "getblocktemplate-rpcs")]
             ReadRequest::TipBlockSize => "tip_block_size",
+            ReadRequest::NonFinalizedBlocksListener => "non_finalized_blocks_listener",
         }
     }
 
@@ -1200,6 +1266,7 @@ impl TryFrom<Request> for ReadRequest {
             Request::BestChainBlockHash(hash) => Ok(ReadRequest::BestChainBlockHash(hash)),
 
             Request::Block(hash_or_height) => Ok(ReadRequest::Block(hash_or_height)),
+            Request::BlockAndSize(hash_or_height) => Ok(ReadRequest::BlockAndSize(hash_or_height)),
             Request::BlockHeader(hash_or_height) => Ok(ReadRequest::BlockHeader(hash_or_height)),
             Request::Transaction(tx_hash) => Ok(ReadRequest::Transaction(tx_hash)),
             Request::UnspentBestChainUtxo(outpoint) => {
@@ -1219,7 +1286,9 @@ impl TryFrom<Request> for ReadRequest {
             }
 
             Request::CommitSemanticallyVerifiedBlock(_)
-            | Request::CommitCheckpointVerifiedBlock(_) => Err("ReadService does not write blocks"),
+            | Request::CommitCheckpointVerifiedBlock(_)
+            | Request::InvalidateBlock(_)
+            | Request::ReconsiderBlock(_) => Err("ReadService does not write blocks"),
 
             Request::AwaitUtxo(_) => Err("ReadService does not track pending UTXOs. \
                      Manually convert the request to ReadRequest::AnyChainUtxo, \
@@ -1227,7 +1296,6 @@ impl TryFrom<Request> for ReadRequest {
 
             Request::KnownBlock(_) => Err("ReadService does not track queued blocks"),
 
-            #[cfg(feature = "getblocktemplate-rpcs")]
             Request::CheckBlockProposalValidity(semantically_verified) => Ok(
                 ReadRequest::CheckBlockProposalValidity(semantically_verified),
             ),

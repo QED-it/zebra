@@ -5,8 +5,10 @@ use std::{fmt, str::FromStr, sync::Arc};
 use thiserror::Error;
 
 use crate::{
+    amount::{Amount, NonNegative},
     block::{self, Height},
     parameters::NetworkUpgrade,
+    transparent,
 };
 
 pub mod magic;
@@ -34,8 +36,14 @@ pub enum NetworkKind {
 }
 
 impl From<Network> for NetworkKind {
-    fn from(network: Network) -> Self {
-        network.kind()
+    fn from(net: Network) -> Self {
+        NetworkKind::from(&net)
+    }
+}
+
+impl From<&Network> for NetworkKind {
+    fn from(net: &Network) -> Self {
+        net.kind()
     }
 }
 
@@ -84,6 +92,16 @@ impl NetworkKind {
             "test".to_string()
         }
     }
+
+    /// Returns the 2 bytes prefix for Bech32m-encoded transparent TEX
+    /// payment addresses for the network as defined in [ZIP-320](https://zips.z.cash/zip-0320.html).
+    pub fn tex_address_prefix(self) -> [u8; 2] {
+        // TODO: Add this bytes to `zcash_primitives::constants`?
+        match self {
+            Self::Mainnet => [0x1c, 0xb8],
+            Self::Testnet | Self::Regtest => [0x1d, 0x25],
+        }
+    }
 }
 
 impl From<NetworkKind> for &'static str {
@@ -127,6 +145,7 @@ impl std::fmt::Debug for Network {
             Self::Testnet(params) if params.is_regtest() => f
                 .debug_struct("Regtest")
                 .field("activation_heights", params.activation_heights())
+                .field("funding_streams", params.funding_streams())
                 .finish(),
             Self::Testnet(params) if params.is_default_testnet() => {
                 write!(f, "{self}")
@@ -148,14 +167,8 @@ impl Network {
     }
 
     /// Creates a new [`Network::Testnet`] with `Regtest` parameters and the provided network upgrade activation heights.
-    pub fn new_regtest(
-        nu5_activation_height: Option<u32>,
-        nu6_activation_height: Option<u32>,
-    ) -> Self {
-        Self::new_configured_testnet(testnet::Parameters::new_regtest(
-            nu5_activation_height,
-            nu6_activation_height,
-        ))
+    pub fn new_regtest(params: testnet::RegtestParameters) -> Self {
+        Self::new_configured_testnet(testnet::Parameters::new_regtest(params))
     }
 
     /// Returns true if the network is the default Testnet, or false otherwise.
@@ -266,6 +279,50 @@ impl Network {
             .activation_height(self)
             .expect("Sapling activation height needs to be set")
     }
+
+    /// Returns the expected total value of the sum of all NU6.1 one-time lockbox disbursement output values for this network at
+    /// the provided height.
+    pub fn lockbox_disbursement_total_amount(&self, height: Height) -> Amount<NonNegative> {
+        if Some(height) != NetworkUpgrade::Nu6_1.activation_height(self) {
+            return Amount::zero();
+        };
+
+        match self {
+            Self::Mainnet => subsidy::EXPECTED_NU6_1_LOCKBOX_DISBURSEMENTS_TOTAL_MAINNET,
+            Self::Testnet(params) if params.is_default_testnet() => {
+                subsidy::EXPECTED_NU6_1_LOCKBOX_DISBURSEMENTS_TOTAL_TESTNET
+            }
+            Self::Testnet(params) => params.lockbox_disbursement_total_amount(),
+        }
+    }
+
+    /// Returns the expected NU6.1 lockbox disbursement outputs for this network at the provided height.
+    pub fn lockbox_disbursements(
+        &self,
+        height: Height,
+    ) -> Vec<(transparent::Address, Amount<NonNegative>)> {
+        if Some(height) != NetworkUpgrade::Nu6_1.activation_height(self) {
+            return Vec::new();
+        };
+
+        let expected_lockbox_disbursements = match self {
+            Self::Mainnet => subsidy::NU6_1_LOCKBOX_DISBURSEMENTS_MAINNET.to_vec(),
+            Self::Testnet(params) if params.is_default_testnet() => {
+                subsidy::NU6_1_LOCKBOX_DISBURSEMENTS_TESTNET.to_vec()
+            }
+            Self::Testnet(params) => return params.lockbox_disbursements(),
+        };
+
+        expected_lockbox_disbursements
+            .into_iter()
+            .map(|(addr, amount)| {
+                (
+                    addr.parse().expect("hard-coded address must deserialize"),
+                    amount,
+                )
+            })
+            .collect()
+    }
 }
 
 // This is used for parsing a command-line argument for the `TipHeight` command in zebrad.
@@ -286,7 +343,7 @@ impl FromStr for Network {
 pub struct InvalidNetworkError(String);
 
 impl zcash_protocol::consensus::Parameters for Network {
-    fn network_type(&self) -> zcash_address::Network {
+    fn network_type(&self) -> zcash_protocol::consensus::NetworkType {
         self.kind().into()
     }
 

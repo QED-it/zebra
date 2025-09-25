@@ -1,0 +1,6 @@
+To run and test the health RPC endpoint:
+
+./target/debug/zebrad -c test-config.toml start & \
+sleep 15 && \
+curl -s http://127.0.0.1:8232/health | jq . && \
+pkill -f zebrad

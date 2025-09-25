@@ -778,7 +778,17 @@ impl Arbitrary for Transaction {
             NetworkUpgrade::Blossom | NetworkUpgrade::Heartwood | NetworkUpgrade::Canopy => {
                 Self::v4_strategy(ledger_state)
             }
-            NetworkUpgrade::Nu5 | NetworkUpgrade::Nu6 => prop_oneof![
+            NetworkUpgrade::Nu5
+            | NetworkUpgrade::Nu6
+            | NetworkUpgrade::Nu6_1
+            | NetworkUpgrade::Nu7 => prop_oneof![
+                Self::v4_strategy(ledger_state.clone()),
+                Self::v5_strategy(ledger_state)
+            ]
+            .boxed(),
+
+            #[cfg(zcash_unstable = "zfuture")]
+            NetworkUpgrade::ZFuture => prop_oneof![
                 Self::v4_strategy(ledger_state.clone()),
                 Self::v5_strategy(ledger_state)
             ]
@@ -806,7 +816,7 @@ impl Arbitrary for VerifiedUnminedTx {
         (
             any::<UnminedTx>(),
             any::<Amount<NonNegative>>(),
-            any::<u64>(),
+            any::<u32>(),
             any::<(u16, u16)>().prop_map(|(unpaid_actions, conventional_actions)| {
                 (
                     unpaid_actions % conventional_actions.saturating_add(1),
@@ -821,7 +831,7 @@ impl Arbitrary for VerifiedUnminedTx {
                 |(
                     transaction,
                     miner_fee,
-                    legacy_sigop_count,
+                    sigops,
                     (conventional_actions, mut unpaid_actions),
                     fee_weight_ratio,
                     time,
@@ -837,7 +847,7 @@ impl Arbitrary for VerifiedUnminedTx {
                     Self {
                         transaction,
                         miner_fee,
-                        legacy_sigop_count,
+                        sigops,
                         conventional_actions,
                         unpaid_actions,
                         fee_weight_ratio,
@@ -924,6 +934,8 @@ pub fn transaction_to_fake_v5(
             orchard_shielded_data: None,
         },
         v5 @ V5 { .. } => v5.clone(),
+        #[cfg(feature = "tx_v6")]
+        v6 @ V6 { .. } => v6.clone(),
     }
 }
 
@@ -1008,6 +1020,8 @@ pub fn v5_transactions<'b>(
         | Transaction::V3 { .. }
         | Transaction::V4 { .. } => None,
         ref tx @ Transaction::V5 { .. } => Some(tx.clone()),
+        #[cfg(feature = "tx_v6")]
+        ref tx @ Transaction::V6 { .. } => Some(tx.clone()),
     })
 }
 

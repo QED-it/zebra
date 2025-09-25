@@ -1,6 +1,6 @@
 [package]
 name = "zebra-chain"
-version = "1.0.0-beta.45"
+version = "2.0.0"
 authors = ["Zcash Foundation <zebra@zfnd.org>"]
 description = "Core Zcash data structures"
 license = "MIT OR Apache-2.0"
@@ -29,20 +29,8 @@ async-error = [
     "tokio",
 ]
 
-# Mining RPC support
-getblocktemplate-rpcs = [
-]
-
-# Experimental shielded scanning support
-shielded-scan = [
-    "zcash_client_backend"
-]
-
 # Experimental internal miner support
-# TODO: Internal miner feature functionality was removed at https://github.com/ZcashFoundation/zebra/issues/8180
-#       See what was removed at https://github.com/ZcashFoundation/zebra/blob/v1.5.1/zebra-chain/Cargo.toml#L38-L43
-#       Restore support when conditions are met. https://github.com/ZcashFoundation/zebra/issues/8183
-internal-miner = []
+internal-miner = ["equihash/solver"]
 
 # Experimental elasticsearch support
 elasticsearch = []
@@ -60,28 +48,26 @@ proptest-impl = [
 
 bench = ["zebra-test"]
 
+tx_v6 = []
+
 [dependencies]
 
-# Cryptography
+derive-getters = { workspace = true, features = ["auto_copy_getters"] }
+lazy_static = { workspace = true }
+tempfile = { workspace = true }
 bitvec = { workspace = true }
 bitflags = { workspace = true }
 bitflags-serde-legacy = { workspace = true }
 blake2b_simd = { workspace = true }
 blake2s_simd = { workspace = true }
-bridgetree = { workspace = true }
 bs58 = { workspace = true, features = ["check"] }
 byteorder = { workspace = true }
 
-# TODO: Internal miner feature functionality was removed at https://github.com/ZcashFoundation/zebra/issues/8180
-#       See what was removed at https://github.com/ZcashFoundation/zebra/blob/v1.5.1/zebra-chain/Cargo.toml#L73-L85
-#       Restore support when conditions are met. https://github.com/ZcashFoundation/zebra/issues/8183
 equihash = { workspace = true }
 
 group = { workspace = true }
 incrementalmerkletree.workspace = true
 jubjub = { workspace = true }
-lazy_static = { workspace = true }
-tempfile = { workspace = true }
 dirs = { workspace = true }
 num-integer = { workspace = true }
 primitive-types = { workspace = true }
@@ -92,9 +78,10 @@ secp256k1 = { workspace = true, features = ["serde"] }
 sha2 = { workspace = true, features = ["compress"] }
 uint = { workspace = true }
 x25519-dalek = { workspace = true, features = ["serde"] }
+bech32 = { workspace = true }
 
 # ECC deps
-halo2 = { package = "halo2_proofs", version = "0.3.0" }
+halo2 = { package = "halo2_proofs", version = "0.3" }
 orchard.workspace = true
 zcash_encoding.workspace = true
 zcash_history.workspace = true
@@ -103,6 +90,8 @@ zcash_primitives = { workspace = true, features = ["transparent-inputs"] }
 sapling-crypto.workspace = true
 zcash_protocol.workspace = true
 zcash_address.workspace = true
+zcash_transparent.workspace = true
+sinsemilla = { version = "0.1" }
 
 # Time
 chrono = { workspace = true, features = ["clock", "std", "serde"] }
@@ -135,9 +124,6 @@ serde_json = { workspace = true, optional = true }
 # Production feature async-error and testing feature proptest-impl
 tokio = { workspace = true, optional = true }
 
-# Experimental feature shielded-scan
-zcash_client_backend = { workspace = true, optional = true }
-
 # Optional testing dependencies
 proptest = { workspace = true, optional = true }
 proptest-derive = { workspace = true, optional = true }
@@ -145,7 +131,7 @@ proptest-derive = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 rand_chacha = { workspace = true, optional = true }
 
-zebra-test = { path = "../zebra-test/", version = "1.0.0-beta.45", optional = true }
+zebra-test = { path = "../zebra-test/", version = "1.0.1", optional = true }
 
 [dev-dependencies]
 # Benchmarks
@@ -168,7 +154,7 @@ rand_chacha = { workspace = true }
 
 tokio = { workspace = true, features = ["full", "tracing", "test-util"] }
 
-zebra-test = { path = "../zebra-test/", version = "1.0.0-beta.45" }
+zebra-test = { path = "../zebra-test/", version = "1.0.1" }
 
 [[bench]]
 name = "block"
@@ -178,3 +164,6 @@ required-features = ["bench"]
 [[bench]]
 name = "redpallas"
 harness = false
+
+[lints]
+workspace = true

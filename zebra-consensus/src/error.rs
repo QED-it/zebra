@@ -9,7 +9,9 @@ use chrono::{DateTime, Utc};
 use thiserror::Error;
 
 use zebra_chain::{
-    amount, block, orchard, sapling, sprout,
+    amount, block, orchard,
+    parameters::subsidy::SubsidyError,
+    sapling, sprout,
     transparent::{self, MIN_TRANSPARENT_COINBASE_MATURITY},
 };
 use zebra_state::ValidateContextError;
@@ -21,35 +23,6 @@ use proptest_derive::Arbitrary;
 
 /// Workaround for format string identifier rules.
 const MAX_EXPIRY_HEIGHT: block::Height = block::Height::MAX_EXPIRY_HEIGHT;
-
-/// Block subsidy errors.
-#[derive(Error, Clone, Debug, PartialEq, Eq)]
-#[allow(missing_docs)]
-pub enum SubsidyError {
-    #[error("no coinbase transaction in block")]
-    NoCoinbase,
-
-    #[error("funding stream expected output not found")]
-    FundingStreamNotFound,
-
-    #[error("miner fees are invalid")]
-    InvalidMinerFees,
-
-    #[error("a sum of amounts overflowed")]
-    SumOverflow,
-
-    #[error("unsupported height")]
-    UnsupportedHeight,
-
-    #[error("invalid amount")]
-    InvalidAmount(amount::Error),
-}
-
-impl From<amount::Error> for SubsidyError {
-    fn from(amount: amount::Error) -> Self {
-        Self::InvalidAmount(amount)
-    }
-}
 
 /// Errors for semantic transaction validation.
 #[derive(Error, Clone, Debug, PartialEq, Eq)]
@@ -385,13 +358,13 @@ pub enum BlockError {
     WrongTransactionConsensusBranchId,
 
     #[error(
-        "block {height:?} {hash:?} has {legacy_sigop_count} legacy transparent signature operations, \
+        "block {height:?} {hash:?} has {sigops} legacy transparent signature operations, \
          but the limit is {MAX_BLOCK_SIGOPS}"
     )]
     TooManyTransparentSignatureOperations {
         height: zebra_chain::block::Height,
         hash: zebra_chain::block::Hash,
-        legacy_sigop_count: u64,
+        sigops: u32,
     },
 
     #[error("summing miner fees for block {height:?} {hash:?} failed: {source:?}")]

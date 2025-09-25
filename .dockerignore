@@ -15,10 +15,11 @@
 # Now un-exclude required files and folders:
 #
 !.cargo
+!.config
 !*.toml
 !*.lock
 !tower-*
 !zebra-*
 !zebrad
 !docker/entrypoint.sh
-!docker/default_zebra_config.toml
+!docker/default-zebra-config.toml

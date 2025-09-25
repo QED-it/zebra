@@ -40,7 +40,11 @@ BASE_SCRIPTS= [
     # Longest test should go first, to favor running tests in parallel
     'reindex.py',
     'getmininginfo.py',
-    'nuparams.py']
+    'nuparams.py',
+    'addnode.py',
+    'wallet.py',
+    'feature_nu6.py',
+    'feature_nu6_1.py']
 
 ZMQ_SCRIPTS = [
     # ZMQ test can only be run if bitcoin was built with zmq-enabled.

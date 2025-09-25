@@ -41,7 +41,7 @@ lazy_static! {
 /// given index is read. Therefore, we just need a list where `array[index]`
 /// is the given `output`.
 fn mock_pre_v5_output_list(output: transparent::Output, index: usize) -> Vec<transparent::Output> {
-    iter::repeat(output).take(index + 1).collect()
+    std::iter::repeat_n(output, index + 1).collect()
 }
 
 #[test]
@@ -233,9 +233,7 @@ fn deserialize_large_transaction() {
     let tx_inputs_num = MAX_BLOCK_BYTES as usize / input_data.len();
 
     // Set the precalculated amount of inputs and a single output.
-    let inputs = std::iter::repeat(input)
-        .take(tx_inputs_num)
-        .collect::<Vec<_>>();
+    let inputs = std::iter::repeat_n(input, tx_inputs_num).collect::<Vec<_>>();
 
     // Create an oversized transaction. Adding the output and lock time causes
     // the transaction to overflow the threshold.
@@ -488,7 +486,12 @@ fn test_vec143_1() -> Result<()> {
 
     let transaction = ZIP143_1.zcash_deserialize_into::<Transaction>()?;
 
-    let hasher = SigHasher::new(&transaction, NetworkUpgrade::Overwinter, &[]);
+    let hasher = SigHasher::new(
+        &transaction,
+        NetworkUpgrade::Overwinter,
+        Arc::new(Vec::new()),
+    )
+    .expect("network upgrade is valid for tx");
 
     let hash = hasher.sighash(HashType::ALL, None);
     let expected = "a1f1a4e5cd9bd522322d661edd2af1bf2a7019cfab94ece18f4ba935b0a19073";
@@ -523,8 +526,9 @@ fn test_vec143_2() -> Result<()> {
     let hasher = SigHasher::new(
         &transaction,
         NetworkUpgrade::Overwinter,
-        &all_previous_outputs,
-    );
+        Arc::new(all_previous_outputs),
+    )
+    .expect("network upgrade is valid for tx");
 
     let hash = hasher.sighash(
         HashType::SINGLE,
@@ -551,7 +555,8 @@ fn test_vec243_1() -> Result<()> {
 
     let transaction = ZIP243_1.zcash_deserialize_into::<Transaction>()?;
 
-    let hasher = SigHasher::new(&transaction, NetworkUpgrade::Sapling, &[]);
+    let hasher = SigHasher::new(&transaction, NetworkUpgrade::Sapling, Arc::new(Vec::new()))
+        .expect("network upgrade is valid for tx");
 
     let hash = hasher.sighash(HashType::ALL, None);
     let expected = "63d18534de5f2d1c9e169b73f9c783718adbef5c8a7d55b5e7a37affa1dd3ff3";
@@ -565,7 +570,9 @@ fn test_vec243_1() -> Result<()> {
     let _guard = span.enter();
     assert_eq!(expected, result);
 
-    let precomputed_tx_data = PrecomputedTxData::new(&transaction, NetworkUpgrade::Sapling, &[]);
+    let precomputed_tx_data =
+        PrecomputedTxData::new(&transaction, NetworkUpgrade::Sapling, Arc::new(Vec::new()))
+            .expect("network upgrade is valid for tx");
     let alt_sighash =
         crate::primitives::zcash_primitives::sighash(&precomputed_tx_data, HashType::ALL, None);
     let result = hex::encode(alt_sighash);
@@ -589,7 +596,12 @@ fn test_vec243_2() -> Result<()> {
     };
     let all_previous_outputs = mock_pre_v5_output_list(output, input_ind);
 
-    let hasher = SigHasher::new(&transaction, NetworkUpgrade::Sapling, &all_previous_outputs);
+    let hasher = SigHasher::new(
+        &transaction,
+        NetworkUpgrade::Sapling,
+        Arc::new(all_previous_outputs),
+    )
+    .expect("network upgrade is valid for tx");
 
     let hash = hasher.sighash(
         HashType::NONE,
@@ -614,8 +626,12 @@ fn test_vec243_2() -> Result<()> {
     let index = input_ind;
     let all_previous_outputs = mock_pre_v5_output_list(prevout, input_ind);
 
-    let precomputed_tx_data =
-        PrecomputedTxData::new(&transaction, NetworkUpgrade::Sapling, &all_previous_outputs);
+    let precomputed_tx_data = PrecomputedTxData::new(
+        &transaction,
+        NetworkUpgrade::Sapling,
+        Arc::new(all_previous_outputs),
+    )
+    .expect("network upgrade is valid for tx");
     let alt_sighash = crate::primitives::zcash_primitives::sighash(
         &precomputed_tx_data,
         HashType::NONE,
@@ -643,7 +659,12 @@ fn test_vec243_3() -> Result<()> {
         lock_script: lock_script.clone(),
     }];
 
-    let hasher = SigHasher::new(&transaction, NetworkUpgrade::Sapling, &all_previous_outputs);
+    let hasher = SigHasher::new(
+        &transaction,
+        NetworkUpgrade::Sapling,
+        Arc::new(all_previous_outputs),
+    )
+    .expect("network upgrade is valid for tx");
 
     let hash = hasher.sighash(
         HashType::ALL,
@@ -669,9 +690,13 @@ fn test_vec243_3() -> Result<()> {
     };
     let index = input_ind;
 
-    let all_previous_outputs = &[prevout];
-    let precomputed_tx_data =
-        PrecomputedTxData::new(&transaction, NetworkUpgrade::Sapling, all_previous_outputs);
+    let all_previous_outputs = vec![prevout];
+    let precomputed_tx_data = PrecomputedTxData::new(
+        &transaction,
+        NetworkUpgrade::Sapling,
+        Arc::new(all_previous_outputs),
+    )
+    .expect("network upgrade is valid for tx");
     let alt_sighash = crate::primitives::zcash_primitives::sighash(
         &precomputed_tx_data,
         HashType::ALL,
@@ -703,17 +728,21 @@ fn zip143_sighash() -> Result<()> {
             Some(output) => mock_pre_v5_output_list(output, input_index.unwrap()),
             None => vec![],
         };
-        let result = hex::encode(transaction.sighash(
-            NetworkUpgrade::try_from(test.consensus_branch_id).expect("network upgrade"),
-            HashType::from_bits(test.hash_type).expect("must be a valid HashType"),
-            &all_previous_outputs,
-            input_index.map(|input_index| {
-                (
-                    input_index,
-                    output.unwrap().lock_script.as_raw_bytes().to_vec(),
+        let result = hex::encode(
+            transaction
+                .sighash(
+                    NetworkUpgrade::try_from(test.consensus_branch_id).expect("network upgrade"),
+                    HashType::from_bits(test.hash_type).expect("must be a valid HashType"),
+                    Arc::new(all_previous_outputs),
+                    input_index.map(|input_index| {
+                        (
+                            input_index,
+                            output.unwrap().lock_script.as_raw_bytes().to_vec(),
+                        )
+                    }),
                 )
-            }),
-        ));
+                .expect("network upgrade is valid for tx"),
+        );
         let expected = hex::encode(test.sighash);
         assert_eq!(expected, result, "test #{i}: sighash does not match");
     }
@@ -741,17 +770,21 @@ fn zip243_sighash() -> Result<()> {
             Some(output) => mock_pre_v5_output_list(output, input_index.unwrap()),
             None => vec![],
         };
-        let result = hex::encode(transaction.sighash(
-            NetworkUpgrade::try_from(test.consensus_branch_id).expect("network upgrade"),
-            HashType::from_bits(test.hash_type).expect("must be a valid HashType"),
-            &all_previous_outputs,
-            input_index.map(|input_index| {
-                (
-                    input_index,
-                    output.unwrap().lock_script.as_raw_bytes().to_vec(),
+        let result = hex::encode(
+            transaction
+                .sighash(
+                    NetworkUpgrade::try_from(test.consensus_branch_id).expect("network upgrade"),
+                    HashType::from_bits(test.hash_type).expect("must be a valid HashType"),
+                    Arc::new(all_previous_outputs),
+                    input_index.map(|input_index| {
+                        (
+                            input_index,
+                            output.unwrap().lock_script.as_raw_bytes().to_vec(),
+                        )
+                    }),
                 )
-            }),
-        ));
+                .expect("network upgrade is valid for tx"),
+        );
         let expected = hex::encode(test.sighash);
         assert_eq!(expected, result, "test #{i}: sighash does not match");
     }
@@ -766,34 +799,41 @@ fn zip244_sighash() -> Result<()> {
     for (i, test) in zip0244::TEST_VECTORS.iter().enumerate() {
         let transaction = test.tx.zcash_deserialize_into::<Transaction>()?;
 
-        let all_previous_outputs: Vec<_> = test
-            .amounts
-            .iter()
-            .zip(test.script_pubkeys.iter())
-            .map(|(amount, script_pubkey)| transparent::Output {
-                value: (*amount).try_into().unwrap(),
-                lock_script: transparent::Script::new(script_pubkey.as_ref()),
-            })
-            .collect();
+        let all_previous_outputs: Arc<Vec<_>> = Arc::new(
+            test.amounts
+                .iter()
+                .zip(test.script_pubkeys.iter())
+                .map(|(amount, script_pubkey)| transparent::Output {
+                    value: (*amount).try_into().unwrap(),
+                    lock_script: transparent::Script::new(script_pubkey.as_ref()),
+                })
+                .collect(),
+        );
 
-        let result = hex::encode(transaction.sighash(
-            NetworkUpgrade::Nu5,
-            HashType::ALL,
-            &all_previous_outputs,
-            None,
-        ));
+        let result = hex::encode(
+            transaction
+                .sighash(
+                    NetworkUpgrade::Nu5,
+                    HashType::ALL,
+                    all_previous_outputs.clone(),
+                    None,
+                )
+                .expect("network upgrade is valid for tx"),
+        );
         let expected = hex::encode(test.sighash_shielded);
         assert_eq!(expected, result, "test #{i}: sighash does not match");
 
         if let Some(sighash_all) = test.sighash_all {
             let result = hex::encode(
-                transaction.sighash(
-                    NetworkUpgrade::Nu5,
-                    HashType::ALL,
-                    &all_previous_outputs,
-                    test.transparent_input
-                        .map(|idx| (idx as _, test.script_pubkeys[idx as usize].clone())),
-                ),
+                transaction
+                    .sighash(
+                        NetworkUpgrade::Nu5,
+                        HashType::ALL,
+                        all_previous_outputs,
+                        test.transparent_input
+                            .map(|idx| (idx as _, test.script_pubkeys[idx as usize].clone())),
+                    )
+                    .expect("network upgrade is valid for tx"),
             );
             let expected = hex::encode(sighash_all);
             assert_eq!(expected, result, "test #{i}: sighash does not match");
@@ -822,23 +862,37 @@ fn consensus_branch_id() {
 
             tx.to_librustzcash(tx_nu)
                 .expect("tx is convertible under tx nu");
-            PrecomputedTxData::new(&tx, tx_nu, &[]);
-            sighash::SigHasher::new(&tx, tx_nu, &[]);
-            tx.sighash(tx_nu, HashType::ALL, &[], None);
+            PrecomputedTxData::new(&tx, tx_nu, Arc::new(Vec::new()))
+                .expect("network upgrade is valid for tx");
+            sighash::SigHasher::new(&tx, tx_nu, Arc::new(Vec::new()))
+                .expect("network upgrade is valid for tx");
+            tx.sighash(tx_nu, HashType::ALL, Arc::new(Vec::new()), None)
+                .expect("network upgrade is valid for tx");
 
             // All computations should fail under an nu other than the tx one.
 
             tx.to_librustzcash(any_other_nu)
                 .expect_err("tx is not convertible under nu other than the tx one");
 
-            std::panic::catch_unwind(|| PrecomputedTxData::new(&tx, any_other_nu, &[]))
-                .expect_err("precomputing tx sighash data panics under nu other than the tx one");
+            let err = PrecomputedTxData::new(&tx, any_other_nu, Arc::new(Vec::new())).unwrap_err();
+            assert!(
+                matches!(err, crate::Error::InvalidConsensusBranchId),
+                "precomputing tx sighash data errors under nu other than the tx one"
+            );
 
-            std::panic::catch_unwind(|| sighash::SigHasher::new(&tx, any_other_nu, &[]))
-                .expect_err("creating the sighasher panics under nu other than the tx one");
+            let err = sighash::SigHasher::new(&tx, any_other_nu, Arc::new(Vec::new())).unwrap_err();
+            assert!(
+                matches!(err, crate::Error::InvalidConsensusBranchId),
+                "creating the sighasher errors under nu other than the tx one"
+            );
 
-            std::panic::catch_unwind(|| tx.sighash(any_other_nu, HashType::ALL, &[], None))
-                .expect_err("the sighash computation panics under nu other than the tx one");
+            let err = tx
+                .sighash(any_other_nu, HashType::ALL, Arc::new(Vec::new()), None)
+                .unwrap_err();
+            assert!(
+                matches!(err, crate::Error::InvalidConsensusBranchId),
+                "the sighash computation errors under nu other than the tx one"
+            );
         }
     }
 }
@@ -874,7 +928,9 @@ fn binding_signatures() {
                         ..
                     } => {
                         if let Some(sapling_shielded_data) = sapling_shielded_data {
-                            let sighash = tx.sighash(nu, HashType::ALL, &[], None);
+                            let sighash = tx
+                                .sighash(nu, HashType::ALL, Arc::new(Vec::new()), None)
+                                .expect("network upgrade is valid for tx");
 
                             let bvk = redjubjub::VerificationKey::try_from(
                                 sapling_shielded_data.binding_verification_key(),
@@ -903,7 +959,41 @@ fn binding_signatures() {
                                 continue;
                             }
 
-                            let sighash = tx.sighash(nu, HashType::ALL, &[], None);
+                            let sighash = tx
+                                .sighash(nu, HashType::ALL, Arc::new(Vec::new()), None)
+                                .expect("network upgrade is valid for tx");
+
+                            let bvk = redjubjub::VerificationKey::try_from(
+                                sapling_shielded_data.binding_verification_key(),
+                            )
+                            .expect("a valid redjubjub::VerificationKey");
+
+                            bvk.verify(sighash.as_ref(), &sapling_shielded_data.binding_sig)
+                                .expect("verification passes");
+
+                            at_least_one_v5_checked = true;
+                        }
+                    }
+                    #[cfg(feature = "tx_v6")]
+                    Transaction::V6 {
+                        sapling_shielded_data,
+                        ..
+                    } => {
+                        if let Some(sapling_shielded_data) = sapling_shielded_data {
+                            // V6 txs have the outputs spent by their transparent inputs hashed into
+                            // their SIGHASH, so we need to exclude txs with transparent inputs.
+                            //
+                            // References:
+                            //
+                            // <https://zips.z.cash/zip-0244#s-2c-amounts-sig-digest>
+                            // <https://zips.z.cash/zip-0244#s-2d-scriptpubkeys-sig-digest>
+                            if tx.has_transparent_inputs() {
+                                continue;
+                            }
+
+                            let sighash = tx
+                                .sighash(nu, HashType::ALL, Arc::new(Vec::new()), None)
+                                .expect("network upgrade is valid for tx");
 
                             let bvk = redjubjub::VerificationKey::try_from(
                                 sapling_shielded_data.binding_verification_key(),
@@ -923,4 +1013,22 @@ fn binding_signatures() {
         assert!(at_least_one_v4_checked);
         assert!(at_least_one_v5_checked);
     }
+}
+
+#[test]
+fn test_coinbase_script() -> Result<()> {
+    let _init_guard = zebra_test::init();
+
+    let tx = hex::decode("0400008085202f89010000000000000000000000000000000000000000000000000000000000000000ffffffff0503b0e72100ffffffff04e8bbe60e000000001976a914ba92ff06081d5ff6542af8d3b2d209d29ba6337c88ac40787d010000000017a914931fec54c1fea86e574462cc32013f5400b891298738c94d010000000017a914c7a4285ed7aed78d8c0e28d7f1839ccb4046ab0c87286bee000000000017a914d45cb1adffb5215a42720532a076f02c7c778c908700000000b0e721000000000000000000000000").unwrap();
+
+    let transaction = tx.zcash_deserialize_into::<Transaction>()?;
+
+    let recoded_tx = transaction.zcash_serialize_to_vec().unwrap();
+    assert_eq!(tx, recoded_tx);
+
+    let data = transaction.inputs()[0].coinbase_script().unwrap();
+    let expected = hex::decode("03b0e72100").unwrap();
+    assert_eq!(data, expected);
+
+    Ok(())
 }

@@ -1,25 +1,22 @@
 //! Types used in `getrawmempool` RPC method.
 
-use std::collections::HashMap;
-#[cfg(feature = "getblocktemplate-rpcs")]
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-#[cfg(feature = "getblocktemplate-rpcs")]
+use derive_getters::Getters;
+use derive_new::new;
 use hex::ToHex as _;
 
-use super::Zec;
-#[cfg(feature = "getblocktemplate-rpcs")]
-use zebra_chain::transaction::VerifiedUnminedTx;
-use zebra_chain::{amount::NonNegative, block::Height};
-#[cfg(feature = "getblocktemplate-rpcs")]
+use zebra_chain::{amount::NonNegative, block::Height, transaction::VerifiedUnminedTx};
 use zebra_node_services::mempool::TransactionDependencies;
+
+use super::zec::Zec;
 
 /// Response to a `getrawmempool` RPC request.
 ///
 /// See the notes for the [`Rpc::get_raw_mempool` method].
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
-pub enum GetRawMempool {
+pub enum GetRawMempoolResponse {
     /// The transaction IDs, as hex strings (verbose=0)
     TxIds(Vec<String>),
     /// A map of transaction IDs to mempool transaction details objects
@@ -29,18 +26,22 @@ pub enum GetRawMempool {
 
 /// A mempool transaction details object as returned by `getrawmempool` in
 /// verbose mode.
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[allow(clippy::too_many_arguments)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, Getters, new)]
 pub struct MempoolObject {
     /// Transaction size in bytes.
     pub(crate) size: u64,
     /// Transaction fee in zatoshi.
+    #[getter(copy)]
     pub(crate) fee: Zec<NonNegative>,
     /// Transaction fee with fee deltas used for mining priority.
     #[serde(rename = "modifiedfee")]
+    #[getter(copy)]
     pub(crate) modified_fee: Zec<NonNegative>,
     /// Local time transaction entered pool in seconds since 1 Jan 1970 GMT
     pub(crate) time: i64,
     /// Block height when transaction entered pool.
+    #[getter(copy)]
     pub(crate) height: Height,
     /// Number of in-mempool descendant transactions (including this one).
     pub(crate) descendantcount: u64,
@@ -55,7 +56,6 @@ pub struct MempoolObject {
 }
 
 impl MempoolObject {
-    #[cfg(feature = "getblocktemplate-rpcs")]
     pub(crate) fn from_verified_unmined_tx(
         unmined_tx: &VerifiedUnminedTx,
         transactions: &[VerifiedUnminedTx],

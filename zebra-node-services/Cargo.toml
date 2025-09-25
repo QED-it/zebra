@@ -1,6 +1,6 @@
 [package]
 name = "zebra-node-services"
-version = "1.0.0-beta.45"
+version = "1.0.1"
 authors = ["Zcash Foundation <zebra@zfnd.org>"]
 description = "The interfaces of some Zebra node services"
 license = "MIT OR Apache-2.0"
@@ -19,11 +19,6 @@ default = []
 
 # Production features that activate extra dependencies, or extra features in dependencies
 
-# Mining RPC support
-getblocktemplate-rpcs = [
-    "zebra-chain/getblocktemplate-rpcs",
-]
-
 # Tool and test features
 
 rpc-client = [
@@ -34,10 +29,8 @@ rpc-client = [
     "serde_json",
 ]
 
-shielded-scan = []
-
 [dependencies]
-zebra-chain = { path = "../zebra-chain" , version = "1.0.0-beta.45" }
+zebra-chain = { path = "../zebra-chain" , version = "2.0.0" }
 
 # Optional dependencies
 
@@ -57,3 +50,6 @@ reqwest = { workspace = true, features = ["rustls-tls"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 jsonrpsee-types = { workspace = true }
+
+[lints]
+workspace = true
