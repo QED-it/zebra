@@ -24,10 +24,10 @@ jobs:
       - name: Find largest directories on root
         run: |
           df -h
-          sudo du -xh --max-depth=1 / | sort -h | tail -n 30
-          sudo du -xh --max-depth=2 /usr | sort -h | tail -n 30
-          sudo du -xh --max-depth=2 /opt | sort -h | tail -n 30
-          sudo du -xh --max-depth=2 /var | sort -h | tail -n 30
+          #sudo du -xh --max-depth=1 / | sort -h | tail -n 30
+          #sudo du -xh --max-depth=2 /usr | sort -h | tail -n 30
+          #sudo du -xh --max-depth=2 /opt | sort -h | tail -n 30
+          #sudo du -xh --max-depth=2 /var | sort -h | tail -n 30
 
       # Safe cleanup of preinstalled SDKs/layers that often bloat the image
       - name: Free disk space (safe defaults)
@@ -64,10 +64,10 @@ jobs:
       - name: Find largest directories on root
         run: |
           df -h
-          sudo du -xh --max-depth=1 / | sort -h | tail -n 30
-          sudo du -xh --max-depth=2 /usr | sort -h | tail -n 30
-          sudo du -xh --max-depth=2 /opt | sort -h | tail -n 30
-          sudo du -xh --max-depth=2 /var | sort -h | tail -n 30
+          #sudo du -xh --max-depth=1 / | sort -h | tail -n 30
+          #sudo du -xh --max-depth=2 /usr | sort -h | tail -n 30
+          #sudo du -xh --max-depth=2 /opt | sort -h | tail -n 30
+          #sudo du -xh --max-depth=2 /var | sort -h | tail -n 30
 
       - name: Run clippy
         run: cargo clippy --workspace --all-features --all-targets --locked -- -D warnings
@@ -76,8 +76,8 @@ jobs:
       - name: Find largest directories on root
         run: |
           df -h
-          sudo du -xh --max-depth=1 / | sort -h | tail -n 30
-          sudo du -xh --max-depth=2 /usr | sort -h | tail -n 30
-          sudo du -xh --max-depth=2 /opt | sort -h | tail -n 30
-          sudo du -xh --max-depth=2 /var | sort -h | tail -n 30
+          #sudo du -xh --max-depth=1 / | sort -h | tail -n 30
+          #sudo du -xh --max-depth=2 /usr | sort -h | tail -n 30
+          #sudo du -xh --max-depth=2 /opt | sort -h | tail -n 30
+          #sudo du -xh --max-depth=2 /var | sort -h | tail -n 30
 
