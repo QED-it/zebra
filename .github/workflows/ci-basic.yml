@@ -16,9 +16,6 @@ jobs:
       ROCKSDB_LIB_DIR: /usr/lib
       # Use system-installed Snappy library for compression in RocksDB
       SNAPPY_LIB_DIR: /usr/lib/x86_64-linux-gnu
-      RUSTFLAGS: '--cfg feature="tx_v6" --cfg zcash_unstable="nu7" -C debuginfo=0'
-      RUSTDOCFLAGS: '--cfg feature="tx_v6" --cfg zcash_unstable="nu7"'
-      CARGO_INCREMENTAL: "0"        # shrink target/ & avoid large caches
 
     steps:
       - uses: actions/checkout@v4
@@ -26,6 +23,7 @@ jobs:
       # Root-cause probe: see what’s already eating disk on the VM
       - name: Find largest directories on root
         run: |
+          df -h
           sudo du -xh --max-depth=1 / | sort -h | tail -n 30
           sudo du -xh --max-depth=2 /usr | sort -h | tail -n 30
           sudo du -xh --max-depth=2 /opt | sort -h | tail -n 30
@@ -62,6 +60,24 @@ jobs:
       - name: Run format check
         run: cargo fmt -- --check
 
+      # Root-cause probe: see what’s already eating disk on the VM
+      - name: Find largest directories on root
+        run: |
+          df -h
+          sudo du -xh --max-depth=1 / | sort -h | tail -n 30
+          sudo du -xh --max-depth=2 /usr | sort -h | tail -n 30
+          sudo du -xh --max-depth=2 /opt | sort -h | tail -n 30
+          sudo du -xh --max-depth=2 /var | sort -h | tail -n 30
+
       - name: Run clippy
         run: cargo clippy --workspace --all-features --all-targets --locked -- -D warnings
+
+      # Root-cause probe: see what’s already eating disk on the VM
+      - name: Find largest directories on root
+        run: |
+          df -h
+          sudo du -xh --max-depth=1 / | sort -h | tail -n 30
+          sudo du -xh --max-depth=2 /usr | sort -h | tail -n 30
+          sudo du -xh --max-depth=2 /opt | sort -h | tail -n 30
+          sudo du -xh --max-depth=2 /var | sort -h | tail -n 30
 
