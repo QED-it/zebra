@@ -25,12 +25,12 @@ jobs:
       - name: Install formatting & linting tools
         run: rustup component add rustfmt clippy
       - name: Run tests
-        run: cargo test --verbose
+        run: cargo test --verbose --locked
       - name: Verify working directory is clean
         run: git diff --exit-code
       - name: Run doc check
-        run: cargo doc --all-features --document-private-items
+        run: cargo doc --all-features --document-private-items --locked
       - name: Run format check
         run: cargo fmt -- --check
       - name: Run clippy
-        run: cargo clippy --workspace --all-features --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-features --all-targets --locked -- -D warnings
