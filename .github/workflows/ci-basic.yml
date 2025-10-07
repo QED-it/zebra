@@ -20,19 +20,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Root-cause probe: see what’s already eating disk on the VM
-      - name: Find largest directories on root
-        run: |
-          df -h
-          #sudo du -xh --max-depth=1 / | sort -h | tail -n 30
-          #sudo du -xh --max-depth=2 /usr | sort -h | tail -n 30
-          #sudo du -xh --max-depth=2 /opt | sort -h | tail -n 30
-          #sudo du -xh --max-depth=2 /var | sort -h | tail -n 30
-
-      # Safe cleanup of preinstalled SDKs/layers that often bloat the image
       - name: Free disk space (safe defaults)
         run: |
           df -h
+          du -xh --max-depth=1 / | sort -hr | head -n 30
           sudo rm -rf /usr/local/lib/android || true
           sudo rm -rf /opt/ghc || true
           sudo rm -rf /usr/share/dotnet || true
@@ -60,24 +51,10 @@ jobs:
       - name: Run format check
         run: cargo fmt -- --check
 
-      # Root-cause probe: see what’s already eating disk on the VM
-      - name: Find largest directories on root
-        run: |
-          df -h
-          #sudo du -xh --max-depth=1 / | sort -h | tail -n 30
-          #sudo du -xh --max-depth=2 /usr | sort -h | tail -n 30
-          #sudo du -xh --max-depth=2 /opt | sort -h | tail -n 30
-          #sudo du -xh --max-depth=2 /var | sort -h | tail -n 30
-
       - name: Run clippy
         run: cargo clippy --workspace --all-features --all-targets --locked -- -D warnings
-
-      # Root-cause probe: see what’s already eating disk on the VM
-      - name: Find largest directories on root
+ 
+      - name: Check for free disk space
         run: |
           df -h
-          #sudo du -xh --max-depth=1 / | sort -h | tail -n 30
-          #sudo du -xh --max-depth=2 /usr | sort -h | tail -n 30
-          #sudo du -xh --max-depth=2 /opt | sort -h | tail -n 30
-          #sudo du -xh --max-depth=2 /var | sort -h | tail -n 30
-
+          du -xh --max-depth=1 / | sort -hr | head -n 30
