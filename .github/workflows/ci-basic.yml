@@ -19,42 +19,22 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Free disk space (safe defaults)
-        run: |
-          df -h
-          du -xh --max-depth=1 / | sort -hr | head -n 30
-          sudo rm -rf /usr/local/lib/android || true
-          sudo rm -rf /opt/ghc || true
-          sudo rm -rf /usr/share/dotnet || true
-          sudo docker system prune -af || true
-          sudo apt-get clean
-          sudo rm -rf /var/lib/apt/lists/*
-          df -h
-
+      - name: Check for free disk space
+        run: df -h
       - name: Install dependencies on Ubuntu
+        #run: sudo apt-get update && sudo apt-get install -y protobuf-compiler build-essential librocksdb-dev
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler librocksdb-dev
-
       - name: Install formatting & linting tools
         run: rustup component add rustfmt clippy
-
       - name: Run tests
         run: cargo test --verbose --locked
-
       - name: Verify working directory is clean
         run: git diff --exit-code
-
-      # Docs are heavy; keep determinism but avoid deps explosion for now
-      - name: Run doc check (workspace only)
-        run: cargo doc --workspace --no-deps --document-private-items --locked
-
+      - name: Run doc check
+        run: cargo doc --workspace --no-deps --all-features --document-private-items --locked
       - name: Run format check
         run: cargo fmt -- --check
-
       - name: Run clippy
-        run: cargo clippy --workspace --all-features --all-targets --locked -- -D warnings
- 
+        run: cargo clippy --workspace --no-deps --all-features --all-targets --locked -- -D warnings
       - name: Check for free disk space
-        run: |
-          df -h
-          du -xh --max-depth=1 / | sort -hr | head -n 30
+        run: df -h
