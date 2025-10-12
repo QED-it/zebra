@@ -15,11 +15,30 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - name: Show system resource summary
+      - name: Show system resource summary (before cleanup)
         run: |
           df -h
           free -h
           lscpu | egrep 'Model name|Socket|Thread|Core|CPU\(s\)'
+
+      - name: Free disk space (safe cleanup for Rust CI)
+        run: |
+          # Remove heavy preinstalled SDKs and toolchains
+          sudo rm -rf /usr/local/lib/android || true
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /opt/ghc || true
+
+          # Clean up Docker cache if any
+          sudo docker system prune -af || true
+
+          # Clean up package manager and temporary files
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/* /var/cache/apt/* || true
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY" || true  # preinstalled tool caches
+
+          echo "=== Disk usage after cleanup ==="
+          df -h
+
       - name: Install dependencies on Ubuntu
         #run: sudo apt-get update && sudo apt-get install -y protobuf-compiler build-essential librocksdb-dev
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler librocksdb-dev
