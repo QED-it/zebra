@@ -1,12 +1,13 @@
 ---
 source: zebra-rpc/src/methods/tests/snapshot.rs
+assertion_line: 668
 expression: info
 ---
 {
   "version": 100,
   "build": "v0.0.1",
   "subversion": "[SubVersion]",
-  "protocolversion": 170120,
+  "protocolversion": 170160,
   "blocks": 10,
   "connections": 0,
   "difficulty": 1.0,
