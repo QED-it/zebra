@@ -25,18 +25,21 @@ jobs:
         run: |
           # Remove heavy preinstalled SDKs and toolchains
           sudo rm -rf /usr/local/lib/android || true
+          df -h
           sudo rm -rf /usr/share/dotnet || true
+          df -h
           sudo rm -rf /opt/ghc || true
 
           # Clean up Docker cache if any
           sudo docker system prune -af || true
+          df -h
 
           # Clean up package manager and temporary files
           sudo apt-get clean
+          df -h
           sudo rm -rf /var/lib/apt/lists/* /var/cache/apt/* || true
+          df -h
           sudo rm -rf "$AGENT_TOOLSDIRECTORY" || true  # preinstalled tool caches
-
-          echo "=== Disk usage after cleanup ==="
           df -h
 
       - name: Install dependencies on Ubuntu
