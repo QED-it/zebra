@@ -340,10 +340,13 @@ pub const TIMESTAMP_TRUNCATION_SECONDS: u32 = 30 * 60;
 ///
 /// This version of Zebra draws the current network protocol version from
 /// [ZIP-253](https://zips.z.cash/zip-0253).
-// TODO: Update this constant to the correct value after NU6.1 & NU7 activation,
-// pub const CURRENT_NETWORK_PROTOCOL_VERSION: Version = Version(170_140); // NU6.1
-// pub const CURRENT_NETWORK_PROTOCOL_VERSION: Version = Version(170_160); // NU7
+#[cfg(not(zcash_unstable = "nu7"))]
 pub const CURRENT_NETWORK_PROTOCOL_VERSION: Version = Version(170_120);
+// TODO: If/when NU6.1 becomes the default, bump the non-NU7 value to `170_140`.
+// pub const CURRENT_NETWORK_PROTOCOL_VERSION: Version = Version(170_140); // NU6.1
+/// TODO: Refer to the proper NU7 deployment ZIP.
+#[cfg(zcash_unstable = "nu7")]
+pub const CURRENT_NETWORK_PROTOCOL_VERSION: Version = Version(170_160); // NU7
 
 /// The default RTT estimate for peer responses.
 ///
