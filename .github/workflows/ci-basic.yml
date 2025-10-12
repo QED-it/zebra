@@ -15,27 +15,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - name: Print runner / image identity
-        run: |
-          set -x
-          echo "RUNNER_NAME=${RUNNER_NAME:-unknown}"
-          echo "RUNNER_OS=${RUNNER_OS:-unknown}"
-          echo "RUNNER_ARCH=${RUNNER_ARCH:-unknown}"
-          echo "RUNNER_LABELS=${RUNNER_LABELS:-unknown}"
-          echo "ImageOS=${ImageOS:-unknown}"
-          echo "ImageVersion=${ImageVersion:-unknown}"
-          echo "ImageRelease=${ImageRelease:-unknown}"
-          echo "GITHUB_REF=${GITHUB_REF:-}"
-          echo "GITHUB_SHA=${GITHUB_SHA:-}"
-          echo "GITHUB_RUN_ID=${GITHUB_RUN_ID:-}"
-          echo "GITHUB_RUN_NUMBER=${GITHUB_RUN_NUMBER:-}"
-
-          echo "---- uname ----"
-          uname -a || true
-
-          echo "---- /etc/os-release ----"
-          cat /etc/os-release || true
-
       - name: Show system resource summary
         run: |
           df -h
