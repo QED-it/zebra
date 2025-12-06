@@ -904,8 +904,17 @@ impl Arbitrary for Transaction {
                     .boxed()
                 }
             }
-            // FIXME: Implement this if needed
-            NetworkUpgrade::Swap => todo!(),
+            // FIXME: Implement this correctly
+            NetworkUpgrade::Swap => {
+                {
+                    prop_oneof![
+                        Self::v4_strategy(ledger_state.clone()),
+                        Self::v5_strategy(ledger_state.clone()),
+                        Self::v6_strategy(ledger_state),
+                    ]
+                    .boxed()
+                }
+            }
         }
     }
 
