@@ -61,7 +61,15 @@ jobs:
           
           # Set the input IMAGE_TAG_VERSION
           echo "IMAGE_TAG_VERSION=${{ github.event.inputs.image_tag_version }}" >> $GITHUB_ENV
-          echo "  User-provided IMAGE_TAG_VERSION: ${{ github.event.inputs.image_tag_version }}"
+                echo "  User-provided IMAGE_TAG_VERSION: ${{ github.event.inputs.image_tag_version }}"
+      
+      - name: Print run information
+        run: |
+          echo "Branch/Ref: ${{ github.ref_name }}"
+          echo "Full Ref: ${{ github.ref }}"
+          echo "Event: ${{ github.event_name }}"
+          echo "Inputs:"
+          echo "  image_tag_version: ${{ github.event.inputs.image_tag_version || '(not set)' }}"
 
       - name: Build, tag, and push image to Amazon ECR
         id: build-image
