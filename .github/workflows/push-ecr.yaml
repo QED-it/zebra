@@ -61,7 +61,7 @@ jobs:
           
           # Set the input IMAGE_TAG_VERSION
           echo "IMAGE_TAG_VERSION=${{ github.event.inputs.image_tag_version }}" >> $GITHUB_ENV
-                echo "  User-provided IMAGE_TAG_VERSION: ${{ github.event.inputs.image_tag_version }}"
+          echo "  User-provided IMAGE_TAG_VERSION: ${{ github.event.inputs.image_tag_version }}"
       
       - name: Print run information
         run: |
