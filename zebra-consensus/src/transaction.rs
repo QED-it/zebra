@@ -767,29 +767,36 @@ where
 
         Self::verify_v5_and_v6_transaction_network_upgrade::<V>(&transaction, upgrade)?;
 
-        // FIXME we use should use the old way of calculating sighash for pre-Swap ZSA
-        // let shielded_sighash = transaction.sighash(
-        //     upgrade
-        //         .branch_id()
-        //         .expect("Overwinter-onwards must have branch ID, and we checkpoint on Canopy"),
-        //     HashType::ALL,
-        //     cached_ffi_transaction.all_previous_outputs(),
-        //     None,
-        // );
-
-        let shielded_sighash = swap_bundle_sighash(
-            &transaction,
-            upgrade
-                .branch_id()
-                .expect("Overwinter-onwards must have branch ID, and we checkpoint on Canopy"),
-        );
-
-        let action_group_sighashes = action_group_sighashes(
-            &transaction,
-            upgrade
-                .branch_id()
-                .expect("Overwinter-onwards must have branch ID, and we checkpoint on Canopy"),
-        );
+        // TODO process empty swap bundle and other edge cases
+        let (shielded_sighash, action_group_sighashes) =
+            if transaction.network_upgrade().unwrap() == NetworkUpgrade::Swap {
+                (
+                    swap_bundle_sighash(
+                        &transaction,
+                        upgrade.branch_id().expect(
+                            "Overwinter-onwards must have branch ID, and we checkpoint on Canopy",
+                        ),
+                    ),
+                    action_group_sighashes(
+                        &transaction,
+                        upgrade.branch_id().expect(
+                            "Overwinter-onwards must have branch ID, and we checkpoint on Canopy",
+                        ),
+                    ),
+                )
+            } else {
+                (
+                    transaction.sighash(
+                        upgrade.branch_id().expect(
+                            "Overwinter-onwards must have branch ID, and we checkpoint on Canopy",
+                        ),
+                        HashType::ALL,
+                        cached_ffi_transaction.all_previous_outputs(),
+                        None,
+                    ),
+                    Vec::new(),
+                )
+            };
 
         Ok(Self::verify_transparent_inputs_and_outputs(
             request,
@@ -1100,7 +1107,7 @@ where
                         .oneshot(primitives::halo2::Item::from(action_group)),
                 );
 
-                // FIXME implement a more graceful decision making which sighash we sign
+                // FIXME implement a more graceful decision making which sighash we sign based on NetworkUpgrade
                 #[cfg(feature = "zsa-swap")]
                 let action_group_sighash = _action_group_sighashes.get(_index).unwrap();
                 #[cfg(feature = "zsa-swap")]

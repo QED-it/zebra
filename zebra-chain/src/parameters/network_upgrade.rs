@@ -104,7 +104,7 @@ pub(super) const MAINNET_ACTIVATION_HEIGHTS: &[(block::Height, NetworkUpgrade)] 
     (block::Height(4_111_000), Nu6_1),
     // FIXME: TODO: Update height values for Nu6_1 and Nu7 when real values will be known.
     (block::Height(4_333_000), Nu7),
-    (block::Height(4_333_001), Swap),
+    (block::Height(4_444_000), Swap),
 ];
 
 /// Fake mainnet network upgrade activation heights, used in tests.
@@ -147,7 +147,7 @@ pub(super) const TESTNET_ACTIVATION_HEIGHTS: &[(block::Height, NetworkUpgrade)] 
     (block::Height(4_222_000), Nu6_1),
     // FIXME: TODO: Update height values for Nu6_1 and Nu7 when real values will be known.
     (block::Height(4_444_000), Nu7),
-    (block::Height(4_444_001), Swap),
+    (block::Height(4_555_000), Swap),
 ];
 
 /// Fake testnet network upgrade activation heights, used in tests.

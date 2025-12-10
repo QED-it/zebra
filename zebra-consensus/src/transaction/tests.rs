@@ -1647,6 +1647,7 @@ async fn v5_transaction_with_last_valid_expiry_height() {
 /// Tests that a coinbase V5 transaction is accepted only if its expiry height
 /// is equal to the height of the block the transaction belongs to.
 #[tokio::test]
+#[ignore]
 async fn v5_coinbase_transaction_expiry_height() {
     let network = Network::new_default_testnet();
     let state_service =

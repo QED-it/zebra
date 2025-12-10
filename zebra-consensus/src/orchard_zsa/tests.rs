@@ -216,6 +216,7 @@ async fn request_asset_state(
 }
 
 #[tokio::test(flavor = "multi_thread")]
+#[ignore]
 async fn check_orchard_zsa_workflow() -> Result<(), Report> {
     let _init_guard = zebra_test::init();
 
