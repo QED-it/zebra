@@ -26,7 +26,6 @@ use crate::{
     serialization::CompactSizeMessage,
 };
 
-
 use super::*;
 use crate::sapling;
 
