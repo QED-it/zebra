@@ -1109,7 +1109,11 @@ where
 
                 // FIXME implement a more graceful decision making which sighash we sign based on NetworkUpgrade
                 #[cfg(feature = "zsa-swap")]
-                let action_group_sighash = _action_group_sighashes.get(_index).unwrap();
+                let action_group_sighash = _action_group_sighashes.get(_index).ok_or(
+                    TransactionError::InternalDowncastError(
+                        "action group sighash missing".to_string(),
+                    ),
+                )?;
                 #[cfg(feature = "zsa-swap")]
                 for authorized_action in action_group.actions.clone() {
                     // In case of multiple action group we sign action group sighash instead of
