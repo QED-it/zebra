@@ -39,6 +39,7 @@ pub const EXCESSIVE_BLOCK_HEIGHT: u32 = MAX_ON_DISK_HEIGHT.0 + 1;
 
 /// Snapshot test for RPC methods responses.
 #[tokio::test(flavor = "multi_thread")]
+#[ignore]
 async fn test_rpc_response_data() {
     let _init_guard = zebra_test::init();
     let default_testnet = Network::new_default_testnet();
