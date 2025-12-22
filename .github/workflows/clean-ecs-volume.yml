@@ -1,0 +1,354 @@
+name: Clean ECS Volume
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment (dev, staging, prod)'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+      region:
+        description: 'AWS Region'
+        required: true
+        default: 'eu-central-1'
+        type: string
+      service_name:
+        description: 'ECS Service name (without environment prefix)'
+        required: true
+        default: 'zebra'
+        type: string
+
+env:
+  AWS_REGION: ${{ inputs.region || 'eu-central-1' }}
+
+jobs:
+  clean-volume:
+    name: Clean ECS Volume
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Set variables
+        id: vars
+        run: |
+          ENVIRONMENT="${{ inputs.environment || 'dev' }}"
+          SERVICE_NAME="${{ inputs.service_name || 'zebra' }}"
+          CLUSTER_NAME="${ENVIRONMENT}-${SERVICE_NAME}-cluster"
+          ECS_SERVICE_NAME="${ENVIRONMENT}-${SERVICE_NAME}"
+          
+          echo "cluster_name=${CLUSTER_NAME}" >> $GITHUB_OUTPUT
+          echo "ecs_service_name=${ECS_SERVICE_NAME}" >> $GITHUB_OUTPUT
+          
+          echo "Cluster: ${CLUSTER_NAME}"
+          echo "Service: ${ECS_SERVICE_NAME}"
+
+      - name: Get task definition and EFS details
+        id: get-efs
+        run: |
+          # Get the task definition ARN from the service
+          TASK_DEF_ARN=$(aws ecs describe-services \
+            --cluster ${{ steps.vars.outputs.cluster_name }} \
+            --services ${{ steps.vars.outputs.ecs_service_name }} \
+            --query 'services[0].taskDefinition' \
+            --output text)
+          
+          echo "task_def_arn=${TASK_DEF_ARN}" >> $GITHUB_OUTPUT
+          echo "Task Definition: ${TASK_DEF_ARN}"
+          
+          # Get EFS file system ID and mount point from task definition
+          EFS_FS_ID=$(aws ecs describe-task-definition \
+            --task-definition "${TASK_DEF_ARN}" \
+            --query 'taskDefinition.volumes[?name==`persistent-volume`].efsVolumeConfiguration.fileSystemId' \
+            --output text)
+          
+          MOUNT_PATH=$(aws ecs describe-task-definition \
+            --task-definition "${TASK_DEF_ARN}" \
+            --query 'taskDefinition.containerDefinitions[0].mountPoints[?sourceVolume==`persistent-volume`].containerPath' \
+            --output text)
+          
+          # Get subnet and security group from the service
+          SUBNETS=$(aws ecs describe-services \
+            --cluster ${{ steps.vars.outputs.cluster_name }} \
+            --services ${{ steps.vars.outputs.ecs_service_name }} \
+            --query 'services[0].networkConfiguration.awsvpcConfiguration.subnets' \
+            --output text)
+          
+          SECURITY_GROUPS=$(aws ecs describe-services \
+            --cluster ${{ steps.vars.outputs.cluster_name }} \
+            --services ${{ steps.vars.outputs.ecs_service_name }} \
+            --query 'services[0].networkConfiguration.awsvpcConfiguration.securityGroups' \
+            --output text)
+          
+          # Use first subnet and security group
+          SUBNET=$(echo $SUBNETS | awk '{print $1}')
+          SECURITY_GROUP=$(echo $SECURITY_GROUPS | awk '{print $1}')
+          
+          if [ -z "$EFS_FS_ID" ] || [ "$EFS_FS_ID" == "None" ]; then
+            echo "Error: Could not find EFS file system ID in task definition"
+            exit 1
+          fi
+          
+          echo "efs_fs_id=${EFS_FS_ID}" >> $GITHUB_OUTPUT
+          echo "mount_path=${MOUNT_PATH:-/persistent}" >> $GITHUB_OUTPUT
+          echo "subnet=${SUBNET}" >> $GITHUB_OUTPUT
+          echo "security_group=${SECURITY_GROUP}" >> $GITHUB_OUTPUT
+          
+          echo "EFS File System ID: ${EFS_FS_ID}"
+          echo "Mount Path: ${MOUNT_PATH:-/persistent}"
+          echo "Subnet: ${SUBNET}"
+          echo "Security Group: ${SECURITY_GROUP}"
+
+      - name: Get execution role ARN
+        id: get-role
+        run: |
+          EXEC_ROLE_ARN=$(aws ecs describe-task-definition \
+            --task-definition ${{ steps.get-efs.outputs.task_def_arn }} \
+            --query 'taskDefinition.executionRoleArn' \
+            --output text)
+          
+          TASK_ROLE_ARN=$(aws ecs describe-task-definition \
+            --task-definition ${{ steps.get-efs.outputs.task_def_arn }} \
+            --query 'taskDefinition.taskRoleArn' \
+            --output text)
+          
+          echo "execution_role_arn=${EXEC_ROLE_ARN}" >> $GITHUB_OUTPUT
+          echo "task_role_arn=${TASK_ROLE_ARN:-${EXEC_ROLE_ARN}}" >> $GITHUB_OUTPUT
+
+      - name: Run cleanup task
+        id: cleanup-task
+        run: |
+          echo "Running cleanup task to remove all files from ECS volume..."
+          
+          # Create a temporary task definition JSON for the cleanup task
+          CLEANUP_TASK_DEF=$(cat <<EOF
+          {
+            "family": "cleanup-ecs-volume",
+            "networkMode": "awsvpc",
+            "requiresCompatibilities": ["FARGATE"],
+            "cpu": "256",
+            "memory": "512",
+            "executionRoleArn": "${{ steps.get-role.outputs.execution_role_arn }}",
+            "taskRoleArn": "${{ steps.get-role.outputs.task_role_arn }}",
+            "containerDefinitions": [
+              {
+                "name": "cleanup-container",
+                "image": "alpine:latest",
+                "essential": true,
+                "command": [
+                  "sh",
+                  "-c",
+                  "echo 'Starting cleanup...' && rm -rf ${{ steps.get-efs.outputs.mount_path }}/* ${{ steps.get-efs.outputs.mount_path }}/.[!.]* ${{ steps.get-efs.outputs.mount_path }}/..?* 2>/dev/null || true && find ${{ steps.get-efs.outputs.mount_path }} -mindepth 1 -delete 2>/dev/null || true && echo 'Cleanup completed successfully' && ls -la ${{ steps.get-efs.outputs.mount_path }} || echo 'Directory is empty'"
+                ],
+                "mountPoints": [
+                  {
+                    "sourceVolume": "persistent-volume",
+                    "containerPath": "${{ steps.get-efs.outputs.mount_path }}",
+                    "readOnly": false
+                  }
+                ],
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "/${{ inputs.environment || 'dev' }}/ecs/cleanup-task",
+                    "awslogs-region": "${{ env.AWS_REGION }}",
+                    "awslogs-stream-prefix": "ecs"
+                  }
+                }
+              }
+            ],
+            "volumes": [
+              {
+                "name": "persistent-volume",
+                "efsVolumeConfiguration": {
+                  "fileSystemId": "${{ steps.get-efs.outputs.efs_fs_id }}",
+                  "rootDirectory": "/",
+                  "transitEncryption": "ENABLED"
+                }
+              }
+            ]
+          }
+          EOF
+          )
+          
+          # Register the task definition
+          TASK_DEF_JSON=$(echo "$CLEANUP_TASK_DEF" | jq .)
+          TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json "$TASK_DEF_JSON" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+          
+          echo "task_def_arn=${TASK_DEF_ARN}" >> $GITHUB_OUTPUT
+          echo "Registered cleanup task definition: ${TASK_DEF_ARN}"
+          
+          # Create CloudWatch log group if it doesn't exist
+          aws logs create-log-group \
+            --log-group-name "/${{ inputs.environment || 'dev' }}/ecs/cleanup-task" \
+            2>/dev/null || true
+          
+          # Run the cleanup task
+          NETWORK_CONFIG=$(cat <<EOF
+          {
+            "awsvpcConfiguration": {
+              "subnets": ["${{ steps.get-efs.outputs.subnet }}"],
+              "securityGroups": ["${{ steps.get-efs.outputs.security_group }}"],
+              "assignPublicIp": "DISABLED"
+            }
+          }
+          EOF
+          )
+          
+          TASK_ARN=$(aws ecs run-task \
+            --cluster ${{ steps.vars.outputs.cluster_name }} \
+            --task-definition "${TASK_DEF_ARN}" \
+            --launch-type FARGATE \
+            --network-configuration "$(echo "$NETWORK_CONFIG" | jq -c .)" \
+            --query 'tasks[0].taskArn' \
+            --output text)
+          
+          echo "task_arn=${TASK_ARN}" >> $GITHUB_OUTPUT
+          echo "Started cleanup task: ${TASK_ARN}"
+          
+          # Wait for the task to complete
+          echo "Waiting for cleanup task to complete..."
+          aws ecs wait tasks-stopped \
+            --cluster ${{ steps.vars.outputs.cluster_name }} \
+            --tasks "${TASK_ARN}"
+          
+          # Get task exit code
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster ${{ steps.vars.outputs.cluster_name }} \
+            --tasks "${TASK_ARN}" \
+            --query 'tasks[0].containers[0].exitCode' \
+            --output text)
+          
+          echo "exit_code=${EXIT_CODE}" >> $GITHUB_OUTPUT
+          
+          if [ "$EXIT_CODE" != "0" ] && [ "$EXIT_CODE" != "None" ]; then
+            echo "Warning: Cleanup task exited with code ${EXIT_CODE}"
+            echo "Checking logs..."
+            aws logs tail "/${{ inputs.environment || 'dev' }}/ecs/cleanup-task" --since 5m || true
+          else
+            echo "Cleanup task completed successfully"
+          fi
+
+      - name: Verify cleanup
+        run: |
+          echo "Verifying cleanup by checking EFS contents..."
+          
+          # Run a verification task
+          VERIFY_TASK_DEF=$(cat <<EOF
+          {
+            "family": "verify-cleanup",
+            "networkMode": "awsvpc",
+            "requiresCompatibilities": ["FARGATE"],
+            "cpu": "256",
+            "memory": "512",
+            "executionRoleArn": "${{ steps.get-role.outputs.execution_role_arn }}",
+            "taskRoleArn": "${{ steps.get-role.outputs.task_role_arn }}",
+            "containerDefinitions": [
+              {
+                "name": "verify-container",
+                "image": "alpine:latest",
+                "essential": true,
+                "command": [
+                  "sh",
+                  "-c",
+                  "echo 'Verifying cleanup...' && ls -la ${{ steps.get-efs.outputs.mount_path }} && echo 'Verification complete'"
+                ],
+                "mountPoints": [
+                  {
+                    "sourceVolume": "persistent-volume",
+                    "containerPath": "${{ steps.get-efs.outputs.mount_path }}",
+                    "readOnly": true
+                  }
+                ],
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "/${{ inputs.environment || 'dev' }}/ecs/cleanup-task",
+                    "awslogs-region": "${{ env.AWS_REGION }}",
+                    "awslogs-stream-prefix": "verify"
+                  }
+                }
+              }
+            ],
+            "volumes": [
+              {
+                "name": "persistent-volume",
+                "efsVolumeConfiguration": {
+                  "fileSystemId": "${{ steps.get-efs.outputs.efs_fs_id }}",
+                  "rootDirectory": "/",
+                  "transitEncryption": "ENABLED"
+                }
+              }
+            ]
+          }
+          EOF
+          )
+          
+          VERIFY_TASK_DEF_JSON=$(echo "$VERIFY_TASK_DEF" | jq .)
+          VERIFY_TASK_DEF_ARN=$(aws ecs register-task-definition \
+            --cli-input-json "$VERIFY_TASK_DEF_JSON" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+          
+          VERIFY_NETWORK_CONFIG=$(cat <<EOF
+          {
+            "awsvpcConfiguration": {
+              "subnets": ["${{ steps.get-efs.outputs.subnet }}"],
+              "securityGroups": ["${{ steps.get-efs.outputs.security_group }}"],
+              "assignPublicIp": "DISABLED"
+            }
+          }
+          EOF
+          )
+          
+          VERIFY_TASK_ARN=$(aws ecs run-task \
+            --cluster ${{ steps.vars.outputs.cluster_name }} \
+            --task-definition "${VERIFY_TASK_DEF_ARN}" \
+            --launch-type FARGATE \
+            --network-configuration "$(echo "$VERIFY_NETWORK_CONFIG" | jq -c .)" \
+            --query 'tasks[0].taskArn' \
+            --output text)
+          
+          echo "Verification task: ${VERIFY_TASK_ARN}"
+          
+          aws ecs wait tasks-stopped \
+            --cluster ${{ steps.vars.outputs.cluster_name }} \
+            --tasks "${VERIFY_TASK_ARN}"
+          
+          echo "Verification logs:"
+          aws logs tail "/${{ inputs.environment || 'dev' }}/ecs/cleanup-task" --since 2m --filter-pattern "verify" || true
+
+      - name: Cleanup summary
+        if: always()
+        run: |
+          echo "## Cleanup Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Cluster: ${{ steps.vars.outputs.cluster_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Service: ${{ steps.vars.outputs.ecs_service_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- EFS File System: ${{ steps.get-efs.outputs.efs_fs_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Mount Path: ${{ steps.get-efs.outputs.mount_path }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Cleanup Task: ${{ steps.cleanup-task.outputs.task_arn }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Exit Code: ${{ steps.cleanup-task.outputs.exit_code }}" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.cleanup-task.outputs.exit_code }}" == "0" ] || [ "${{ steps.cleanup-task.outputs.exit_code }}" == "None" ]; then
+            echo "✅ ECS volume cleaned successfully" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Cleanup completed with warnings. Check logs for details." >> $GITHUB_STEP_SUMMARY
+          fi
