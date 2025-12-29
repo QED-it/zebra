@@ -12,10 +12,9 @@ NU5 = 1
 NU6 = 1
 NU7 = 1
 
-# Persist state to EFS volume
+# This section may be omitted if a persistent Regtest chain state is desired
 [state]
-ephemeral = false
-cache_dir = "/persistent"
+ephemeral = true
 
 # This section may be omitted if it's not necessary to send transactions to Zebra's mempool
 [rpc]
