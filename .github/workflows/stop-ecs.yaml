@@ -2,11 +2,6 @@ name: Stop All ECS Tasks
 
 on:
   workflow_dispatch:
-    inputs:
-      confirm:
-        description: 'Type "yes" to confirm stopping all tasks'
-        required: true
-        type: string
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
@@ -19,12 +14,6 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: Validate confirmation
-        if: ${{ github.event.inputs.confirm != 'yes' }}
-        run: |
-          echo "Confirmation not provided. Please type 'yes' to confirm."
-          exit 1
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
