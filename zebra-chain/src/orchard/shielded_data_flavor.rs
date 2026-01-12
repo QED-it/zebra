@@ -9,7 +9,7 @@ use orchard::{flavor::OrchardFlavor, primitives::OrchardPrimitives};
 pub use orchard::flavor::OrchardVanilla;
 
 #[cfg(feature = "tx_v6")]
-pub use orchard::{note::AssetBase, flavor::OrchardZSA, value::NoteValue};
+pub use orchard::{flavor::OrchardZSA, note::AssetBase, value::NoteValue};
 
 use crate::serialization::{ZcashDeserialize, ZcashSerialize};
 
