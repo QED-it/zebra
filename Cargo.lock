@@ -1413,7 +1413,7 @@ dependencies = [
 [[package]]
 name = "equihash"
 version = "0.2.2"
-source = "git+https://github.com/QED-it/librustzcash?rev=bd6b6a1bbcd267b9b7c13c7923ca5d61b2addd52#bd6b6a1bbcd267b9b7c13c7923ca5d61b2addd52"
+source = "git+https://github.com/QED-it/librustzcash?branch=pr471_zsa_issuance_flag_followups#d4996baff7aedab3502b0e0bc297742047815115"
 dependencies = [
  "blake2b_simd",
  "core2",
@@ -1449,7 +1449,7 @@ dependencies = [
 [[package]]
 name = "f4jumble"
 version = "0.1.1"
-source = "git+https://github.com/QED-it/librustzcash?rev=bd6b6a1bbcd267b9b7c13c7923ca5d61b2addd52#bd6b6a1bbcd267b9b7c13c7923ca5d61b2addd52"
+source = "git+https://github.com/QED-it/librustzcash?branch=pr471_zsa_issuance_flag_followups#d4996baff7aedab3502b0e0bc297742047815115"
 dependencies = [
  "blake2b_simd",
 ]
@@ -1803,8 +1803,9 @@ dependencies = [
 
 [[package]]
 name = "halo2_gadgets"
-version = "0.3.1"
-source = "git+https://github.com/zcash/halo2?rev=2308caf68c48c02468b66cfc452dad54e355e32f#2308caf68c48c02468b66cfc452dad54e355e32f"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "45824ce0dd12e91ec0c68ebae2a7ed8ae19b70946624c849add59f1d1a62a143"
 dependencies = [
  "arrayvec",
  "bitvec",
@@ -2950,7 +2951,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 [[package]]
 name = "orchard"
 version = "0.11.0"
-source = "git+https://github.com/QED-it/orchard?rev=927f40eb6f130fbd8074abab00934ce5758b23f3#927f40eb6f130fbd8074abab00934ce5758b23f3"
+source = "git+https://github.com/QED-it/orchard?branch=pr471_issuance_empty_hashes#bf0a4b69288537f080c15b4bed9eafa042aa7e7c"
 dependencies = [
  "aes",
  "bitvec",
@@ -5928,7 +5929,7 @@ checksum = "213b7324336b53d2414b2db8537e56544d981803139155afa84f76eeebb7a546"
 [[package]]
 name = "zcash_address"
 version = "0.9.0"
-source = "git+https://github.com/QED-it/librustzcash?rev=bd6b6a1bbcd267b9b7c13c7923ca5d61b2addd52#bd6b6a1bbcd267b9b7c13c7923ca5d61b2addd52"
+source = "git+https://github.com/QED-it/librustzcash?branch=pr471_zsa_issuance_flag_followups#d4996baff7aedab3502b0e0bc297742047815115"
 dependencies = [
  "bech32",
  "bs58",
@@ -5941,7 +5942,7 @@ dependencies = [
 [[package]]
 name = "zcash_client_backend"
 version = "0.20.0"
-source = "git+https://github.com/QED-it/librustzcash?rev=bd6b6a1bbcd267b9b7c13c7923ca5d61b2addd52#bd6b6a1bbcd267b9b7c13c7923ca5d61b2addd52"
+source = "git+https://github.com/QED-it/librustzcash?branch=pr471_zsa_issuance_flag_followups#d4996baff7aedab3502b0e0bc297742047815115"
 dependencies = [
  "base64 0.22.1",
  "bech32",
@@ -5983,7 +5984,7 @@ dependencies = [
 [[package]]
 name = "zcash_encoding"
 version = "0.3.0"
-source = "git+https://github.com/QED-it/librustzcash?rev=bd6b6a1bbcd267b9b7c13c7923ca5d61b2addd52#bd6b6a1bbcd267b9b7c13c7923ca5d61b2addd52"
+source = "git+https://github.com/QED-it/librustzcash?branch=pr471_zsa_issuance_flag_followups#d4996baff7aedab3502b0e0bc297742047815115"
 dependencies = [
  "core2",
  "nonempty 0.11.0",
@@ -5992,7 +5993,7 @@ dependencies = [
 [[package]]
 name = "zcash_history"
 version = "0.4.0"
-source = "git+https://github.com/QED-it/librustzcash?rev=bd6b6a1bbcd267b9b7c13c7923ca5d61b2addd52#bd6b6a1bbcd267b9b7c13c7923ca5d61b2addd52"
+source = "git+https://github.com/QED-it/librustzcash?branch=pr471_zsa_issuance_flag_followups#d4996baff7aedab3502b0e0bc297742047815115"
 dependencies = [
  "blake2b_simd",
  "byteorder",
@@ -6002,7 +6003,7 @@ dependencies = [
 [[package]]
 name = "zcash_keys"
 version = "0.11.0"
-source = "git+https://github.com/QED-it/librustzcash?rev=bd6b6a1bbcd267b9b7c13c7923ca5d61b2addd52#bd6b6a1bbcd267b9b7c13c7923ca5d61b2addd52"
+source = "git+https://github.com/QED-it/librustzcash?branch=pr471_zsa_issuance_flag_followups#d4996baff7aedab3502b0e0bc297742047815115"
 dependencies = [
  "bech32",
  "blake2b_simd",
@@ -6040,7 +6041,7 @@ dependencies = [
 [[package]]
 name = "zcash_primitives"
 version = "0.25.0"
-source = "git+https://github.com/QED-it/librustzcash?rev=bd6b6a1bbcd267b9b7c13c7923ca5d61b2addd52#bd6b6a1bbcd267b9b7c13c7923ca5d61b2addd52"
+source = "git+https://github.com/QED-it/librustzcash?branch=pr471_zsa_issuance_flag_followups#d4996baff7aedab3502b0e0bc297742047815115"
 dependencies = [
  "bip32",
  "blake2b_simd",
@@ -6082,7 +6083,7 @@ dependencies = [
 [[package]]
 name = "zcash_proofs"
 version = "0.25.0"
-source = "git+https://github.com/QED-it/librustzcash?rev=bd6b6a1bbcd267b9b7c13c7923ca5d61b2addd52#bd6b6a1bbcd267b9b7c13c7923ca5d61b2addd52"
+source = "git+https://github.com/QED-it/librustzcash?branch=pr471_zsa_issuance_flag_followups#d4996baff7aedab3502b0e0bc297742047815115"
 dependencies = [
  "bellman",
  "blake2b_simd",
@@ -6104,7 +6105,7 @@ dependencies = [
 [[package]]
 name = "zcash_protocol"
 version = "0.6.2"
-source = "git+https://github.com/QED-it/librustzcash?rev=bd6b6a1bbcd267b9b7c13c7923ca5d61b2addd52#bd6b6a1bbcd267b9b7c13c7923ca5d61b2addd52"
+source = "git+https://github.com/QED-it/librustzcash?branch=pr471_zsa_issuance_flag_followups#d4996baff7aedab3502b0e0bc297742047815115"
 dependencies = [
  "core2",
  "document-features",
@@ -6148,7 +6149,7 @@ dependencies = [
 [[package]]
 name = "zcash_transparent"
 version = "0.5.0"
-source = "git+https://github.com/QED-it/librustzcash?rev=bd6b6a1bbcd267b9b7c13c7923ca5d61b2addd52#bd6b6a1bbcd267b9b7c13c7923ca5d61b2addd52"
+source = "git+https://github.com/QED-it/librustzcash?branch=pr471_zsa_issuance_flag_followups#d4996baff7aedab3502b0e0bc297742047815115"
 dependencies = [
  "bip32",
  "blake2b_simd",
@@ -6690,7 +6691,7 @@ dependencies = [
 [[package]]
 name = "zip321"
 version = "0.5.0"
-source = "git+https://github.com/QED-it/librustzcash?rev=bd6b6a1bbcd267b9b7c13c7923ca5d61b2addd52#bd6b6a1bbcd267b9b7c13c7923ca5d61b2addd52"
+source = "git+https://github.com/QED-it/librustzcash?branch=pr471_zsa_issuance_flag_followups#d4996baff7aedab3502b0e0bc297742047815115"
 dependencies = [
  "base64 0.22.1",
  "nom",
@@ -6698,3 +6699,8 @@ dependencies = [
  "zcash_address",
  "zcash_protocol",
 ]
+
+[[patch.unused]]
+name = "halo2_gadgets"
+version = "0.3.1"
+source = "git+https://github.com/zcash/halo2?rev=2308caf68c48c02468b66cfc452dad54e355e32f#2308caf68c48c02468b66cfc452dad54e355e32f"
