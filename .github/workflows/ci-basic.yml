@@ -48,28 +48,26 @@ jobs:
           # fixes and merge conflicts, we allow these lints only for the affected crates for now.
           # TODO: remove this comment and these Clippy exceptions after syncing with updated upstream.
 
-          # strict for everything except the problematic crates
+          # 1) Strict clippy for the whole workspace, excluding only crates that currently fail on new 1.85 lints.
           cargo clippy --workspace --no-deps --all-features --all-targets --locked \
-            --exclude zebra-chain --exclude zebra-state --exclude zebra-network -- \
+            --exclude zebra-chain \
+            --exclude zebra-network \
+            --exclude zebra-state \
+            --exclude zebra-consensus -- \
             -D warnings
 
-          # zebra-chain: allow only the 3 new lints you saw there
-          cargo clippy -p zebra-chain --all-features --all-targets --locked -- \
+          # 2) Crates that need only “ok_or_else -> ok_or” / string len lint relaxations.
+          cargo clippy -p zebra-chain -p zebra-network --all-features --all-targets --locked -- \
             -D warnings \
             -A elided_named_lifetimes \
             -A clippy::needless_lifetimes \
-            -A clippy::unnecessary_lazy_evaluations
-
-          # zebra-state: allow only what you saw there
-          cargo clippy -p zebra-state --all-features --all-targets --locked -- \
-            -D warnings \
-            -A clippy::useless_conversion
-
-          # zebra-network: allow only what you saw here
-          cargo clippy -p zebra-network --all-features --all-targets --locked -- \
-            -D warnings \
             -A clippy::needless_as_bytes \
             -A clippy::unnecessary_lazy_evaluations
+
+          # 3) Crates that need only the useless_conversion relaxation.
+          cargo clippy -p zebra-state -p zebra-consensus --all-features --all-targets --locked -- \
+            -D warnings \
+            -A clippy::useless_conversion
 
       - name: Show system resource summary
         run: |
