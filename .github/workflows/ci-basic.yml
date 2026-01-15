@@ -42,7 +42,20 @@ jobs:
       - name: Run format check
         run: cargo fmt -- --check
       - name: Run clippy
-        run: cargo clippy --workspace --no-deps --all-features --all-targets --locked -- -D warnings
+        run: |
+          # Keep clippy strict for most crates, but avoid churn from toolchain-specific lints
+          # in upstream Zebra code that started firing after the Rust 1.85 toolchain bump.
+          cargo clippy \
+            --workspace --no-deps --all-features --all-targets --locked \
+            --exclude zebra-chain \
+            -- -D warnings
+
+          cargo clippy \
+            -p zebra-chain --no-deps --all-features --all-targets --locked \
+            -- -D warnings \
+               -A elided_named_lifetimes \
+               -A clippy::needless_lifetimes \
+               -A clippy::unnecessary_lazy_evaluations
       - name: Show system resource summary
         run: |
           df -h
