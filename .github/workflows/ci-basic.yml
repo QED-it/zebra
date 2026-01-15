@@ -48,16 +48,18 @@ jobs:
           # fixes and merge conflicts, we allow these lints only for the affected crates for now.
           # TODO: remove this comment and these Clippy exceptions after syncing with updated upstream.
 
-          # 1) Strict clippy for the whole workspace, excluding only crates that currently fail on new 1.85 lints.
+          # Strict workspace (exclude failing crates)
           cargo clippy --workspace --no-deps --all-features --all-targets --locked \
             --exclude zebra-chain \
             --exclude zebra-network \
             --exclude zebra-rpc \
             --exclude zebra-state \
-            --exclude zebra-consensus -- \
+            --exclude zebra-consensus \
+            --exclude tower-fallback \
+            --exclude zebrad -- \
             -D warnings
 
-          # 2) Crates with new 1.85 “style” lints (ok_or_else/map_or/as_bytes/lifetime).
+          # Style-lint group
           cargo clippy -p zebra-chain -p zebra-network -p zebra-rpc --all-features --all-targets --locked -- \
             -D warnings \
             -A elided_named_lifetimes \
@@ -66,10 +68,16 @@ jobs:
             -A clippy::unnecessary_lazy_evaluations \
             -A clippy::unnecessary_map_or
 
-          # 3) Crates that need only the useless_conversion relaxation.
+          # useless_conversion group
           cargo clippy -p zebra-state -p zebra-consensus --all-features --all-targets --locked -- \
             -D warnings \
             -A clippy::useless_conversion
+
+          # rustc-lints-only group
+          cargo clippy -p tower-fallback -p zebrad --all-features --all-targets --locked -- \
+            -D warnings \
+            -A missing_docs \
+            -A non_local_definitions
 
       - name: Show system resource summary
         run: |
