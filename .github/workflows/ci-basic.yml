@@ -52,17 +52,19 @@ jobs:
           cargo clippy --workspace --no-deps --all-features --all-targets --locked \
             --exclude zebra-chain \
             --exclude zebra-network \
+            --exclude zebra-rpc \
             --exclude zebra-state \
             --exclude zebra-consensus -- \
             -D warnings
 
-          # 2) Crates that need only “ok_or_else -> ok_or” / string len lint relaxations.
-          cargo clippy -p zebra-chain -p zebra-network --all-features --all-targets --locked -- \
+          # 2) Crates with new 1.85 “style” lints (ok_or_else/map_or/as_bytes/lifetime).
+          cargo clippy -p zebra-chain -p zebra-network -p zebra-rpc --all-features --all-targets --locked -- \
             -D warnings \
             -A elided_named_lifetimes \
             -A clippy::needless_lifetimes \
             -A clippy::needless_as_bytes \
-            -A clippy::unnecessary_lazy_evaluations
+            -A clippy::unnecessary_lazy_evaluations \
+            -A clippy::unnecessary_map_or
 
           # 3) Crates that need only the useless_conversion relaxation.
           cargo clippy -p zebra-state -p zebra-consensus --all-features --all-targets --locked -- \
