@@ -133,8 +133,6 @@ impl<Flavor: ShieldedDataFlavor> ShieldedData<Flavor> {
         let key = {
             let cv_balance = ValueCommitment::new(
                 pallas::Scalar::zero(),
-                // FIXME: ValueSum::from_raw conversion does not compile as ValueSum::from_raw
-                // is not pub in orchard - we should discuss possible ways to fix it.
                 ValueSum::from_raw(self.value_balance.into()),
                 AssetBase::native(),
             );

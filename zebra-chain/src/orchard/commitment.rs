@@ -243,8 +243,6 @@ impl ValueCommitment {
         let rcv = generate_trapdoor(csprng)?;
 
         #[cfg(feature = "tx_v6")]
-        // FIXME: ValueSum::from_raw doesn't compile because ValueSum::from_raw
-        // isn't public in Orchard. We should discuss how to fix this.
         let vc = Self::new(rcv, ValueSum::from_raw(value.into()), AssetBase::native());
 
         #[cfg(not(feature = "tx_v6"))]
