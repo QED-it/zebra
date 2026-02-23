@@ -9,11 +9,11 @@ on:
   workflow_dispatch:
     inputs:
       image_tag_version:
-        description: 'Version to tag the Docker image'
-        required: false
+        description: 'Version to tag the Docker image ()'
+        required: true
         type: string
       ecr_repository:
-        description: 'ECR repository name (overrides vars.ECR_REPOSITORY)'
+        description: 'ECR repository name (dev-zebra-server)'
         required: false
         type: string
 
