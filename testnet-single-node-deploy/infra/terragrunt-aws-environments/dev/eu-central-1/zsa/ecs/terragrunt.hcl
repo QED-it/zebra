@@ -52,18 +52,7 @@ inputs = {
   persistent_volume_size = 40
 
   port_mappings = [
-    {
-      containerPort = 80
-      hostPort      = 80
-      protocol      = "tcp"
-    },
-    {
-      containerPort = 443
-      hostPort      = 443
-      protocol      = "tcp"
-    },
-    // Zebra ports are:
-    // TCP ports:
+    // Zebra port:
     { // RPC PubSub
       containerPort = 18232
       hostPort      = 18232
