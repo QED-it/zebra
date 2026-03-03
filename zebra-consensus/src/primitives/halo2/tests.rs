@@ -62,13 +62,13 @@ where
                         recipient,
                         NoteValue::from_raw(note_value),
                         // FIXME: Use another AssetBase for OrchardZSA?
-                        AssetBase::native(),
+                        AssetBase::zatoshi(),
                         memo,
                     )
                     .unwrap();
             }
 
-            let bundle: Bundle<_, i64, Flavor> = builder.build(rng).unwrap().0;
+            let bundle: Bundle<_, i64, Flavor> = builder.build(rng).unwrap().unwrap().0;
 
             let bundle = bundle
                 .create_proof(&proving_key, rng)
@@ -103,13 +103,13 @@ where
                         };
                         zebra_chain::orchard::shielded_data::AuthorizedAction {
                             action,
-                            spend_auth_sig: <[u8; 64]>::from(a.authorization()).into(),
+                            spend_auth_sig: <[u8; 64]>::from(a.authorization().sig()).into(),
                         }
                     })
                     .collect::<Vec<_>>()
                     .try_into()
                     .unwrap(),
-                binding_sig: <[u8; 64]>::from(bundle.authorization().binding_signature()).into(),
+                binding_sig: <[u8; 64]>::from(bundle.authorization().binding_signature().sig()).into(),
                 #[cfg(feature = "tx_v6")]
                 burn: bundle.burn().as_slice().into(),
             }

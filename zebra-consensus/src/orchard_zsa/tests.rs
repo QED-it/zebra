@@ -25,7 +25,8 @@ use color_eyre::eyre::Report;
 use tower::ServiceExt;
 
 use orchard::{
-    asset_record::AssetRecord, issuance::IssueAction, keys::IssuanceValidatingKey, note::AssetBase,
+    issuance::{auth::IssueValidatingKey, auth::ZSASchnorr, AssetRecord, IssueAction},
+    note::{AssetBase, AssetId},
     value::NoteValue,
 };
 
@@ -84,11 +85,11 @@ fn process_burns<'a, I: Iterator<Item = &'a BurnItem>>(
 /// Processes orchard issue actions, increasing asset supply.
 fn process_issue_actions<'a, I: Iterator<Item = &'a IssueAction>>(
     asset_records: &mut AssetRecords,
-    ik: &IssuanceValidatingKey,
+    ik: &IssueValidatingKey<ZSASchnorr>,
     actions: I,
 ) -> Result<(), AssetRecordsError> {
     for action in actions {
-        let action_asset = AssetBase::derive(ik, action.asset_desc_hash());
+        let action_asset = AssetBase::custom(&AssetId::new_v0(ik, action.asset_desc_hash()));
         let reference_note = action.get_reference_note();
         let is_finalized = action.is_finalized();
 
@@ -118,8 +119,13 @@ fn process_issue_actions<'a, I: Iterator<Item = &'a IssueAction>>(
             match asset_records.entry(action_asset) {
                 hash_map::Entry::Occupied(mut entry) => {
                     let asset_record = entry.get_mut();
-                    asset_record.amount =
-                        (asset_record.amount + amount).ok_or(AssetRecordsError::AmountOverflow)?;
+                    asset_record.amount = NoteValue::from_raw(
+                        asset_record
+                            .amount
+                            .inner()
+                            .checked_add(amount.inner())
+                            .ok_or(AssetRecordsError::AmountOverflow)?,
+                    );
                     if asset_record.is_finalized {
                         return Err(AssetRecordsError::ModifyFinalized);
                     }
@@ -258,9 +264,7 @@ async fn check_orchard_zsa_workflow() -> Result<(), Report> {
 
         assert_eq!(
             asset_state.total_supply,
-            // FIXME: Fix it after chaning ValueSum to NoteValue in AssetSupply in orchard
-            u64::try_from(i128::from(asset_record.amount))
-                .expect("asset supply amount should be within u64 range"),
+            asset_record.amount.inner(),
             "Total supply mismatch for asset {:?}.",
             asset_base
         );
