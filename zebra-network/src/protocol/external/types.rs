@@ -106,6 +106,9 @@ impl Version {
             (Mainnet, Nu5) => 170_100,
             (Testnet(params), Nu6) if params.is_default_testnet() => 170_110,
             (Mainnet, Nu6) => 170_120,
+            // TODO: Use proper protocol version values for Nu6_1 when known.
+            (Testnet(params), Nu6_1) if params.is_default_testnet() => 170_120,
+            (Mainnet, Nu6_1) => 170_120,
             #[cfg(zcash_unstable = "nu7")]
             (Testnet(params), Nu7) if params.is_default_testnet() => 170_130,
             #[cfg(zcash_unstable = "nu7")]

@@ -4,12 +4,12 @@ use std::fmt::Debug;
 
 use serde::{de::DeserializeOwned, Serialize};
 
-use orchard::{domain::OrchardDomainCommon, orchard_flavor::OrchardFlavor};
+use orchard::flavor::OrchardFlavor;
 
-pub use orchard::orchard_flavor::OrchardVanilla;
+pub use orchard::flavor::OrchardVanilla;
 
 #[cfg(feature = "tx_v6")]
-pub use orchard::{note::AssetBase, orchard_flavor::OrchardZSA, value::NoteValue};
+pub use orchard::{flavor::OrchardZSA, note::AssetBase, value::NoteValue};
 
 use crate::serialization::{ZcashDeserialize, ZcashSerialize};
 
@@ -61,13 +61,13 @@ pub trait ShieldedDataFlavor: OrchardFlavor {
 }
 
 impl ShieldedDataFlavor for OrchardVanilla {
-    type EncryptedNote = note::EncryptedNote<{ OrchardVanilla::ENC_CIPHERTEXT_SIZE }>;
+    type EncryptedNote = note::EncryptedNote<{ <OrchardVanilla as orchard::primitives::OrchardPrimitives>::ENC_CIPHERTEXT_SIZE }>;
     #[cfg(feature = "tx_v6")]
     type BurnType = NoBurn;
 }
 
 #[cfg(feature = "tx_v6")]
 impl ShieldedDataFlavor for OrchardZSA {
-    type EncryptedNote = note::EncryptedNote<{ OrchardZSA::ENC_CIPHERTEXT_SIZE }>;
+    type EncryptedNote = note::EncryptedNote<{ <OrchardZSA as orchard::primitives::OrchardPrimitives>::ENC_CIPHERTEXT_SIZE }>;
     type BurnType = Burn;
 }

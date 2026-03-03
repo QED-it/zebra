@@ -426,13 +426,17 @@ impl ZcashSerialize for orchard::ShieldedData<OrchardZSA> {
         self.proof.zcash_serialize(&mut writer)?;
 
         // Denoted as `vSpendAuthSigsOrchard` in the spec.
-        zcash_serialize_external_count(&sigs, &mut writer)?;
+        // V6 uses versioned signatures (ZIP-246): sighash info + 64-byte sig.
+        for sig in &sigs {
+            write_versioned_signature_v0(sig, &mut writer)?;
+        }
 
         // Denoted as `valueBalanceOrchard` in the spec.
         self.value_balance.zcash_serialize(&mut writer)?;
 
         // Denoted as `bindingSigOrchard` in the spec.
-        self.binding_sig.zcash_serialize(&mut writer)?;
+        // V6 uses versioned signatures (ZIP-246): sighash info + 64-byte sig.
+        write_versioned_signature_v0(&self.binding_sig, &mut writer)?;
 
         Ok(())
     }
@@ -561,14 +565,27 @@ impl ZcashDeserialize for Option<orchard::ShieldedData<OrchardZSA>> {
         let proof: Halo2Proof = (&mut reader).zcash_deserialize_into()?;
 
         // Denoted as `vSpendAuthSigsOrchard` in the spec.
-        let sigs: Vec<Signature<SpendAuth>> =
-            zcash_deserialize_external_count(actions.len(), &mut reader)?;
+        // V6 uses versioned signatures (ZIP-246): sighash info + 64-byte sig.
+        let sigs: Vec<Signature<SpendAuth>> = {
+            let mut sigs = Vec::with_capacity(actions.len());
+            for _ in 0..actions.len() {
+                sigs.push(read_versioned_signature_v0(
+                    &mut reader,
+                    "Unknown Orchard sighash info in spend auth signature",
+                )?);
+            }
+            sigs
+        };
 
         // Denoted as `valueBalanceOrchard` in the spec.
         let value_balance: Amount = (&mut reader).zcash_deserialize_into()?;
 
         // Denoted as `bindingSigOrchard` in the spec.
-        let binding_sig: Signature<Binding> = (&mut reader).zcash_deserialize_into()?;
+        // V6 uses versioned signatures (ZIP-246): sighash info + 64-byte sig.
+        let binding_sig: Signature<Binding> = read_versioned_signature_v0(
+            &mut reader,
+            "Unknown Orchard sighash info in binding signature",
+        )?;
 
         // Create the AuthorizedAction from deserialized parts
         let authorized_actions: Vec<orchard::AuthorizedAction<OrchardZSA>> = actions
@@ -592,6 +609,29 @@ impl ZcashDeserialize for Option<orchard::ShieldedData<OrchardZSA>> {
             binding_sig,
         }))
     }
+}
+
+// TODO refactor when versioned signatures are properly implemented
+#[cfg(feature = "tx_v6")]
+fn write_versioned_signature_v0<T: reddsa::SigType, W: io::Write>(sig: &reddsa::Signature<T>, mut writer: W) -> Result<(), io::Error> {
+    // Write sighash info: CompactSize(1) + [0x00] for AllEffecting V0
+    writer.write_u8(0x01)?; // CompactSize encoding of 1
+    writer.write_u8(0x00)?; // sighash version 0 = AllEffecting
+    sig.zcash_serialize(&mut writer)
+}
+
+// TODO refactor when versioned signatures are properly implemented
+#[cfg(feature = "tx_v6")]
+fn read_versioned_signature_v0<T: reddsa::SigType, R: io::Read>(mut reader: R, err_msg: &'static str) -> Result<reddsa::Signature<T>, SerializationError> {
+    // Read sighash info: CompactSize(1) + [0x00] for AllEffecting V0
+    let sighash_info_len: usize =
+        (&mut reader).zcash_deserialize_into::<CompactSizeMessage>()?.into();
+    let mut sighash_info = vec![0u8; sighash_info_len];
+    reader.read_exact(&mut sighash_info)?;
+    if sighash_info != [0x00] {
+        return Err(SerializationError::Parse(err_msg));
+    }
+    (&mut reader).zcash_deserialize_into()
 }
 
 impl<T: reddsa::SigType> ZcashSerialize for reddsa::Signature<T> {

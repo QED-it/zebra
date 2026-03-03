@@ -712,6 +712,7 @@ where
             | NetworkUpgrade::Canopy
             | NetworkUpgrade::Nu5
             | NetworkUpgrade::Nu6
+            | NetworkUpgrade::Nu6_1
             | NetworkUpgrade::Nu7 => Ok(()),
 
             // Does not support V4 transactions

@@ -133,11 +133,8 @@ impl<Flavor: ShieldedDataFlavor> ShieldedData<Flavor> {
         let key = {
             let cv_balance = ValueCommitment::new(
                 pallas::Scalar::zero(),
-                // TODO: Make the `ValueSum::from_raw` function public in the `orchard` crate
-                // and use `ValueSum::from_raw(self.value_balance.into())` instead of the
-                // next line
-                (ValueSum::default() + i64::from(self.value_balance)).unwrap(),
-                AssetBase::native(),
+                ValueSum::from_raw(i64::from(self.value_balance)),
+                AssetBase::zatoshi(),
             );
             let burn_value_commitment = compute_burn_value_commitment(self.burn.as_ref());
             cv - cv_balance - burn_value_commitment

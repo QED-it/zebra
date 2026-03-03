@@ -46,7 +46,7 @@ impl zcash_transparent::sighash::TransparentAuthorizingContext for TransparentAu
         self.all_prev_outputs
             .iter()
             .map(|prevout| {
-                zcash_primitives::legacy::Script(prevout.lock_script.as_raw_bytes().into())
+                zcash_primitives::legacy::Script(zcash_script::script::Code(prevout.lock_script.as_raw_bytes().to_vec()))
             })
             .collect()
     }
@@ -249,7 +249,7 @@ impl TryFrom<Amount<NonNegative>> for zcash_protocol::value::Zatoshis {
 /// Convert a Zebra Script into a librustzcash one.
 impl From<&Script> for zcash_primitives::legacy::Script {
     fn from(script: &Script) -> Self {
-        zcash_primitives::legacy::Script(script.as_raw_bytes().to_vec())
+        zcash_primitives::legacy::Script(zcash_script::script::Code(script.as_raw_bytes().to_vec()))
     }
 }
 
@@ -326,7 +326,7 @@ pub(crate) fn sighash(
         Some((input_index, script_code)) => {
             let output = &precomputed_tx_data.all_previous_outputs[input_index];
             lock_script = output.lock_script.clone().into();
-            unlock_script = zcash_primitives::legacy::Script(script_code);
+            unlock_script = zcash_primitives::legacy::Script(zcash_script::script::Code(script_code));
             zp_tx::sighash::SignableInput::Transparent(
                 zcash_transparent::sighash::SignableInput::from_parts(
                     hash_type.try_into().expect("hash type should be ALL"),

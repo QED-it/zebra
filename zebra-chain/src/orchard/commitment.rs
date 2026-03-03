@@ -246,11 +246,8 @@ impl ValueCommitment {
         #[cfg(feature = "tx_v6")]
         let vc = Self::new(
             rcv,
-            // TODO: Make the `ValueSum::from_raw` function public in the `orchard` crate
-            // and use `ValueSum::from_raw(value.into())` instead of the next line.
-            // Remove `#[allow(clippy::unwrap_in_result)]` after doing so.
-            (ValueSum::default() + i64::from(value)).unwrap(),
-            AssetBase::native(),
+            ValueSum::from_raw(i64::from(value)),
+            AssetBase::zatoshi(),
         );
 
         #[cfg(not(feature = "tx_v6"))]

@@ -192,7 +192,7 @@ impl AssetStateChange {
     fn from_issue_data(issue_data: &IssueData) -> impl Iterator<Item = (AssetBase, Self)> + '_ {
         let ik = issue_data.inner().ik();
         issue_data.actions().flat_map(|action| {
-            let issue_asset = AssetBase::derive(ik, action.asset_desc_hash());
+            let issue_asset = AssetBase::custom(&orchard::note::AssetId::new_v0(ik, action.asset_desc_hash()));
             Self::from_issue_action(issue_asset, action)
         })
     }
@@ -380,17 +380,12 @@ pub trait RandomAssetBase {
 
 impl RandomAssetBase for AssetBase {
     fn random_serialized() -> String {
-        let isk = orchard::keys::IssuanceAuthorizingKey::from_bytes(
-            k256::NonZeroScalar::random(&mut rand_core::OsRng)
-                .to_bytes()
-                .into(),
-        )
-        .unwrap();
-        let ik = orchard::keys::IssuanceValidatingKey::from(&isk);
+        let isk = orchard::issuance::auth::IssueAuthKey::<orchard::issuance::auth::ZSASchnorr>::random(&mut rand_core::OsRng);
+        let ik = orchard::issuance::auth::IssueValidatingKey::from(&isk);
         let asset_desc = b"zsa_asset";
         let asset_desc_hash =
             compute_asset_desc_hash(&(asset_desc[0], asset_desc[1..].to_vec()).into());
-        AssetBase::derive(&ik, &asset_desc_hash)
+        AssetBase::custom(&orchard::note::AssetId::new_v0(&ik, &asset_desc_hash))
             .zcash_serialize_to_vec()
             .map(hex::encode)
             .expect("random asset base should serialize")
