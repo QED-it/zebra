@@ -179,8 +179,16 @@ pub fn fake_coinbase_transaction(
         if network_upgrade < NetworkUpgrade::Nu7 {
             Transaction::new_v5_coinbase(net, height, outputs, extra_coinbase_data).into()
         } else {
-            Transaction::new_v6_coinbase(net, height, outputs, extra_coinbase_data, zip233_amount)
-                .into()
+            Transaction::new_v6_coinbase(
+                net,
+                height,
+                outputs,
+                extra_coinbase_data,
+                zip233_amount,
+                #[cfg(zcash_unstable = "zip235")]
+                miner_fee,
+            )
+            .into()
         }
     };
 

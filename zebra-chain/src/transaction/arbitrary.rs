@@ -153,7 +153,7 @@ impl Transaction {
         ),
     > + 'static {
         (
-            NetworkUpgrade::branch_id_strategy(),
+            NetworkUpgrade::nu5_branch_id_strategy(),
             any::<LockTime>(),
             any::<block::Height>(),
             transparent::Input::vec_strategy(&ledger_state, MAX_ARBITRARY_ITEMS),

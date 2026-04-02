@@ -1396,8 +1396,8 @@ fn sync_full_testnet() -> Result<()> {
     )
 }
 
-#[cfg(all(feature = "prometheus", not(target_os = "windows")))]
 #[tokio::test]
+#[cfg(all(feature = "prometheus", not(target_os = "windows")))]
 async fn metrics_endpoint() -> Result<()> {
     use bytes::Bytes;
     use http_body_util::BodyExt;
@@ -3678,22 +3678,22 @@ async fn nu7_nsm_transactions() -> Result<()> {
     let base_network_params = testnet::Parameters::build()
         // Regtest genesis hash
         .with_genesis_hash("029f11d80ef9765602235e1bc9727e3eb6ba20839319f761fee920d63401e327")
-        .expect("failed to set genesis hash")
+        .unwrap()
         .with_checkpoints(false)
-        .expect("failed to verify checkpoints")
+        .unwrap()
         .with_target_difficulty_limit(U256::from_big_endian(&[0x0f; 32]))
-        .expect("failed to set target difficulty limit")
+        .unwrap()
         .with_disable_pow(true)
         .with_slow_start_interval(Height::MIN)
         .with_lockbox_disbursements(vec![])
         .with_activation_heights(ConfiguredActivationHeights {
             nu7: Some(1),
             ..Default::default()
-        })
-        .expect("failed to set activation heights");
+        });
 
     let network = base_network_params
         .clone()
+        .unwrap()
         .with_funding_streams(vec![ConfiguredFundingStreams {
             // Start checking funding streams from block height 1
             height_range: Some(Height(1)..Height(100)),
@@ -3701,7 +3701,7 @@ async fn nu7_nsm_transactions() -> Result<()> {
             recipients: None,
         }])
         .to_network()
-        .expect("failed to build configured network");
+        .unwrap();
 
     tracing::info!("built configured Testnet, starting state service and block verifier");
 
