@@ -61,7 +61,6 @@ where
                         None,
                         recipient,
                         NoteValue::from_raw(note_value),
-                        // FIXME: Use another AssetBase for OrchardZSA?
                         AssetBase::zatoshi(),
                         memo,
                     )
