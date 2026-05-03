@@ -26,5 +26,5 @@ RUN cargo build --release --package zebrad --bin zebrad --features="getblocktemp
 
 EXPOSE 18232
 
-# Run the zebra node
+# Run the zebra node 
 ENTRYPOINT ["target/release/zebrad", "-c", "/app/testnet-single-node-deploy/regtest-config.toml"]
