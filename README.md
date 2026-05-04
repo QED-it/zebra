@@ -18,6 +18,13 @@
 - [Security](#security)
 - [License](#license)
 
+## Note
+
+This is a functional prototype of the Zebra node with support for ZSA Swaps.
+It is not ready for production use. 
+It is a work-in-progress, not spec-complete, and the protocol is not finalized.
+It is intended for testing and development purposes only, and should not be used in a production environment.
+
 ## About
 
 [Zebra](https://zebra.zfnd.org/) is a Zcash full-node written in Rust.
