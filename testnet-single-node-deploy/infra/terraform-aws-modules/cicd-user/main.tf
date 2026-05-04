@@ -46,7 +46,10 @@ resource "aws_iam_policy" "ecr_ecs_policy" {
         Action = [
           "lambda:*"
         ]
-        Resource = "arn:aws:lambda:${var.aws_region}:${var.aws_account_id}:function:watch-zebra-logs"
+        Resource = [
+          "arn:aws:lambda:${var.aws_region}:${var.aws_account_id}:function:watch-zebra-logs",
+          "arn:aws:lambda:${var.aws_region}:${var.aws_account_id}:function:watch-zebra-swaps-logs"
+        ]
       },
       {
         # The CICD user needs the iam:PassRole permission to pass the ECS execution role when registering task definitions.
@@ -81,7 +84,7 @@ resource "aws_secretsmanager_secret" "credentials" {
 }
 
 resource "aws_secretsmanager_secret_version" "credentials_version" {
-  secret_id     = aws_secretsmanager_secret.credentials.id
+  secret_id = aws_secretsmanager_secret.credentials.id
   secret_string = jsonencode({
     AWS_ACCESS_KEY_ID     = aws_iam_access_key.cicd_user_key.id,
     AWS_SECRET_ACCESS_KEY = aws_iam_access_key.cicd_user_key.secret
