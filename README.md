@@ -9,6 +9,7 @@
 [![Build docs](https://github.com/ZcashFoundation/zebra/actions/workflows/docs-deploy-firebase.yml/badge.svg)](https://github.com/ZcashFoundation/zebra/actions/workflows/docs-deploy-firebase.yml)
 ![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)
 
+- [Project Status](#project-status)
 - [About](#about)
 - [Getting Started](#getting-started)
   - [Docker](#docker)
@@ -18,9 +19,9 @@
 - [Security](#security)
 - [License](#license)
 
-## Note
+## Project Status
 
-This is a functional prototype of the Zebra node with support for ZSA Swaps.
+**This is a functional prototype of the Zebra node with support for ZSA Swaps.**
 It is not ready for production use. 
 It is a work-in-progress, not spec-complete, and the protocol is not finalized.
 It is intended for testing and development purposes only, and should not be used in a production environment.
