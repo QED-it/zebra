@@ -1,13 +1,27 @@
 name: Stop All ECS Tasks
-
 on:
   workflow_dispatch:
+    inputs:
+      aws_region:
+        description: 'AWS Region'
+        required: false
+        default: 'eu-central-1'
+        type: string
+      ecs_cluster:
+        description: 'ECS Cluster name'
+        required: false
+        default: 'dev-zebra-cluster'
+        type: string
+      ecs_service:
+        description: 'ECS Service name'
+        required: false
+        default: 'dev-zebra'
+        type: string
 
 env:
-  AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-  ECS_SERVICE: ${{ vars.ECS_SERVICE || 'dev-zebra' }}
-  ECS_CLUSTER: ${{ vars.ECS_CLUSTER || 'dev-zebra-cluster' }}
-
+  AWS_REGION: ${{ inputs.aws_region || vars.AWS_REGION || 'eu-central-1' }}
+  ECS_SERVICE: ${{ inputs.ecs_service || vars.ECS_SERVICE || 'dev-zebra' }}
+  ECS_CLUSTER: ${{ inputs.ecs_cluster || vars.ECS_CLUSTER || 'dev-zebra-cluster' }}
 jobs:
   stop-tasks:
     name: Stop All ECS Tasks
