@@ -15,13 +15,23 @@ on:
         required: true
         type: string
         default: 'dev-zebra-cluster'
+      task_definition:
+        description: 'ECS task definition family'
+        required: true
+        type: string
+        default: 'dev-zebra-task'
+      container_name:
+        description: 'Container name within the task definition to update'
+        required: true
+        type: string
+        default: 'zebra-container'
 env:
   AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
   ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY || 'dev-zebra-server' }}
   ECS_SERVICE: ${{ vars.ECS_SERVICE || 'dev-zebra' }}
   ECS_CLUSTER: ${{ inputs.ecs_cluster || vars.ECS_CLUSTER || 'dev-zebra-cluster' }}
-  TASK_DEFINITION: ${{ vars.TASK_DEFINITION || 'dev-zebra-task' }}
-  CONTAINER_NAME: ${{ vars.CONTAINER_NAME || 'zebra-container' }}
+  TASK_DEFINITION: ${{ inputs.task_definition || vars.TASK_DEFINITION || 'dev-zebra-task' }}
+  CONTAINER_NAME: ${{ inputs.container_name || vars.CONTAINER_NAME || 'zebra-container' }}
 jobs:
   deploy-to-ecs:
     name: Deploy to ECS
