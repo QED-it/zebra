@@ -47,9 +47,9 @@ jobs:
               --reason "Manually stopped via GitHub Actions"
           done
           
-          echo "All tasks have been stopped."
+          echo "Stop requests submitted for all running tasks."
 
-      - name: Verify tasks stopped
+      - name: Wait for tasks to stop
         run: |
           TASK_ARNS="${{ steps.stop-tasks.outputs.task_arns }}"
           
@@ -62,6 +62,8 @@ jobs:
           aws ecs wait tasks-stopped \
             --cluster "$ECS_CLUSTER" \
             --tasks $TASK_ARNS
+          
+          echo "All tasks stopped."
           
           echo "Stopped task status:"
           aws ecs describe-tasks \
