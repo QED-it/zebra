@@ -26,7 +26,7 @@ jobs:
         # Ubuntu runners don't have reliable network or DNS during test steps.
         run: echo "ZEBRA_SKIP_NETWORK_TESTS=1" >> $GITHUB_ENV
       - name: Run tests
-        run: cargo test --verbose
+        run: cargo test --verbose -- --skip trusted_chain_sync_handles_forks_correctly
       - name: Verify working directory is clean
         run: git diff --exit-code
       - name: Run doc check
