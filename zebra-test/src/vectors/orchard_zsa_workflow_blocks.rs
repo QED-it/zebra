@@ -5,14 +5,16 @@
 use hex::FromHex;
 use lazy_static::lazy_static;
 
+use crate::transcript::ExpectedTranscriptError;
+
 /// Represents a serialized block and its validity status.
 pub struct OrchardWorkflowBlock {
     /// Block height.
     pub height: u32,
     /// Serialized byte data of the block.
     pub bytes: &'static [u8],
-    /// Indicates whether the block is valid.
-    pub is_valid: bool,
+    /// Expected result of transcript validation for this block.
+    pub expected_result: Result<(), ExpectedTranscriptError>,
 }
 
 fn decode_bytes(hex: &str) -> Vec<u8> {
@@ -41,35 +43,35 @@ lazy_static! {
         OrchardWorkflowBlock {
             height: 1,
             bytes: ORCHARD_ZSA_WORKFLOW_BLOCK_1_BYTES.as_slice(),
-            is_valid: true
+            expected_result: Ok(())
         },
 
         // Transfer
         OrchardWorkflowBlock {
             height: 2,
             bytes: ORCHARD_ZSA_WORKFLOW_BLOCK_2_BYTES.as_slice(),
-            is_valid: true
+            expected_result: Ok(())
         },
 
         // Burn: 7, Burn: 2
         OrchardWorkflowBlock {
             height: 3,
             bytes: ORCHARD_ZSA_WORKFLOW_BLOCK_3_BYTES.as_slice(),
-            is_valid: true
+            expected_result: Ok(())
         },
 
         // Issue: finalize
         OrchardWorkflowBlock {
             height: 4,
             bytes: ORCHARD_ZSA_WORKFLOW_BLOCK_4_BYTES.as_slice(),
-            is_valid: true
+            expected_result: Ok(())
         },
 
         // Try to issue: 2000
         OrchardWorkflowBlock {
             height: 5,
             bytes: ORCHARD_ZSA_WORKFLOW_BLOCK_5_BYTES.as_slice(),
-            is_valid: false
+            expected_result: Err(ExpectedTranscriptError::Any)
         },
     ];
 }

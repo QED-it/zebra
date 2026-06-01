@@ -59,7 +59,7 @@ fn check_burns_and_issuance() {
     for OrchardWorkflowBlock {
         height,
         bytes,
-        is_valid,
+        expected_result,
     } in ORCHARD_ZSA_WORKFLOW_BLOCKS.iter()
     {
         let block =
@@ -83,7 +83,7 @@ fn check_burns_and_issuance() {
         let commit_result =
             validate_and_commit_non_finalized(&finalized_state.db, &mut non_finalized_state, block);
 
-        if !is_valid {
+        if expected_result.is_err() {
             assert!(
                 issued_asset_changes_result.is_err() || commit_result.is_err(),
                 "invalid workflow block at height {height} should fail issued-asset validation or commit"

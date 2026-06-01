@@ -176,25 +176,21 @@ fn create_transcript_data<'a, I: IntoIterator<Item = &'a OrchardWorkflowBlock>>(
         |OrchardWorkflowBlock {
              height: _,
              bytes,
-             is_valid,
+             expected_result,
          }| {
             (
                 Arc::new(Block::zcash_deserialize(&bytes[..]).expect("block should deserialize")),
-                *is_valid,
+                expected_result.clone(),
             )
         },
     );
 
-    std::iter::once((regtest_genesis_block(), true))
+    std::iter::once((regtest_genesis_block(), Ok(())))
         .chain(workflow_blocks)
-        .map(|(block, is_valid)| {
+        .map(|(block, expected_result)| {
             (
                 Request::Commit(block.clone()),
-                if is_valid {
-                    Ok(block.hash())
-                } else {
-                    Err(ExpectedTranscriptError::Any)
-                },
+                expected_result.map(|_| block.hash()),
             )
         })
 }
