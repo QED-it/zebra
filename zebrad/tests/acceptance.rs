@@ -3184,6 +3184,10 @@ async fn trusted_chain_sync_handles_forks_correctly() -> Result<()> {
         );
     }
 
+    if zebra_test::net::zebra_skip_network_tests() {
+        return Ok(());
+    }
+
     tracing::info!("restarting Zebra on Mainnet");
 
     child.kill(false)?;
