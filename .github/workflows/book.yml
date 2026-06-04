@@ -2,7 +2,6 @@ name: Book
 
 on:
   push:
-    branches: [main]
     paths:
       - book/**
       - katex-header.html
