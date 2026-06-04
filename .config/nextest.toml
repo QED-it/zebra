@@ -35,10 +35,10 @@ default-filter = "not test(check_no_git_dependencies) and not test(=fully_synced
 # --- Basic checks profile ---
 # Used by the fork's Basic checks workflow (.github/workflows/ci-basic.yml).
 #
-# Network-sensitive tests (zebra-network unit tests and the zebrad acceptance
-# suite) are flaky on shared CI runners, so they run serially and get per-test
-# retries. Everything else runs in parallel without retries, so deterministic
-# failures fail fast instead of re-running a whole test group.
+# Network-sensitive tests (zebra-network socket tests and the zebrad
+# acceptance suite) are flaky on shared CI runners, so they run serially and
+# get per-test retries. Everything else runs in parallel without retries, so
+# deterministic failures fail fast instead of re-running a whole test group.
 
 # Network-sensitive tests bind real sockets and launch full nodes, so they
 # must not run concurrently with each other.
@@ -47,9 +47,20 @@ max-threads = 1
 
 [profile.ci-basic]
 failure-output = "immediate"
+# List skipped tests in the final summary so accidental skips stay visible.
+final-status-level = "skip"
+# Keep going after a failure (up to 5) so one red run reports all failures.
+fail-fast = { max-fail = 5 }
+# Flag slow tests every 60s and kill them after 10 minutes, so a hung test is
+# named and (if network-sensitive) retried, instead of the workflow-level
+# timeout killing the whole run without identifying the culprit.
+slow-timeout = { period = "60s", terminate-after = 10 }
 
+# Only tests that actually touch the network: zebra-network's socket tests
+# live in the `peer_set::initialize` and `isolated` modules; the rest of its
+# lib tests are in-process and safe to run in parallel without retries.
 [[profile.ci-basic.overrides]]
-filter = '(package(zebra-network) & kind(lib)) | binary_id(zebrad::acceptance)'
+filter = '(package(zebra-network) & kind(lib) & (test(~peer_set::initialize) | test(~isolated))) | binary_id(zebrad::acceptance)'
 # 2 retries = up to 3 attempts per test, matching the previous workflow-level
 # retry loop, with the same 30s pause between attempts.
 retries = { backoff = "fixed", count = 2, delay = "30s" }

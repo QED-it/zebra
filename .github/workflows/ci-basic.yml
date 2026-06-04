@@ -50,6 +50,15 @@ jobs:
         with:
           tool: cargo-nextest@0.9.137
 
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          # The nu7 legs build with different cfg flags (see the strip step
+          # below), so their build artifacts are not interchangeable.
+          key: nu7-${{ matrix.nu7 }}
+          # Tests can fail while the build itself succeeded; keep the cache.
+          cache-on-failure: true
+
       - name: Verify working directory is clean
         run: git diff --exit-code
 
