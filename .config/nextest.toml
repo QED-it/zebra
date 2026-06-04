@@ -32,6 +32,29 @@ filter = "not test(=trusted_chain_sync_handles_forks_correctly) and not test(=de
 failure-output = "immediate"
 default-filter = "not test(check_no_git_dependencies) and not test(=fully_synced_rpc_z_getsubtreesbyindex_snapshot_test) and not test(=lwd_rpc_test) and not test(=lwd_rpc_send_tx) and not test(=lwd_grpc_wallet) and not test(=lwd_integration) and not test(=lwd_sync_full) and not test(=lwd_sync_update) and not test(=lightwalletd_test_suite) and not test(=rpc_get_block_template) and not test(=rpc_submit_block) and not test(=get_peer_info) and not test(~generate_checkpoints_) and not test(=sync_update_mainnet) and not test(=activate_mempool_mainnet)"
 
+# --- Basic checks profile ---
+# Used by the fork's Basic checks workflow (.github/workflows/ci-basic.yml).
+#
+# Network-sensitive tests (zebra-network unit tests and the zebrad acceptance
+# suite) are flaky on shared CI runners, so they run serially and get per-test
+# retries. Everything else runs in parallel without retries, so deterministic
+# failures fail fast instead of re-running a whole test group.
+
+# Network-sensitive tests bind real sockets and launch full nodes, so they
+# must not run concurrently with each other.
+[test-groups.network]
+max-threads = 1
+
+[profile.ci-basic]
+failure-output = "immediate"
+
+[[profile.ci-basic.overrides]]
+filter = '(package(zebra-network) & kind(lib)) | binary_id(zebrad::acceptance)'
+# 2 retries = up to 3 attempts per test, matching the previous workflow-level
+# retry loop, with the same 30s pause between attempts.
+retries = { backoff = "fixed", count = 2, delay = "30s" }
+test-group = "network"
+
 # --- Individual Test Profiles ---
 
 [profile.check-no-git-dependencies]

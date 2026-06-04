@@ -45,6 +45,11 @@ jobs:
       - name: Install formatting & linting tools
         run: rustup component add rustfmt clippy
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@25435dc8dd3baed7417e0c96d3fe89013a5b2e09 # v2.81.3
+        with:
+          tool: cargo-nextest@0.9.137
+
       - name: Verify working directory is clean
         run: git diff --exit-code
 
@@ -54,31 +59,16 @@ jobs:
           sed -i 's|.*"--cfg", .feature="tx_v6".*|# &|' .cargo/config.toml
           sed -i 's|.*"--cfg", "zcash_unstable=\\"nu7\\"".*|# &|' .cargo/config.toml
 
-      - name: Run non-network tests
-        env:
-          SKIP_NETWORK_TESTS: "1"
-        run: timeout --preserve-status 1h cargo test --verbose --locked
+      # The ci-basic nextest profile (.config/nextest.toml) gives
+      # network-sensitive tests per-test retries and serializes them, so a
+      # flaky network test is retried on its own instead of re-running a
+      # whole test group, and deterministic failures fail fast.
+      - name: Run tests
+        run: timeout --preserve-status 90m cargo nextest run --workspace --locked --profile ci-basic
 
-      - name: Run network-sensitive tests
-        run: |
-          for attempt in 1 2 3; do
-            echo "network-sensitive tests attempt ${attempt}"
-
-            timeout --preserve-status 45m bash -c '
-              set -euo pipefail
-              cargo test -p zebra-network --lib --verbose --locked -- --test-threads=1
-              cargo test -p zebrad --test acceptance --verbose --locked -- --test-threads=1
-            ' && exit 0
-
-            status=$?
-            echo "network-sensitive tests attempt ${attempt} failed with status ${status}"
-
-            if [ "${attempt}" = "3" ]; then
-              exit "${status}"
-            fi
-
-            sleep 30
-          done
+      # nextest doesn't run doctests, so run them separately
+      - name: Run doc tests
+        run: timeout --preserve-status 30m cargo test --doc --workspace --locked
 
       - name: Run doc check
         run: cargo doc --workspace --no-deps --all-features --document-private-items --locked
