@@ -18,7 +18,7 @@ use tower::ServiceExt;
 use orchard::{
     issuance::{
         auth::{IssueValidatingKey, ZSASchnorr},
-        Error as IssuanceError, {AssetRecord, IssueAction},
+        AssetRecord, IssueAction,
     },
     note::{AssetBase, AssetId},
     value::NoteValue,
@@ -26,7 +26,6 @@ use orchard::{
 
 use zebra_chain::{
     block::{genesis::regtest_genesis_block, Block, Hash},
-    orchard_zsa::AssetStateError,
     parameters::{testnet::ConfiguredActivationHeights, Network},
     serialization::ZcashDeserialize,
 };
@@ -34,10 +33,7 @@ use zebra_chain::{
 #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
 use zebra_chain::orchard_zsa::{AssetState, BurnItem};
 
-use zebra_state::{
-    CommitSemanticallyVerifiedError, ReadRequest, ReadResponse, ReadStateService,
-    ValidateContextError,
-};
+use zebra_state::{CommitSemanticallyVerifiedError, ReadRequest, ReadResponse, ReadStateService};
 
 use zebra_test::{
     transcript::{ExpectedTranscriptError, Transcript},
@@ -67,11 +63,14 @@ fn has_finalized_asset_error(error: &(dyn Error + 'static)) -> bool {
     let mut error = Some(error);
 
     while let Some(err) = error {
+        // The inner CommitBlockError is private, so this test can only type-check
+        // the wrapper and inspect the specific InvalidIssuedAsset error via Debug.
         if matches!(
-            err.downcast_ref::<ValidateContextError>(),
-            Some(ValidateContextError::InvalidIssuedAsset(
-                AssetStateError::Issue(IssuanceError::IssueActionPreviouslyFinalizedAssetBase,)
-            ))
+            err.downcast_ref::<CommitSemanticallyVerifiedError>(),
+            Some(commit_error)
+                if format!("{commit_error:?}").contains(
+                    "InvalidIssuedAsset(Issue(IssueActionPreviouslyFinalizedAssetBase))"
+                )
         ) {
             return true;
         }
@@ -87,7 +86,7 @@ fn expect_finalized_asset_error(error: Option<BoxError>) -> Result<(), BoxError>
         return Err(eyre!("expected finalized asset error").into());
     };
 
-    if has_finalized_asset_error(error.as_ref()) {
+    if has_finalized_asset_error(&*error) {
         Ok(())
     } else {
         Err(error)
