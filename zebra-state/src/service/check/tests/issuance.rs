@@ -7,7 +7,9 @@ use zebra_chain::{
     serialization::ZcashDeserialize,
 };
 
-use zebra_test::vectors::{OrchardWorkflowBlock, ORCHARD_ZSA_WORKFLOW_BLOCKS};
+use zebra_test::vectors::{
+    OrchardWorkflowBlock, OrchardWorkflowBlockResult, ORCHARD_ZSA_WORKFLOW_BLOCKS,
+};
 
 use crate::{
     check::Chain,
@@ -83,7 +85,7 @@ fn check_burns_and_issuance() {
         let commit_result =
             validate_and_commit_non_finalized(&finalized_state.db, &mut non_finalized_state, block);
 
-        if expected_result.is_err() {
+        if matches!(expected_result, OrchardWorkflowBlockResult::Valid) {
             assert!(
                 issued_asset_changes_result.is_err() || commit_result.is_err(),
                 "invalid workflow block at height {height} should fail issued-asset validation or commit"

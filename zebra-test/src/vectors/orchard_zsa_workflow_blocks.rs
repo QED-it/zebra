@@ -5,7 +5,12 @@
 use hex::FromHex;
 use lazy_static::lazy_static;
 
-use crate::transcript::ExpectedTranscriptError;
+/// Expected consensus result for a block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OrchardWorkflowBlockResult {
+    Valid,
+    IssueFinalizedAssetError,
+}
 
 /// Represents a serialized block and its validity status.
 pub struct OrchardWorkflowBlock {
@@ -14,7 +19,7 @@ pub struct OrchardWorkflowBlock {
     /// Serialized byte data of the block.
     pub bytes: &'static [u8],
     /// Expected result of transcript validation for this block.
-    pub expected_result: Result<(), ExpectedTranscriptError>,
+    pub expected_result: OrchardWorkflowBlockResult,
 }
 
 fn decode_bytes(hex: &str) -> Vec<u8> {
@@ -43,35 +48,35 @@ lazy_static! {
         OrchardWorkflowBlock {
             height: 1,
             bytes: ORCHARD_ZSA_WORKFLOW_BLOCK_1_BYTES.as_slice(),
-            expected_result: Ok(())
+            expected_result: OrchardWorkflowBlockResult::Valid
         },
 
         // Transfer
         OrchardWorkflowBlock {
             height: 2,
             bytes: ORCHARD_ZSA_WORKFLOW_BLOCK_2_BYTES.as_slice(),
-            expected_result: Ok(())
+            expected_result: OrchardWorkflowBlockResult::Valid
         },
 
         // Burn: 7, Burn: 2
         OrchardWorkflowBlock {
             height: 3,
             bytes: ORCHARD_ZSA_WORKFLOW_BLOCK_3_BYTES.as_slice(),
-            expected_result: Ok(())
+            expected_result: OrchardWorkflowBlockResult::Valid
         },
 
         // Issue: finalize
         OrchardWorkflowBlock {
             height: 4,
             bytes: ORCHARD_ZSA_WORKFLOW_BLOCK_4_BYTES.as_slice(),
-            expected_result: Ok(())
+            expected_result: OrchardWorkflowBlockResult::Valid
         },
 
         // Try to issue: 2000
         OrchardWorkflowBlock {
             height: 5,
             bytes: ORCHARD_ZSA_WORKFLOW_BLOCK_5_BYTES.as_slice(),
-            expected_result: Err(ExpectedTranscriptError::Any)
+            expected_result: OrchardWorkflowBlockResult::IssueFinalizedAssetError
         },
     ];
 }
