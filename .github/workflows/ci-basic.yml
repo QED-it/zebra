@@ -57,7 +57,8 @@ jobs:
       - name: Run non-network tests
         env:
           SKIP_NETWORK_TESTS: "1"
-        run: timeout --preserve-status 1h cargo test --verbose --locked --skip trusted_chain_sync_handles_forks_correctly
+        run: timeout --preserve-status 1h cargo test --verbose --locked -- \
+          --skip trusted_chain_sync_handles_forks_correctly
 
       - name: Run doc check
         run: cargo doc --workspace --no-deps --all-features --document-private-items --locked
