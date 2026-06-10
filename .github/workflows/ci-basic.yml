@@ -57,14 +57,32 @@ jobs:
       - name: Run non-network tests
         env:
           SKIP_NETWORK_TESTS: "1"
-        run: timeout --preserve-status 1h cargo test --verbose --locked -- \
-          --skip trusted_chain_sync_handles_forks_correctly
+        run: |
+          timeout --preserve-status 1h cargo test --verbose --locked -- \
+            --skip trusted_chain_sync_handles_forks_correctly
 
-      - name: Run zebra-network tests serially
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Run regular tests
+        run: |
+          timeout --preserve-status 1h \
+            cargo nextest run --workspace --locked \
+              -E 'not package(zebra-network) and not binary(acceptance)'
+
+      - name: Run zebra-network tests
         run: |
           timeout --preserve-status 30m \
-            cargo test -p zebra-network --verbose --locked -- \
-              --test-threads=1
+            cargo nextest run -p zebra-network --locked \
+              --retries 3 \
+              --test-threads 1
+
+      - name: Run zebrad acceptance tests
+        run: |
+          timeout --preserve-status 1h \
+            cargo nextest run -p zebrad --test acceptance --locked \
+              --retries 3 \
+              --test-threads 1
 
       - name: Run doc check
         run: cargo doc --workspace --no-deps --all-features --document-private-items --locked
