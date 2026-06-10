@@ -60,6 +60,12 @@ jobs:
         run: timeout --preserve-status 1h cargo test --verbose --locked -- \
           --skip trusted_chain_sync_handles_forks_correctly
 
+      - name: Run zebra-network tests serially
+        run: |
+          timeout --preserve-status 30m \
+            cargo test -p zebra-network --verbose --locked -- \
+              --test-threads=1
+
       - name: Run doc check
         run: cargo doc --workspace --no-deps --all-features --document-private-items --locked
 
