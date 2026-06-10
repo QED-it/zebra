@@ -75,7 +75,7 @@ jobs:
           timeout --preserve-status 30m \
             cargo nextest run -p zebra-network --locked \
               --retries 3 \
-              --test-threads 1
+              --test-threads 4
 
       - name: Run zebrad acceptance tests
         run: |
