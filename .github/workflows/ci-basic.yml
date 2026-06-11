@@ -81,7 +81,7 @@ jobs:
           timeout --preserve-status 1h \
             cargo nextest run -p zebrad --test acceptance --locked \
               --retries 3 \
-              --test-threads 1
+              --test-threads 4
 
       - name: Run doc check
         run: cargo doc --workspace --no-deps --all-features --document-private-items --locked
