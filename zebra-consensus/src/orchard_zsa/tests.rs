@@ -26,6 +26,7 @@ use orchard::{
 
 use zebra_chain::{
     block::{genesis::regtest_genesis_block, Block, Hash},
+    orchard_zsa::AssetStateError,
     parameters::{testnet::ConfiguredActivationHeights, Network},
     serialization::ZcashDeserialize,
 };
@@ -33,7 +34,7 @@ use zebra_chain::{
 #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
 use zebra_chain::orchard_zsa::{AssetState, BurnItem};
 
-use zebra_state::{CommitSemanticallyVerifiedError, ReadRequest, ReadResponse, ReadStateService};
+use zebra_state::{ReadRequest, ReadResponse, ReadStateService};
 
 use zebra_test::{
     transcript::{ExpectedTranscriptError, Transcript},
@@ -63,14 +64,14 @@ fn has_finalized_asset_error(error: &(dyn Error + 'static)) -> bool {
     let mut error = Some(error);
 
     while let Some(err) = error {
-        // The inner CommitBlockError is private, so this test can only type-check
-        // the wrapper and inspect the specific InvalidIssuedAsset error via Debug.
+        // The commit-error wrapper hides its inner error, but every layer derives
+        // `Error::source()`, so we can walk the chain down to the public leaf
+        // `AssetStateError` and match the exact variant instead of its Debug output.
         if matches!(
-            err.downcast_ref::<CommitSemanticallyVerifiedError>(),
-            Some(commit_error)
-                if format!("{commit_error:?}").contains(
-                    "InvalidIssuedAsset(Issue(IssueActionPreviouslyFinalizedAssetBase))"
-                )
+            err.downcast_ref::<AssetStateError>(),
+            Some(AssetStateError::Issue(
+                orchard::issuance::Error::IssueActionPreviouslyFinalizedAssetBase
+            ))
         ) {
             return true;
         }
