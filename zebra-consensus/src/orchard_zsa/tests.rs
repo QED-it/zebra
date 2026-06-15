@@ -64,9 +64,6 @@ fn has_finalized_asset_error(error: &(dyn Error + 'static)) -> bool {
     let mut error = Some(error);
 
     while let Some(err) = error {
-        // The commit-error wrapper hides its inner error, but every layer derives
-        // `Error::source()`, so we can walk the chain down to the public leaf
-        // `AssetStateError` and match the exact variant instead of its Debug output.
         if matches!(
             err.downcast_ref::<AssetStateError>(),
             Some(AssetStateError::Issue(
