@@ -2,7 +2,9 @@ name: Test Docker Config
 
 on:
   pull_request:
-    branches: [main]
+    branches:
+      - main
+      - zsa-support
     paths:
       - "**/*.rs"
       - "**/Cargo.toml"
