@@ -57,9 +57,7 @@ resource "aws_iam_policy" "ecr_ecs_policy" {
         ]
         Resource = [
           "arn:aws:iam::${var.aws_account_id}:role/${var.env}-zebra-ecs_execution_role",
-          "arn:aws:iam::${var.aws_account_id}:role/${var.env}-zebra-ecs_task_role",
-          "arn:aws:iam::${var.aws_account_id}:role/${var.env}-zebra-swaps-ecs_execution_role",
-          "arn:aws:iam::${var.aws_account_id}:role/${var.env}-zebra-swaps-ecs_task_role"
+          "arn:aws:iam::${var.aws_account_id}:role/${var.env}-zebra-swaps-ecs_execution_role"
         ]
       }
     ]
@@ -83,7 +81,7 @@ resource "aws_secretsmanager_secret" "credentials" {
 }
 
 resource "aws_secretsmanager_secret_version" "credentials_version" {
-  secret_id     = aws_secretsmanager_secret.credentials.id
+  secret_id = aws_secretsmanager_secret.credentials.id
   secret_string = jsonencode({
     AWS_ACCESS_KEY_ID     = aws_iam_access_key.cicd_user_key.id,
     AWS_SECRET_ACCESS_KEY = aws_iam_access_key.cicd_user_key.secret
