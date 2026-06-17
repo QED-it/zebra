@@ -6,6 +6,13 @@ locals {
   port_mappings = var.port_mappings
 
   used_domain = "${var.environment}.${var.domain}"
+
+  load_balancer_subnet_cidr_blocks = [for subnet in data.aws_subnet.public : subnet.cidr_block]
+}
+
+data "aws_subnet" "public" {
+  for_each = toset(var.public_subnets)
+  id       = each.value
 }
 
 ### ECS Cluster
@@ -18,7 +25,7 @@ resource "aws_ecs_cluster" "cluster" {
     value = "enabled"
   }
 
-dynamic "configuration" {
+  dynamic "configuration" {
     for_each = var.enable_logging ? [1] : []
     content {
       execute_command_configuration {
@@ -81,7 +88,7 @@ resource "aws_ecs_task_definition" "task" {
   task_role_arn            = aws_iam_role.ecs_execution_role.arn
 
   ephemeral_storage {
-    size_in_gib = 70  # Adjust this size according to your needs
+    size_in_gib = 70 # Adjust this size according to your needs
   }
 
   dynamic "volume" {
@@ -99,7 +106,7 @@ resource "aws_ecs_task_definition" "task" {
 
   container_definitions = jsonencode([
     {
-      name      =  "${var.name}-container"
+      name      = "${var.name}-container"
       image     = var.image
       cpu       = var.task_cpu
       memory    = var.task_memory
@@ -123,15 +130,15 @@ resource "aws_ecs_task_definition" "task" {
           "CMD-SHELL",
           "curl -X POST -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"method\":\"getinfo\",\"params\":[],\"id\":1}' http://localhost:18232/ || exit 1"
         ]
-        interval     = 15     # Time between health checks in seconds
-        timeout      = 10     # Time before a health check is considered failed
-        retries      = 5      # Number of consecutive failures before marking as unhealthy
-        startPeriod  = 180    # Grace period for the service to start
+        interval    = 15  # Time between health checks in seconds
+        timeout     = 10  # Time before a health check is considered failed
+        retries     = 5   # Number of consecutive failures before marking as unhealthy
+        startPeriod = 180 # Grace period for the service to start
       }
-      
-    mountPoints = var.enable_persistent ? [{
+
+      mountPoints = var.enable_persistent ? [{
         sourceVolume  = "persistent-volume"
-        containerPath = "/persistent"  # Mount point in the container
+        containerPath = "/persistent" # Mount point in the container
         readOnly      = false
       }] : []
 
@@ -139,7 +146,7 @@ resource "aws_ecs_task_definition" "task" {
     ]
   )
 
-  depends_on = [ aws_iam_role.ecs_execution_role ]
+  depends_on = [aws_iam_role.ecs_execution_role]
 }
 
 ### Load Balancer
@@ -150,7 +157,7 @@ resource "aws_lb" "lb" {
   load_balancer_type = "network"
   subnets            = var.public_subnets
 
-  idle_timeout       = 6000
+  idle_timeout = 6000
 
   enable_deletion_protection = false
 }
@@ -161,34 +168,39 @@ resource "aws_security_group" "lb_sg" {
   vpc_id      = var.vpc_id
 
   ingress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-    ipv6_cidr_blocks = ["::/0"]
+  }
+
+  ingress {
+    from_port   = 18232
+    to_port     = 18232
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    from_port   = 18232
+    to_port     = 18232
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-    ipv6_cidr_blocks = ["::/0"]
   }
 }
 
 // Target groups
 
 resource "aws_lb_target_group" "app-tg-18232" {
-  name     = "${var.environment}-${var.name}-tg-18232"
-  port     = 18232
-  protocol = "TCP"
-  vpc_id   = var.vpc_id
+  name        = "${var.environment}-${var.name}-tg-18232"
+  port        = 18232
+  protocol    = "TCP"
+  vpc_id      = var.vpc_id
   target_type = "ip"
 
-  stickiness {                                                                                                                 
-    type            = "source_ip"
-    enabled         = true
+  stickiness {
+    type    = "source_ip"
+    enabled = true
   }
 
   target_health_state {
@@ -204,12 +216,12 @@ data "aws_route53_zone" "zone" {
 }
 
 resource "aws_acm_certificate" "cert" {
-  count             = var.enable_domain && var.domain != "false.com" ? 1 : 0
-  domain_name               = local.used_domain
+  count       = var.enable_domain && var.domain != "false.com" ? 1 : 0
+  domain_name = local.used_domain
   subject_alternative_names = concat(
     ["www.${local.used_domain}"]
   )
-  validation_method         = "DNS"
+  validation_method = "DNS"
 }
 
 resource "aws_route53_record" "validation_records" {
@@ -237,14 +249,14 @@ resource "aws_acm_certificate_validation" "acm_validation" {
 
 # Conditional Load Balancer Listener
 resource "aws_lb_listener" "tls" {
-  count            = var.enable_domain && var.domain != "false.com" ? 1 : 0
+  count             = var.enable_domain && var.domain != "false.com" ? 1 : 0
   load_balancer_arn = aws_lb.lb.arn
   port              = 443
   protocol          = "TLS"
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-  
+
   # Using the created certificate if available
-  certificate_arn   = aws_acm_certificate.cert[0].arn
+  certificate_arn = aws_acm_certificate.cert[0].arn
 
   default_action {
     type             = "forward"
@@ -271,11 +283,11 @@ resource "aws_security_group" "sg" {
   vpc_id      = var.vpc_id
 
   ingress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-    ipv6_cidr_blocks = ["::/0"]
+    from_port       = 18232
+    to_port         = 18232
+    protocol        = "tcp"
+    cidr_blocks     = local.load_balancer_subnet_cidr_blocks
+    security_groups = [aws_security_group.lb_sg.id]
   }
 
 
@@ -290,15 +302,16 @@ resource "aws_security_group" "sg" {
 
 ### Volume
 resource "random_string" "random" {
-  length  = 4 
+  length  = 4
   special = false
   upper   = false
-  numeric  = true
+  numeric = true
 }
 
 resource "aws_efs_file_system" "persistent_efs" {
-  count = var.enable_persistent ? 1 : 0
+  count          = var.enable_persistent ? 1 : 0
   creation_token = "${var.environment}-${var.region}-${var.name}-${random_string.random.result}"
+  encrypted      = true
 
   lifecycle_policy {
     transition_to_ia = "AFTER_60_DAYS"
@@ -312,7 +325,7 @@ resource "aws_efs_file_system" "persistent_efs" {
 ### Volume backup
 
 resource "aws_efs_backup_policy" "policy" {
-  count = var.enable_backup ? 1 : 0
+  count          = var.enable_backup ? 1 : 0
   file_system_id = aws_efs_file_system.persistent_efs[0].id
 
   backup_policy {
@@ -336,10 +349,10 @@ resource "aws_security_group" "efs_sg" {
   vpc_id      = var.vpc_id
 
   ingress {
-    from_port   = 2049
-    to_port     = 2049
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    from_port       = 2049
+    to_port         = 2049
+    protocol        = "tcp"
+    security_groups = [aws_security_group.sg.id]
   }
 }
 
@@ -367,13 +380,13 @@ resource "aws_route53_record" "lb_dns" {
 # Logs
 
 resource "aws_cloudwatch_log_group" "cluster_log_group" {
-  name = "/${var.environment}/ecs/${var.name}-cluster"
+  name              = "/${var.environment}/ecs/${var.name}-cluster"
   retention_in_days = 90
 }
 
 
 resource "aws_cloudwatch_log_group" "task_log_group" {
-  name = "/${var.environment}/ecs/${var.name}-task"
+  name              = "/${var.environment}/ecs/${var.name}-task"
   retention_in_days = 90
 }
 
