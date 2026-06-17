@@ -18,36 +18,37 @@ resource "aws_security_group_rule" "allow_outbound" {
 }
 
 resource "aws_security_group_rule" "allow_all_self" {
-  count = var.default_sg_allow_all_self ? 1 : 0
+  count             = var.default_sg_allow_all_self ? 1 : 0
   security_group_id = data.aws_security_group.default.id
   type              = "ingress"
   to_port           = 0
   protocol          = "-1"
   from_port         = 0
-  self = true
+  self              = true
 
-// fixes error: A duplicate Security Group rule was found
+  // fixes error: A duplicate Security Group rule was found
   depends_on = [
     module.vpc
   ]
 }
 
 module "vpc" {
-  source = "terraform-aws-modules/vpc/aws"
+  source = "git::https://github.com/terraform-aws-modules/terraform-aws-vpc.git//?ref=v6.6.1"
 
   name = "${var.environment}-tf-vpc"
 
   cidr = var.cidr
 
-  azs                 = var.availability_zones
-  private_subnets     = var.internal_subnets
-  public_subnets      = var.external_subnets
+  azs             = var.availability_zones
+  private_subnets = var.internal_subnets
+  public_subnets  = var.external_subnets
 
   create_database_subnet_group = false
 
   enable_dns_hostnames = true
   enable_dns_support   = true
-  enable_nat_gateway = true
+  enable_nat_gateway   = true
+  single_nat_gateway   = true
 
   # Default security group - ingress/egress rules cleared to deny all
   manage_default_security_group  = true
