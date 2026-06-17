@@ -51,7 +51,7 @@ inputs = {
   }
 
   create_package = false
-  create_lambda_function_url = true
+  create_lambda_function_url = false
 
   cloudwatch_log_group_name        = "/aws/lambda/zebra-logs"
   cloudwatch_log_retention_in_days = 14
