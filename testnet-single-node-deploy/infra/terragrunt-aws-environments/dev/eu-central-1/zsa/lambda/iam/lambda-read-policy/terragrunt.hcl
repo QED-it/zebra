@@ -28,9 +28,7 @@ inputs = {
         Action   = [
           "logs:DescribeLogStreams",
           "logs:GetLogEvents",
-          "logs:PutLogEvents",
-          "logs:CreateLogStream",
-          "logs:CreateLogGroup"
+          "logs:FilterLogEvents"
         ]
         Resource = "arn:aws:logs:${local.region_vars.locals.aws_region}:${local.account_vars.locals.aws_account_id}:log-group:/dev/ecs/zebra-task:*"
       }

@@ -8,6 +8,10 @@ locals {
   used_domain = "${var.environment}.${var.domain}"
 
   load_balancer_subnet_cidr_blocks = [for subnet in data.aws_subnet.public : subnet.cidr_block]
+
+  # Single source of truth for whether an ACM cert / TLS listener is created.
+  # Used to guard every reference to aws_acm_certificate.cert[0] so they stay in sync.
+  enable_tls = var.enable_domain && var.domain != "false.com"
 }
 
 data "aws_subnet" "public" {
@@ -162,33 +166,6 @@ resource "aws_lb" "lb" {
   enable_deletion_protection = false
 }
 
-resource "aws_security_group" "lb_sg" {
-  name        = "${var.environment}-${var.name}-lb-security-group"
-  description = "Security group for load balancer"
-  vpc_id      = var.vpc_id
-
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = 18232
-    to_port     = 18232
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    from_port   = 18232
-    to_port     = 18232
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
-
 // Target groups
 
 resource "aws_lb_target_group" "app-tg-18232" {
@@ -211,12 +188,13 @@ resource "aws_lb_target_group" "app-tg-18232" {
 # TLS listener
 # If we want to create a Certificate
 data "aws_route53_zone" "zone" {
+  count        = local.enable_tls ? 1 : 0
   name         = var.zone_name
   private_zone = false
 }
 
 resource "aws_acm_certificate" "cert" {
-  count       = var.enable_domain && var.domain != "false.com" ? 1 : 0
+  count       = local.enable_tls ? 1 : 0
   domain_name = local.used_domain
   subject_alternative_names = concat(
     ["www.${local.used_domain}"]
@@ -225,14 +203,14 @@ resource "aws_acm_certificate" "cert" {
 }
 
 resource "aws_route53_record" "validation_records" {
-  for_each = {
+  for_each = local.enable_tls ? {
     for dvo in aws_acm_certificate.cert[0].domain_validation_options : dvo.domain_name => {
       name    = dvo.resource_record_name
       record  = dvo.resource_record_value
       type    = dvo.resource_record_type
-      zone_id = data.aws_route53_zone.zone.zone_id
+      zone_id = data.aws_route53_zone.zone[0].zone_id
     }
-  }
+  } : {}
 
   allow_overwrite = true
   name            = each.value.name
@@ -243,13 +221,14 @@ resource "aws_route53_record" "validation_records" {
 }
 
 resource "aws_acm_certificate_validation" "acm_validation" {
+  count                   = local.enable_tls ? 1 : 0
   certificate_arn         = aws_acm_certificate.cert[0].arn
   validation_record_fqdns = [for record in aws_route53_record.validation_records : record.fqdn]
 }
 
 # Conditional Load Balancer Listener
 resource "aws_lb_listener" "tls" {
-  count             = var.enable_domain && var.domain != "false.com" ? 1 : 0
+  count             = local.enable_tls ? 1 : 0
   load_balancer_arn = aws_lb.lb.arn
   port              = 443
   protocol          = "TLS"
@@ -283,11 +262,10 @@ resource "aws_security_group" "sg" {
   vpc_id      = var.vpc_id
 
   ingress {
-    from_port       = 18232
-    to_port         = 18232
-    protocol        = "tcp"
-    cidr_blocks     = local.load_balancer_subnet_cidr_blocks
-    security_groups = [aws_security_group.lb_sg.id]
+    from_port   = 18232
+    to_port     = 18232
+    protocol    = "tcp"
+    cidr_blocks = local.load_balancer_subnet_cidr_blocks
   }
 
 

@@ -28,7 +28,7 @@ dependency "lambda-role" {
 
 inputs = {
   function_name = "watch-zebra-logs"
-  description   = "A simple lambda function to publicy expouse logs from the Zebra ECS task"
+  description   = "A simple lambda function to publicly expose logs from the Zebra ECS task"
   memory_size   = 128
   timeout       = 300
   architectures = ["x86_64"]
