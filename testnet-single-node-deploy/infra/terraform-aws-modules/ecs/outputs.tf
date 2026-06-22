@@ -12,6 +12,6 @@ output "domain_name" {
 }
 
 output "certificate_arn" {
-  value = var.enable_domain ? [aws_acm_certificate.cert[0].arn] : []
+  value = local.enable_tls ? [aws_acm_certificate.cert[0].arn] : []
   description = "The certificate used"
 }
