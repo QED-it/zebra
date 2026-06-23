@@ -11,6 +11,7 @@ on:
       - ".trunk/configs/.markdownlint.yaml"
       - ".github/workflows/docs-check.yml"
   pull_request:
+    branches: [main]
     paths:
       - "**.md"
       - "book/**"
