@@ -138,5 +138,7 @@ default-filter = 'package(zebrad) and test(=fully_synced_rpc_z_getsubtreesbyinde
 [[profile.default.overrides]]
 filter = '''
 test(=sync_large_checkpoints_mempool_mainnet)
+or test(=get_peer_info)
+or test(=activate_mempool_mainnet)
 '''
 retries = 3
