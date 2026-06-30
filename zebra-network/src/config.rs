@@ -858,7 +858,7 @@ impl<'de> Deserialize<'de> for Config {
                 }
 
                 // Set configured funding streams after setting any parameters that affect the funding stream address period.
-                // Distinguish "not configured" (None → keep defaults) from "explicitly cleared" (Some([]) → clear).
+                // Distinguish "not configured" (None, keep defaults) from "explicitly cleared" (Some([]), clear).
                 let explicitly_configured = funding_streams.is_some()
                     || post_nu6_funding_streams.is_some()
                     || pre_nu6_funding_streams.is_some();
