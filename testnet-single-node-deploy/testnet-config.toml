@@ -1,0 +1,33 @@
+[mining]
+miner_address = "tmLTZegcJN5zaufWQBARHkvqC62mTumm3jR"
+
+[network]
+network = "Testnet"
+listen_addr = "0.0.0.0:18233"
+initial_testnet_peers = []
+
+[network.testnet_parameters]
+network_name = "QEDTestnet"
+network_magic = [0x51, 0x45, 0x44, 0x54]
+disable_pow = true
+# extend_funding_stream_addresses_as_required prevents a startup panic from the default
+# testnet funding stream address-count validation. The funding_streams = [] below clears
+# them at runtime, but the extend flag is needed to survive the earlier validation pass.
+extend_funding_stream_addresses_as_required = true
+funding_streams = []
+lockbox_disbursements = []
+
+[network.testnet_parameters.activation_heights]
+NU5 = 1
+NU6 = 1
+NU7 = 1
+
+[state]
+ephemeral = true
+
+[mempool]
+debug_enable_at_height = 0
+
+[rpc]
+listen_addr = "0.0.0.0:18232"
+enable_cookie_auth = false

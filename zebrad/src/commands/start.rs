@@ -82,7 +82,7 @@ use tokio::{pin, select, sync::oneshot};
 use tower::{builder::ServiceBuilder, util::BoxService, ServiceExt};
 use tracing_futures::Instrument;
 
-use zebra_chain::block::genesis::regtest_genesis_block;
+use zebra_chain::block::genesis::{regtest_genesis_block, testnet_genesis_block};
 use zebra_consensus::router::BackgroundTaskHandles;
 use zebra_rpc::{methods::RpcImpl, server::RpcServer, SubmitBlockChannel};
 
@@ -115,8 +115,14 @@ impl StartCmd {
     async fn start(&self) -> Result<(), Report> {
         let config = APPLICATION.config();
         let is_regtest = config.network.network.is_regtest();
+        // A configured testnet with PoW disabled and no peers is a private isolated network
+        // (similar to Regtest). It needs the same bootstrap treatment: commit the genesis block
+        // locally and skip the P2P syncer.
+        let is_isolated_configured_testnet = !is_regtest
+            && config.network.network.disable_pow()
+            && config.network.initial_testnet_peers.is_empty();
 
-        let config = if is_regtest {
+        let config = if is_regtest || is_isolated_configured_testnet {
             Arc::new(ZebradConfig {
                 mempool: mempool::Config {
                     debug_enable_at_height: Some(0),
@@ -370,16 +376,21 @@ impl StartCmd {
         );
 
         info!("spawning syncer task");
-        let syncer_task_handle = if is_regtest {
+        let syncer_task_handle = if is_regtest || is_isolated_configured_testnet {
             if !syncer
                 .state_contains(config.network.network.genesis_hash())
                 .await?
             {
+                let genesis_block = if is_regtest {
+                    regtest_genesis_block()
+                } else {
+                    testnet_genesis_block()
+                };
                 let genesis_hash = block_verifier_router
                     .clone()
-                    .oneshot(zebra_consensus::Request::Commit(regtest_genesis_block()))
+                    .oneshot(zebra_consensus::Request::Commit(genesis_block))
                     .await
-                    .expect("should validate Regtest genesis block");
+                    .expect("should validate genesis block");
 
                 assert_eq!(
                     genesis_hash,
