@@ -7,12 +7,7 @@ listen_addr = "0.0.0.0:18233"
 initial_testnet_peers = []
 
 [network.testnet_parameters]
-network_name = "QEDTestnet"
-network_magic = [0x51, 0x45, 0x44, 0x54]
 disable_pow = true
-# extend_funding_stream_addresses_as_required prevents a startup panic from the default
-# testnet funding stream address-count validation. The funding_streams = [] below clears
-# them at runtime, but the extend flag is needed to survive the earlier validation pass.
 extend_funding_stream_addresses_as_required = true
 funding_streams = []
 lockbox_disbursements = []
