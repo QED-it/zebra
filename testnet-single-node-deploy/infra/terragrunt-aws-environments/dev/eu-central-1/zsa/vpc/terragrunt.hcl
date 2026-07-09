@@ -32,7 +32,7 @@ inputs = {
   enable_dns_support     = true
   enable_nat_gateway     = true
   single_nat_gateway     = false
-  one_nat_gateway_per_az = true
+  one_nat_gateway_per_az = false
 
   manage_default_security_group  = true
   default_security_group_ingress = []
