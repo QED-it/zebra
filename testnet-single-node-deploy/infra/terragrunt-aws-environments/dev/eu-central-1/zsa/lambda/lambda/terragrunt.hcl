@@ -4,7 +4,7 @@ locals {
 
   region_vars  = read_terragrunt_config(find_in_parent_folders("region.hcl"))
   account_vars = read_terragrunt_config(find_in_parent_folders("account.hcl"))
-  
+
   # Extract out common variables for reuse
   env = local.environment_vars.locals.environment
 }
@@ -27,15 +27,15 @@ dependency "lambda-role" {
 
 
 inputs = {
-  function_name = "watch-zebra-logs"
-  description   = "A simple lambda function to publicly expose logs from the Zebra ECS task"
-  memory_size   = 128
-  timeout       = 300
-  architectures = ["x86_64"]
-  package_type  = "Image"
-  image_uri     = "${dependency.ecr.outputs.ecr-url}:latest"
-  create_role   = false
-  lambda_role   = dependency.lambda-role.outputs.iam_role_arn
+  function_name          = "watch-zebra-logs"
+  description            = "A simple lambda function to publicly expose logs from the Zebra ECS task"
+  memory_size            = 128
+  timeout                = 300
+  architectures          = ["x86_64"]
+  package_type           = "Image"
+  image_uri              = "${dependency.ecr.outputs.repository_url}:latest"
+  create_role            = false
+  lambda_role            = dependency.lambda-role.outputs.iam_role_arn
   ephemeral_storage_size = 512
   tracing_config_mode    = "PassThrough"
 
@@ -50,7 +50,7 @@ inputs = {
     }
   }
 
-  create_package = false
+  create_package             = false
   create_lambda_function_url = false
 
   cloudwatch_log_group_name        = "/aws/lambda/zebra-logs"
@@ -58,6 +58,6 @@ inputs = {
 
   tags = {
     Environment = local.env
-    Terraform     = "true"
+    Terraform   = "true"
   }
 }

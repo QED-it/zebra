@@ -2,7 +2,7 @@ locals {
   # Automatically load environment-level variables
   environment_vars = read_terragrunt_config(find_in_parent_folders("env.hcl"))
 
-  region_vars = read_terragrunt_config(find_in_parent_folders("region.hcl"))
+  region_vars  = read_terragrunt_config(find_in_parent_folders("region.hcl"))
   account_vars = read_terragrunt_config(find_in_parent_folders("account.hcl"))
   # Extract out common variables for reuse
   env = local.environment_vars.locals.environment
@@ -28,28 +28,33 @@ dependency "ecr" {
 }
 
 inputs = {
-  name = "zebra-swaps"
+  name        = "zebra-swaps"
   environment = local.env
-  region = local.region_vars.locals.aws_region
-  account_id = local.account_vars.locals.aws_account_id
+  region      = local.region_vars.locals.aws_region
+  account_id  = local.account_vars.locals.aws_account_id
 
-  vpc_id = dependency.vpc.outputs.vpc_id
+  vpc_id          = dependency.vpc.outputs.vpc_id
   private_subnets = dependency.vpc.outputs.private_subnets
-  public_subnets = dependency.vpc.outputs.public_subnets
-  
-  image = "${dependency.ecr.outputs.ecr-url}:latest"
+  public_subnets  = dependency.vpc.outputs.public_subnets
 
-  task_memory=4096
-  task_cpu=1024
+  image = "${dependency.ecr.outputs.repository_url}:latest"
+
+  task_memory = 4096
+  task_cpu    = 1024
 
   enable_logging = true
-  enable_backup = false
+  enable_backup  = false
 
   enable_domain = true
-  domain = "zebra-swaps.zsa-test.net"
-  zone_name = "zsa-test.net"
+  domain        = "zebra-swaps.zsa-test.net"
+  zone_name     = "zsa-test.net"
 
   persistent_volume_size = 40
+  efs_encrypted          = false
+
+  allow_all_ecs_ingress           = true
+  allow_all_efs_ingress           = true
+  create_legacy_lb_security_group = true
 
   port_mappings = [
     // Zebra port:

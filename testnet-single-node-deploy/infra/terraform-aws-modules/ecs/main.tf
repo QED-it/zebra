@@ -76,6 +76,9 @@ resource "aws_ecs_service" "service" {
 
   lifecycle {
     create_before_destroy = true
+    ignore_changes = [
+      task_definition
+    ]
   }
 
 }
@@ -90,6 +93,7 @@ resource "aws_ecs_task_definition" "task" {
   memory                   = var.task_memory
   execution_role_arn       = aws_iam_role.ecs_execution_role.arn
   task_role_arn            = aws_iam_role.ecs_execution_role.arn
+  tags                     = {}
 
   ephemeral_storage {
     size_in_gib = 70 # Adjust this size according to your needs
@@ -101,20 +105,22 @@ resource "aws_ecs_task_definition" "task" {
       name = "persistent-volume"
 
       efs_volume_configuration {
-        file_system_id     = aws_efs_file_system.persistent_efs[0].id
-        root_directory     = "/"
-        transit_encryption = "ENABLED"
+        file_system_id          = aws_efs_file_system.persistent_efs[0].id
+        root_directory          = "/"
+        transit_encryption      = "ENABLED"
+        transit_encryption_port = 0
       }
     }
   }
 
   container_definitions = jsonencode([
     {
-      name      = "${var.name}-container"
-      image     = var.image
-      cpu       = var.task_cpu
-      memory    = var.task_memory
-      essential = true
+      name        = "${var.name}-container"
+      image       = var.image
+      cpu         = var.task_cpu
+      memory      = var.task_memory
+      essential   = true
+      environment = []
       ulimits = [{
         name      = "nofile"
         softLimit = 1000000
@@ -130,10 +136,7 @@ resource "aws_ecs_task_definition" "task" {
         }
       } : null
       healthCheck = {
-        command = [
-          "CMD-SHELL",
-          "curl -X POST -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"method\":\"getinfo\",\"params\":[],\"id\":1}' http://localhost:18232/ || exit 1"
-        ]
+        command     = var.container_health_check_command
         interval    = 15  # Time between health checks in seconds
         timeout     = 10  # Time before a health check is considered failed
         retries     = 5   # Number of consecutive failures before marking as unhealthy
@@ -145,6 +148,8 @@ resource "aws_ecs_task_definition" "task" {
         containerPath = "/persistent" # Mount point in the container
         readOnly      = false
       }] : []
+      systemControls = []
+      volumesFrom    = []
 
     }
     ]
@@ -261,11 +266,27 @@ resource "aws_security_group" "sg" {
   description = "manage rules for ${var.name} ecs service"
   vpc_id      = var.vpc_id
 
-  ingress {
-    from_port   = 18232
-    to_port     = 18232
-    protocol    = "tcp"
-    cidr_blocks = local.load_balancer_subnet_cidr_blocks
+  dynamic "ingress" {
+    for_each = var.allow_all_ecs_ingress ? [1] : []
+
+    content {
+      from_port        = 0
+      to_port          = 0
+      protocol         = "-1"
+      cidr_blocks      = ["0.0.0.0/0"]
+      ipv6_cidr_blocks = ["::/0"]
+    }
+  }
+
+  dynamic "ingress" {
+    for_each = var.allow_all_ecs_ingress ? [] : [1]
+
+    content {
+      from_port   = 18232
+      to_port     = 18232
+      protocol    = "tcp"
+      cidr_blocks = local.load_balancer_subnet_cidr_blocks
+    }
   }
 
 
@@ -289,7 +310,7 @@ resource "random_string" "random" {
 resource "aws_efs_file_system" "persistent_efs" {
   count          = var.enable_persistent ? 1 : 0
   creation_token = "${var.environment}-${var.region}-${var.name}-${random_string.random.result}"
-  encrypted      = true
+  encrypted      = var.efs_encrypted
 
   lifecycle_policy {
     transition_to_ia = "AFTER_60_DAYS"
@@ -326,11 +347,49 @@ resource "aws_security_group" "efs_sg" {
   description = "Security group for EFS used by ${var.name}"
   vpc_id      = var.vpc_id
 
+  dynamic "ingress" {
+    for_each = var.allow_all_efs_ingress ? [1] : []
+
+    content {
+      from_port   = 2049
+      to_port     = 2049
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  }
+
+  dynamic "ingress" {
+    for_each = var.allow_all_efs_ingress ? [] : [1]
+
+    content {
+      from_port       = 2049
+      to_port         = 2049
+      protocol        = "tcp"
+      security_groups = [aws_security_group.sg.id]
+    }
+  }
+}
+
+resource "aws_security_group" "lb_sg" {
+  count       = var.create_legacy_lb_security_group ? 1 : 0
+  name        = "${var.environment}-${var.name}-lb-security-group"
+  description = "Security group for load balancer"
+  vpc_id      = var.vpc_id
+
   ingress {
-    from_port       = 2049
-    to_port         = 2049
-    protocol        = "tcp"
-    security_groups = [aws_security_group.sg.id]
+    from_port        = 0
+    to_port          = 0
+    protocol         = "-1"
+    cidr_blocks      = ["0.0.0.0/0"]
+    ipv6_cidr_blocks = ["::/0"]
+  }
+
+  egress {
+    from_port        = 0
+    to_port          = 0
+    protocol         = "-1"
+    cidr_blocks      = ["0.0.0.0/0"]
+    ipv6_cidr_blocks = ["::/0"]
   }
 }
 
