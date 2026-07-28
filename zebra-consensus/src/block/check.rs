@@ -261,32 +261,31 @@ pub fn subsidy_is_valid(
         if Some(height) == NetworkUpgrade::Nu6_1.activation_height(net) {
             let lockbox_disbursements = net.lockbox_disbursements(height);
 
-            // FIXME: Temporary workaround for configured non-standard test networks,
-            // including Regtest. After syncing with upstream Zebra v4.2.0, tests
-            // started failing here when NU6.1 activates with an empty configured
-            // lockbox disbursement list. The upstream `nu7_nsm_transactions` test
-            // also hits this when run with `tx_v6`/`nu7` enabled. Revisit later.
-            // if lockbox_disbursements.is_empty() {
-            //     Err(BlockError::Other(
-            //         "missing lockbox disbursements for NU6.1 activation block".to_string(),
-            //     ))?;
-            // }
-
-            if !lockbox_disbursements.is_empty() {
-                deferred_pool_balance_change = lockbox_disbursements.into_iter().try_fold(
-                    deferred_pool_balance_change,
-                    |balance, (addr, expected_amount)| {
-                        if !has_amount(&addr, expected_amount) {
-                            Err(SubsidyError::OneTimeLockboxDisbursementNotFound)?;
-                        }
-
-                        balance
-                            .checked_sub(expected_amount)
-                            .ok_or(SubsidyError::Underflow)
-                    },
-                )?;
+            // The Mainnet and default Testnet disbursement lists are hardcoded and must be
+            // non-empty. Custom testnets and Regtest may configure no disbursements, in which
+            // case the NU6.1 activation block is not required to contain any disbursement
+            // outputs.
+            let must_have_disbursements =
+                matches!(net, Network::Mainnet) || net.is_default_testnet();
+            if lockbox_disbursements.is_empty() && must_have_disbursements {
+                Err(BlockError::Other(
+                    "missing lockbox disbursements for NU6.1 activation block".to_string(),
+                ))?;
             }
-        }
+
+            deferred_pool_balance_change = lockbox_disbursements.into_iter().try_fold(
+                deferred_pool_balance_change,
+                |balance, (addr, expected_amount)| {
+                    if !has_amount(&addr, expected_amount) {
+                        Err(SubsidyError::OneTimeLockboxDisbursementNotFound)?;
+                    }
+
+                    balance
+                        .checked_sub(expected_amount)
+                        .ok_or(SubsidyError::Underflow)
+                },
+            )?;
+        };
 
         // Check each funding stream output.
         funding_streams.into_iter().try_for_each(
@@ -331,6 +330,26 @@ pub fn miner_fees_are_valid(
     let sapling_value_balance = coinbase_tx.sapling_value_balance().sapling_amount();
     let orchard_value_balance = coinbase_tx.orchard_value_balance().orchard_amount();
 
+    // Coinbase transaction can still have a NSM deposit
+    #[cfg(zcash_unstable = "zip235")]
+    let zip233_amount: Amount<NegativeAllowed> = coinbase_tx
+        .zip233_amount()
+        .constrain()
+        .map_err(|_| SubsidyError::InvalidZip233Amount)?;
+
+    #[cfg(not(zcash_unstable = "zip235"))]
+    let zip233_amount = Amount::zero();
+
+    #[cfg(zcash_unstable = "zip235")]
+    if let Some(nsm_activation_height) = NetworkUpgrade::Nu7.activation_height(network) {
+        if height >= nsm_activation_height {
+            let minimum_zip233_amount = ((block_miner_fees * 6).unwrap() / 10).unwrap();
+            if zip233_amount < minimum_zip233_amount {
+                Err(SubsidyError::InvalidZip233Amount)?
+            }
+        }
+    }
+
     // # Consensus
     //
     // > - define the total output value of its coinbase transaction to be the total value in zatoshi of its transparent
@@ -344,8 +363,9 @@ pub fn miner_fees_are_valid(
     // from the block subsidy value plus the transaction fees paid by transactions in this block.
     let total_output_value =
         (transparent_value_balance - sapling_value_balance - orchard_value_balance
-            + expected_deferred_pool_balance_change.value())
-        .map_err(|_| SubsidyError::Overflow)?;
+            + expected_deferred_pool_balance_change.value()
+            + zip233_amount)
+            .map_err(|_| SubsidyError::Overflow)?;
 
     let total_input_value =
         (expected_block_subsidy + block_miner_fees).map_err(|_| SubsidyError::Overflow)?;

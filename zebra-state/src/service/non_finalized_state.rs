@@ -25,7 +25,11 @@ use crate::{
     constants::{MAX_INVALIDATED_BLOCKS, MAX_NON_FINALIZED_CHAIN_FORKS},
     error::ReconsiderError,
     request::{ContextuallyVerifiedBlock, FinalizableBlock},
-    service::{check, finalized_state::ZebraDb, InvalidateError},
+    service::{
+        check,
+        finalized_state::{calculate_deferred_pool_balance_change, ZebraDb},
+        InvalidateError,
+    },
     SemanticallyVerifiedBlock, ValidateContextError, WatchReceiver,
 };
 
@@ -607,6 +611,7 @@ impl NonFinalizedState {
         let contextual = ContextuallyVerifiedBlock::with_block_and_spent_utxos(
             prepared.clone(),
             spent_utxos.clone(),
+            calculate_deferred_pool_balance_change(prepared.height, &self.network),
             // TODO: Refactor this into repeated `With::with()` calls, see http_request_compatibility module.
             #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
             issued_assets,
@@ -689,7 +694,8 @@ impl NonFinalizedState {
     /// or `None` if the best chain has no blocks.
     pub fn best_chain_len(&self) -> Option<u32> {
         // This `as` can't overflow because the number of blocks in the chain is limited to i32::MAX,
-        // and the non-finalized chain is further limited by the fork length (slightly over 100 blocks).
+        // and the non-finalized chain is further limited by the rollback window
+        // (`MAX_BLOCK_REORG_HEIGHT`, currently 1000 blocks).
         Some(self.best_chain()?.blocks.len() as u32)
     }
 

@@ -264,8 +264,6 @@ pub struct SemanticallyVerifiedBlock {
     /// A precomputed list of the sighashes of the transactions in this block,
     /// in the same order as `block.transactions`.
     pub transaction_sighashes: Option<Arc<[transaction::SigHash]>>,
-    /// This block's deferred pool value balance change.
-    pub deferred_pool_balance_change: Option<DeferredPoolBalanceChange>,
 }
 
 /// A block ready to be committed directly to the finalized state with
@@ -377,7 +375,7 @@ impl Treestate {
 ///
 /// Zebra's state service passes this `enum` over to the finalized state
 /// when committing a block.
-#[allow(missing_docs)]
+#[allow(missing_docs, clippy::large_enum_variant)]
 pub enum FinalizableBlock {
     Checkpoint {
         checkpoint_verified: CheckpointVerifiedBlock,
@@ -408,7 +406,7 @@ pub struct FinalizedBlock {
     /// The tresstate associated with the block.
     pub(super) treestate: Treestate,
     /// This block's deferred pool value balance change.
-    pub(super) deferred_pool_balance_change: Option<DeferredPoolBalanceChange>,
+    pub(super) deferred_pool_balance_change: DeferredPoolBalanceChange,
     #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
     /// Asset state changes to be applied to the finalized state.
     /// Contains (old_state, new_state) pairs for assets modified in this block.
@@ -418,10 +416,15 @@ pub struct FinalizedBlock {
 
 impl FinalizedBlock {
     /// Constructs [`FinalizedBlock`] from [`CheckpointVerifiedBlock`] and its [`Treestate`].
-    pub fn from_checkpoint_verified(block: CheckpointVerifiedBlock, treestate: Treestate) -> Self {
+    pub fn from_checkpoint_verified(
+        block: CheckpointVerifiedBlock,
+        treestate: Treestate,
+        deferred_pool_balance_change: DeferredPoolBalanceChange,
+    ) -> Self {
         Self::from_semantically_verified(
             SemanticallyVerifiedBlock::from(block),
             treestate,
+            deferred_pool_balance_change,
             #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
             None,
         )
@@ -431,12 +434,14 @@ impl FinalizedBlock {
     pub fn from_contextually_verified(
         block: ContextuallyVerifiedBlock,
         treestate: Treestate,
+        deferred_pool_balance_change: DeferredPoolBalanceChange,
     ) -> Self {
         #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
         let issued_asset_changes = Some(block.issued_asset_changes.clone());
         Self::from_semantically_verified(
             SemanticallyVerifiedBlock::from(block),
             treestate,
+            deferred_pool_balance_change,
             #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
             issued_asset_changes,
         )
@@ -446,6 +451,7 @@ impl FinalizedBlock {
     fn from_semantically_verified(
         block: SemanticallyVerifiedBlock,
         treestate: Treestate,
+        deferred_pool_balance_change: DeferredPoolBalanceChange,
         #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))] issued_asset_changes: Option<
             IssuedAssetChanges,
         >,
@@ -457,7 +463,7 @@ impl FinalizedBlock {
             new_outputs: block.new_outputs,
             transaction_hashes: block.transaction_hashes,
             treestate,
-            deferred_pool_balance_change: block.deferred_pool_balance_change,
+            deferred_pool_balance_change,
             #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
             issued_asset_changes,
         }
@@ -525,6 +531,7 @@ impl ContextuallyVerifiedBlock {
     pub fn with_block_and_spent_utxos(
         semantically_verified: SemanticallyVerifiedBlock,
         mut spent_outputs: HashMap<transparent::OutPoint, transparent::OrderedUtxo>,
+        deferred_pool_balance_change: DeferredPoolBalanceChange,
         #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
         issued_asset_changes: IssuedAssetChanges,
     ) -> Result<Self, ValueBalanceError> {
@@ -535,7 +542,6 @@ impl ContextuallyVerifiedBlock {
             new_outputs,
             transaction_hashes,
             transaction_sighashes,
-            deferred_pool_balance_change,
         } = semantically_verified;
 
         // This is redundant for the non-finalized state,
@@ -565,14 +571,8 @@ impl ContextuallyVerifiedBlock {
 impl CheckpointVerifiedBlock {
     /// Creates a [`CheckpointVerifiedBlock`] from [`Block`] with optional deferred balance and
     /// optional pre-computed hash.
-    pub fn new(
-        block: Arc<Block>,
-        hash: Option<block::Hash>,
-        deferred_pool_balance_change: Option<DeferredPoolBalanceChange>,
-    ) -> Self {
-        let mut block = Self::with_hash(block.clone(), hash.unwrap_or(block.hash()));
-        block.deferred_pool_balance_change = deferred_pool_balance_change;
-        block
+    pub fn new(block: Arc<Block>, hash: Option<block::Hash>) -> Self {
+        Self::with_hash(block.clone(), hash.unwrap_or(block.hash()))
     }
 
     /// Creates a block that's ready to be committed to the finalized state,
@@ -602,17 +602,7 @@ impl SemanticallyVerifiedBlock {
             transaction_hashes,
             // Not used in checkpoint paths.
             transaction_sighashes: None,
-            deferred_pool_balance_change: None,
         }
-    }
-
-    /// Sets the deferred balance in the block.
-    pub fn with_deferred_pool_balance_change(
-        mut self,
-        deferred_pool_balance_change: Option<DeferredPoolBalanceChange>,
-    ) -> Self {
-        self.deferred_pool_balance_change = deferred_pool_balance_change;
-        self
     }
 }
 
@@ -638,7 +628,6 @@ impl From<Arc<Block>> for SemanticallyVerifiedBlock {
             new_outputs,
             transaction_hashes,
             transaction_sighashes: None,
-            deferred_pool_balance_change: None,
         }
     }
 }
@@ -652,9 +641,20 @@ impl From<ContextuallyVerifiedBlock> for SemanticallyVerifiedBlock {
             new_outputs: valid.new_outputs,
             transaction_hashes: valid.transaction_hashes,
             transaction_sighashes: valid.transaction_sighashes,
-            deferred_pool_balance_change: Some(DeferredPoolBalanceChange::new(
-                valid.chain_value_pool_change.deferred_amount(),
-            )),
+        }
+    }
+}
+
+impl From<FinalizedBlock> for SemanticallyVerifiedBlock {
+    fn from(finalized: FinalizedBlock) -> Self {
+        Self {
+            block: finalized.block,
+            hash: finalized.hash,
+            height: finalized.height,
+            new_outputs: finalized.new_outputs,
+            transaction_hashes: finalized.transaction_hashes,
+            // FIXME: Can we/should we pass real sighashes here?
+            transaction_sighashes: None,
         }
     }
 }
@@ -866,6 +866,10 @@ pub enum Request {
     /// > For `zcashd` and `zebra` this limit is 100 blocks.
     ///
     /// <https://zips.z.cash/protocol/protocol.pdf#blockchain>
+    ///
+    /// Note: Zebra's local rollback window
+    /// ([`MAX_BLOCK_REORG_HEIGHT`](crate::MAX_BLOCK_REORG_HEIGHT)) is now 1000 blocks, larger
+    /// than the 100 quoted from the protocol specification above.
     ///
     /// # Correctness
     ///

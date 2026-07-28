@@ -28,6 +28,19 @@ use orchard::{note::AssetBase, value::ValueSum};
 
 use super::{OrchardVanilla, ShieldedDataFlavor};
 
+/// Returns the canonical size in bytes of an Orchard proof for `num_actions` actions.
+///
+/// An Orchard proof is a Halo2 proof whose length is exactly linear in the number of
+/// actions (circuit instances): 4992 bytes for 1 action and 7264 bytes for 2 actions,
+/// i.e. a fixed base plus 2272 bytes per action. The exact constants are owned by the
+/// `orchard` crate, which derives them from the action circuit's `halo2_proofs`
+/// `CircuitCost` and cross-checks them in its circuit tests, so we delegate to
+/// [`orchard::Proof::expected_proof_size`] rather than re-deriving them here. The
+/// `expected_proof_size_known_values` guard test cross-checks the returned values.
+pub(crate) fn expected_proof_size<Flavor: ShieldedDataFlavor>(num_actions: usize) -> usize {
+    orchard::Proof::expected_proof_size::<Flavor>(num_actions)
+}
+
 /// A bundle of [`Action`] descriptions and signature data.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[cfg_attr(
@@ -88,6 +101,17 @@ impl<Flavor: ShieldedDataFlavor> ShieldedData<Flavor> {
     /// transaction, in the order they appear in it.
     pub fn actions(&self) -> impl Iterator<Item = &Action<Flavor>> {
         self.actions.actions()
+    }
+
+    /// Returns whether the proof has the canonical length for its number of actions.
+    ///
+    /// An Orchard proof is stored as an unbounded byte sequence, so a proof that is
+    /// present but not canonically sized can be padded with arbitrary trailing data
+    /// without affecting its validity. Bundles are parsed leniently (so that historical
+    /// transactions remain deserializable), so this is enforced separately as a
+    /// height-gated consensus rule. See `GHSA-jfw5-j458-pfv6`.
+    pub fn proof_size_is_canonical(&self) -> bool {
+        self.proof.0.len() == expected_proof_size::<Flavor>(self.actions.len())
     }
 
     /// Collect the [`Nullifier`]s for this transaction.

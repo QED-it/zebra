@@ -14,8 +14,6 @@ mod sighash;
 mod txid;
 mod unmined;
 
-pub mod builder;
-
 #[cfg(any(test, feature = "proptest-impl"))]
 #[allow(clippy::unwrap_in_result)]
 pub mod arbitrary;
@@ -1962,6 +1960,30 @@ impl Transaction {
         self.outputs_mut()
             .iter_mut()
             .map(|output| &mut output.value)
+    }
+
+    /// Access the [`orchard::ShieldedData`] in this transaction,
+    /// regardless of version.
+    pub fn v5_orchard_shielded_data(
+        &self,
+    ) -> Option<&orchard::ShieldedData<orchard::OrchardVanilla>> {
+        match self {
+            Transaction::V5 {
+                orchard_shielded_data: Some(orchard_shielded_data),
+                ..
+            } => Some(orchard_shielded_data),
+
+            Transaction::V1 { .. }
+            | Transaction::V2 { .. }
+            | Transaction::V3 { .. }
+            | Transaction::V4 { .. }
+            | Transaction::V5 {
+                orchard_shielded_data: None,
+                ..
+            } => None,
+            #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
+            Transaction::V6 { .. } => None,
+        }
     }
 
     /// Modify the [`orchard::ShieldedData`] in this transaction,

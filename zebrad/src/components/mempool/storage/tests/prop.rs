@@ -490,6 +490,7 @@ impl SpendConflictTestInput {
                 // make sure miner fee is big enough for all cases
                 Amount::try_from(1_000_000).expect("valid amount"),
                 0,
+                0,
                 std::sync::Arc::new(vec![]),
                 SigHash([0; 32]),
             )
@@ -498,6 +499,7 @@ impl SpendConflictTestInput {
                 second.0.into(),
                 // make sure miner fee is big enough for all cases
                 Amount::try_from(1_000_000).expect("valid amount"),
+                0,
                 0,
                 std::sync::Arc::new(vec![]),
                 SigHash([0; 32]),
@@ -527,6 +529,7 @@ impl SpendConflictTestInput {
                 // make sure miner fee is big enough for all cases
                 Amount::try_from(1_000_000).expect("valid amount"),
                 0,
+                0,
                 std::sync::Arc::new(vec![]),
                 SigHash([0; 32]),
             )
@@ -535,6 +538,7 @@ impl SpendConflictTestInput {
                 second.0.into(),
                 // make sure miner fee is big enough for all cases
                 Amount::try_from(1_000_000).expect("valid amount"),
+                0,
                 0,
                 std::sync::Arc::new(vec![]),
                 SigHash([0; 32]),

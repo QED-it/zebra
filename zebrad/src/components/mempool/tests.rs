@@ -114,6 +114,7 @@ pub fn standard_verified_unmined_tx_strategy() -> BoxedStrategy<VerifiedUnminedT
                 unmined_tx,
                 miner_fee,
                 0,
+                0,
                 std::sync::Arc::new(vec![]),
                 SigHash([0; 32]),
             )
