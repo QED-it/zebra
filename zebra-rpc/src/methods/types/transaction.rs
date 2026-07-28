@@ -35,9 +35,6 @@ use zebra_consensus::{error::TransactionError, funding_stream_address};
 use zebra_script::Sigops;
 use zebra_state::IntoDisk;
 
-#[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
-use ::orchard::note::AssetBase;
-
 use super::zec::Zec;
 use super::{super::opthex, get_block_template::MinerParams};
 
@@ -180,8 +177,7 @@ impl TransactionTemplate<NegativeOrZero> {
                     *addr,
                     miner_reward,
                     // FIXME: Should we pass a real asset?
-                    #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
-                    AssetBase::zatoshi(),
+                    ::orchard::note::AssetBase::zatoshi(),
                     memo.clone(),
                 ),
                 "Orchard"

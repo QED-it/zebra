@@ -121,7 +121,12 @@ impl ZcashSerialize for sapling::ShieldedData<sapling::SharedAnchor> {
     fn zcash_serialize<W: io::Write>(&self, writer: W) -> Result<(), io::Error> {
         // FIXME: zcash_serialize works for V5 only (as it passes false),
         // but can be mistakenly call for V6 - be careful!
-        serialize_v5_sapling_shielded_data_inner(self, writer, false)
+        serialize_v5_sapling_shielded_data_inner(
+            self,
+            writer,
+            #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
+            false,
+        )
     }
 }
 
@@ -237,7 +242,12 @@ fn serialize_v5_sapling_shielded_data_inner<W: io::Write>(
 impl ZcashDeserialize for Option<sapling::ShieldedData<sapling::SharedAnchor>> {
     #[allow(clippy::unwrap_in_result)]
     fn zcash_deserialize<R: io::Read>(reader: R) -> Result<Self, SerializationError> {
-        deserialize_v5_sapling_shielded_data(reader, false, false)
+        deserialize_v5_sapling_shielded_data(
+            reader,
+            false,
+            #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
+            false,
+        )
     }
 }
 
