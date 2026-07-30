@@ -29,6 +29,9 @@ use super::{
     VERIFYING_KEY_PRE_NU6_2,
 };
 
+#[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
+use super::VERIFIER_ZSA;
+
 /// Returns one real pre-NU6.2 Orchard bundle and its sighash, extracted from the mainnet test
 /// blocks.
 ///
@@ -104,6 +107,9 @@ async fn verifier_for_routes_each_upgrade_to_the_correct_key() {
     let pre: &'static super::VerifierService = &VERIFIER_PRE_NU6_2;
     let post: &'static super::VerifierService = &VERIFIER_POST_NU6_2;
 
+    #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
+    let zsa: &'static super::VerifierService = &VERIFIER_ZSA;
+
     // Everything before NU6.2 (including upgrades from before Orchard existed) routes to the
     // insecure key, which is the only key any pre-NU6.2 Orchard history verifies under.
     for nu in [
@@ -117,9 +123,19 @@ async fn verifier_for_routes_each_upgrade_to_the_correct_key() {
         );
     }
 
-    // NU6.2 and every later upgrade route to the fixed key. Nu7 guards that "NU6.2 and later"
+    // NU6.2 and every later upgrade route to the fixed key, except NU7 in ZSA builds,
+    // which routes to the dedicated ZSA verifier. Nu7 still guards that "NU6.2 and later"
     // does not silently fall back to the insecure verifier for future upgrades.
     for nu in [NetworkUpgrade::Nu6_2, NetworkUpgrade::Nu7] {
+        #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
+        if nu == NetworkUpgrade::Nu7 {
+            assert!(
+                std::ptr::eq(verifier_for(nu), zsa),
+                "{nu:?} must route to the ZSA verifier"
+            );
+            continue;
+        }
+
         assert!(
             std::ptr::eq(verifier_for(nu), post),
             "{nu:?} must route to the post-NU6.2 (fixed) verifier"
