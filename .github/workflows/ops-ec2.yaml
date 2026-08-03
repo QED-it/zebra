@@ -1,0 +1,149 @@
+# Ops console for the EC2 Zebra testnet node (successor to deploy-ecs/stop-ecs).
+# The box has no inbound ports and no SSH key: commands reach it over SSM Run
+# Command, which invokes /opt/zebra/ops.sh (installed by Terraform via
+# cloud-init). Auth is OIDC — no long-lived IAM access keys.
+name: Zebra EC2 Ops
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Operation to run on the node'
+        type: choice
+        required: true
+        default: status
+        options:
+          - deploy
+          - restart
+          - stop
+          - start
+          - recreate
+          - logs
+          - status
+          - wipe-state
+          - reboot-instance
+      image_tag:
+        description: 'ECR image tag (deploy only)'
+        type: string
+        default: latest
+      instance_name_tag:
+        description: 'Name tag of the target EC2 instance'
+        type: string
+        default: zebra-testnet
+      confirm:
+        description: 'Type "wipe-state" to confirm that action'
+        type: string
+        default: ''
+
+permissions:
+  id-token: write # required to mint the OIDC token
+  contents: read
+
+# One op at a time — concurrent deploy/wipe-state on the same box interleave badly.
+concurrency:
+  group: zebra-ec2-ops-${{ inputs.instance_name_tag }}
+
+jobs:
+  ops:
+    name: ${{ inputs.action }}
+    runs-on: ubuntu-latest
+    environment: dev
+    env:
+      # Inputs are read through env, never interpolated into `run` bodies —
+      # ${{ }} inside a script is a template-injection sink (see zizmor.yml).
+      ACTION: ${{ inputs.action }}
+      IMAGE_TAG: ${{ inputs.image_tag }}
+      NAME_TAG: ${{ inputs.instance_name_tag }}
+      CONFIRM: ${{ inputs.confirm }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      OPS_ROLE_ARN: ${{ vars.AWS_OIDC_OPS_ROLE_ARN || 'arn:aws:iam::496038263219:role/gha-zebra-ops' }}
+
+    steps:
+      - name: Validate inputs
+        run: |
+          set -euo pipefail
+          # Docker tag grammar; also keeps the value safe to substitute below.
+          [[ "$IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$ ]] || { echo "::error::invalid image tag: $IMAGE_TAG"; exit 1; }
+          [[ "$NAME_TAG" =~ ^[A-Za-z0-9._:/=+@-]{1,255}$ ]] || { echo "::error::invalid name tag: $NAME_TAG"; exit 1; }
+          if [ "$ACTION" = wipe-state ] && [ "$CONFIRM" != wipe-state ]; then
+            echo "::error::wipe-state deletes /var/lib/zebra-state. Re-run with confirm=wipe-state."
+            exit 1
+          fi
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.OPS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Run op via SSM
+        run: |
+          set -euo pipefail
+
+          ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=$NAME_TAG" "Name=instance-state-name,Values=running" \
+            --query 'Reservations[].Instances[].InstanceId' --output text | tr '\t' '\n' | head -n1)
+          if [ -z "$ID" ] || [ "$ID" = None ]; then
+            echo "::error::no running EC2 instance tagged Name=$NAME_TAG"; exit 1
+          fi
+          echo "instance: $ID"
+
+          OP="$ACTION"
+          if [ "$OP" = reboot-instance ]; then
+            aws ec2 reboot-instances --instance-ids "$ID"
+            # A reboot leaves the instance "running" throughout, so there is no
+            # EC2 state transition to wait on — poll the SSM agent instead.
+            echo "reboot requested; waiting for the OS to come back..."
+            sleep 30
+            ST=None
+            for _ in $(seq 1 30); do
+              ST=$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$ID" \
+                     --query 'InstanceInformationList[0].PingStatus' --output text 2>/dev/null || echo None)
+              echo "SSM ping: $ST"
+              if [ "$ST" = Online ]; then break; fi
+              sleep 10
+            done
+            [ "$ST" = Online ] || { echo "::error::SSM agent did not come back within 5 minutes"; exit 1; }
+            # The container side of a reboot is a restart, which also re-serves
+            # the genesis block in case the state volume came up empty.
+            OP=restart
+          fi
+
+          CMDS=()
+          if [ "$OP" = deploy ]; then
+            # ops.sh only does `docker compose pull`, and the box's ECR login
+            # happens once at first boot; those tokens expire after 12h, so
+            # refresh it here or every later deploy 401s.
+            CMDS+=("REG=\$(awk -F= '/^IMAGE=/{print \$2}' /opt/zebra/.env | cut -d/ -f1)")
+            CMDS+=("aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin \"\$REG\"")
+          fi
+          CMDS+=("bash /opt/zebra/ops.sh $OP $IMAGE_TAG")
+
+          CMD_ID=$(aws ssm send-command \
+            --document-name AWS-RunShellScript --instance-ids "$ID" --comment "gha ops.sh $OP" \
+            --parameters "$(jq -nc '{commands: $ARGS.positional, executionTimeout: ["900"]}' --args "${CMDS[@]}")" \
+            --query 'Command.CommandId' --output text)
+          echo "command: $CMD_ID"
+
+          # get-command-invocation returns 24 KB; list-command-invocations
+          # truncates at 2500 chars, which loses most of a `logs` run. It 404s
+          # for a moment after send-command.
+          for _ in $(seq 1 120); do
+            sleep 5
+            INV=$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$ID" 2>/dev/null || echo '{}')
+            ST=$(jq -r '.Status // "Pending"' <<<"$INV")
+            echo "status: $ST"
+            case "$ST" in
+              Success)
+                jq -r '.StandardOutputContent' <<<"$INV" | tee ssm-output.txt; exit 0 ;;
+              Failed|Cancelled|TimedOut)
+                jq -r '.StandardOutputContent' <<<"$INV" | tee ssm-output.txt
+                jq -r '.StandardErrorContent' <<<"$INV" | tee -a ssm-output.txt >&2; exit 1 ;;
+            esac
+          done
+          echo "::error::timed out waiting for the SSM command to finish"; exit 1
+
+      - name: Publish output to job summary
+        if: ${{ always() && hashFiles('ssm-output.txt') != '' }}
+        run: |
+          printf '### `%s` on `%s`\n\n```\n%s\n```\n' \
+            "$ACTION" "$NAME_TAG" "$(cat ssm-output.txt)" >> "$GITHUB_STEP_SUMMARY"
