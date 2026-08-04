@@ -257,7 +257,7 @@ async fn request_asset_state(
 // FIXME: This test fails after merging with Zebra Nu6.2 - possibly because ZSA verifying
 // key changed, test ZSA blocks need to be regenerated in zcash_tx_tool. So, do that and remove
 // #[ignore]
-#[ignore]
+//#[ignore]
 async fn check_orchard_zsa_workflow() -> Result<(), Report> {
     let _init_guard = zebra_test::init();
 
