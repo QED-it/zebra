@@ -1246,45 +1246,49 @@ fn v5_coinbase_transaction_with_enable_spends_flag_fails_validation() {
     }
 }
 
-// FIXME: zebra-chain/src/transaction/builder.rs that provided new_v6_coinbase has been removed from the codebase.
-// new_v6_coinbase is required for this test, and new_coinbase can be used instead but it's defined
-// in zebra-rpc/src/methods/types/transaction.rs, which is not accessible in this zebra-consensus crate,
-// so if we really need this this test, it possibly makes mese to try to move it to zebra-rpc.
-/*
 #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
 #[test]
 fn v6_coinbase_transaction_with_enable_zsa_flag_fails_validation() {
-    let network = Network::new_regtest(
-        ConfiguredActivationHeights {
-            canopy: Some(1),
-            nu7: Some(1),
-            ..Default::default()
-        }
-        .into(),
-    );
+    use zebra_chain::transaction::arbitrary::insert_fake_v6_orchard_shielded_data;
+    use zebra_test::vectors::{
+        OrchardWorkflowBlock, OrchardWorkflowBlockResult, ORCHARD_ZSA_WORKFLOW_BLOCKS,
+    };
 
-    let outputs = vec![(Amount::zero(), transparent::Script::new(Default::default()))];
+    let block = ORCHARD_ZSA_WORKFLOW_BLOCKS
+        .iter()
+        .find_map(
+            |OrchardWorkflowBlock {
+                 height: _,
+                 bytes,
+                 expected_result,
+             }| {
+                matches!(expected_result, OrchardWorkflowBlockResult::Valid).then(|| {
+                    Block::zcash_deserialize(&bytes[..]).expect("block should deserialize")
+                })
+            },
+        )
+        .expect("workflow must contain a valid block");
 
-    let mut tx = Transaction::new_v6_coinbase(
-        &network,
-        Height(1),
-        outputs,
-        Vec::new(),
-        Some(Amount::zero()),
-    );
+    let mut tx = block
+        .transactions
+        .first()
+        .expect("block must contain a coinbase transaction")
+        .as_ref()
+        .clone();
+
+    assert!(tx.is_coinbase());
 
     let shielded_data = insert_fake_v6_orchard_shielded_data(&mut tx);
 
     assert!(!shielded_data.flags.contains(Flags::ENABLE_ZSA));
 
-    shielded_data.flags = Flags::ENABLE_ZSA;
+    shielded_data.flags.insert(Flags::ENABLE_ZSA);
 
     assert_eq!(
         check::coinbase_tx_no_prevout_joinsplit_spend(&tx),
         Err(TransactionError::CoinbaseHasEnableZSA)
     );
 }
-*/
 
 #[tokio::test]
 async fn v5_transaction_is_rejected_before_nu5_activation() {
