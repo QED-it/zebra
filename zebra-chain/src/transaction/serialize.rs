@@ -119,8 +119,8 @@ where
 
 impl ZcashSerialize for sapling::ShieldedData<sapling::SharedAnchor> {
     fn zcash_serialize<W: io::Write>(&self, writer: W) -> Result<(), io::Error> {
-        // FIXME: zcash_serialize works for V5 only (as it passes false),
-        // but can be mistakenly call for V6 - be careful!
+        // This `ZcashSerialize` implementation is valid for V5 only.
+        // V6 code must not call it and must use the inner serializer instead.
         serialize_v5_sapling_shielded_data_inner(
             self,
             writer,
