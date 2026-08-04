@@ -287,11 +287,11 @@ pub fn verifier_for(network_upgrade: NetworkUpgrade) -> &'static VerifierService
         // so all of them verify under the fixed key.
         Nu6_2 => &VERIFIER_POST_NU6_2,
 
-        // FIXME: add a comment
+        // Without ZSA V6 support, NU7 continues using the fixed post-NU6.2 Orchard circuit.
         #[cfg(not(all(zcash_unstable = "nu7", feature = "tx_v6")))]
         Nu7 => &VERIFIER_POST_NU6_2,
 
-        // FIXME: add a comment
+        // With ZSA V6 support, NU7 uses the dedicated OrchardZSA circuit and verifying key.
         #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
         Nu7 => &VERIFIER_ZSA,
 
