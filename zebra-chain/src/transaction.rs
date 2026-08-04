@@ -1251,6 +1251,32 @@ impl Transaction {
         }
     }
 
+    /// Returns whether the Orchard proof has the canonical size in this
+    /// transaction, if there is any.
+    pub fn orchard_proof_size_is_canonical(&self) -> Option<bool> {
+        match self {
+            Transaction::V1 { .. }
+            | Transaction::V2 { .. }
+            | Transaction::V3 { .. }
+            | Transaction::V4 { .. } => None,
+
+            Transaction::V5 {
+                orchard_shielded_data,
+                ..
+            } => orchard_shielded_data
+                .as_ref()
+                .map(|shielded_data| shielded_data.proof_size_is_canonical()),
+
+            #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
+            Transaction::V6 {
+                orchard_shielded_data,
+                ..
+            } => orchard_shielded_data
+                .as_ref()
+                .map(|shielded_data| shielded_data.proof_size_is_canonical()),
+        }
+    }
+
     /// Return if the transaction has any Orchard shielded data,
     /// regardless of version.
     pub fn has_orchard_shielded_data(&self) -> bool {

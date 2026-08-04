@@ -441,12 +441,11 @@ where
             // MAINNET/TESTNET_ACTIVATION_HEIGHTS. See
             // `Network::orchard_canonical_proof_size_rule_active`.
             if network.orchard_canonical_proof_size_rule_active(req.height()) {
-                // FIXME: Uncomment!!!
-                //if let Some(orchard_shielded_data) = tx.orchard_shielded_data() {
-                //    if !orchard_shielded_data.proof_size_is_canonical() {
-                //        return Err(TransactionError::OrchardProofSize);
-                //    }
-                //}
+                if let Some(proof_size_is_canonical) = tx.orchard_proof_size_is_canonical() {
+                    if !proof_size_is_canonical {
+                        return Err(TransactionError::OrchardProofSize);
+                    }
+                }
             }
 
             // Validate the coinbase input consensus rules
