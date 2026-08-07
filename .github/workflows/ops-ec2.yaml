@@ -1,7 +1,7 @@
 # Ops console for the EC2 Zebra testnet node (successor to deploy-ecs/stop-ecs).
-# The box has no inbound ports and no SSH key: commands reach it over SSM Run
-# Command, which invokes /opt/zebra/ops.sh (installed by Terraform via
-# cloud-init). Auth is OIDC — no long-lived IAM access keys.
+# Commands reach the box over SSM Run Command, which invokes /opt/zebra/ops.sh
+# (installed from the launch template's user_data at first boot). Auth is
+# OIDC — no long-lived IAM access keys.
 name: Zebra EC2 Ops
 
 on:
@@ -20,6 +20,9 @@ on:
           - recreate
           - logs
           - status
+          - genesis
+          - promote
+          - demote
           - wipe-state
           - reboot-instance
       image_tag:
@@ -30,8 +33,12 @@ on:
         description: 'Name tag of the target EC2 instance'
         type: string
         default: zebra-testnet
+      instance_id:
+        description: 'Target one instance by ID. Empty targets the Role=leader node.'
+        type: string
+        default: ''
       confirm:
-        description: 'Type "wipe-state" to confirm that action'
+        description: 'Type the action name to confirm wipe-state or demote'
         type: string
         default: ''
 
@@ -39,9 +46,11 @@ permissions:
   id-token: write # required to mint the OIDC token
   contents: read
 
-# One op at a time — concurrent deploy/wipe-state on the same box interleave badly.
+# One op at a time — concurrent deploy/wipe-state on the same box interleave
+# badly. Keyed on the explicit instance when given, so ops on a follower don't
+# serialise behind ops on the leader.
 concurrency:
-  group: zebra-ec2-ops-${{ inputs.instance_name_tag }}
+  group: zebra-ec2-ops-${{ inputs.instance_id || inputs.instance_name_tag }}
 
 jobs:
   ops:
@@ -54,6 +63,7 @@ jobs:
       ACTION: ${{ inputs.action }}
       IMAGE_TAG: ${{ inputs.image_tag }}
       NAME_TAG: ${{ inputs.instance_name_tag }}
+      INSTANCE_ID: ${{ inputs.instance_id }}
       CONFIRM: ${{ inputs.confirm }}
       AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
       OPS_ROLE_ARN: ${{ vars.AWS_OIDC_OPS_ROLE_ARN || 'arn:aws:iam::496038263219:role/gha-zebra-ops' }}
@@ -65,8 +75,15 @@ jobs:
           # Docker tag grammar; also keeps the value safe to substitute below.
           [[ "$IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$ ]] || { echo "::error::invalid image tag: $IMAGE_TAG"; exit 1; }
           [[ "$NAME_TAG" =~ ^[A-Za-z0-9._:/=+@-]{1,255}$ ]] || { echo "::error::invalid name tag: $NAME_TAG"; exit 1; }
+          [ -z "$INSTANCE_ID" ] || [[ "$INSTANCE_ID" =~ ^i-[0-9a-f]{8,17}$ ]] || { echo "::error::invalid instance id: $INSTANCE_ID"; exit 1; }
           if [ "$ACTION" = wipe-state ] && [ "$CONFIRM" != wipe-state ]; then
             echo "::error::wipe-state deletes /var/lib/zebra-state. Re-run with confirm=wipe-state."
+            exit 1
+          fi
+          # demote stops cloudflared, taking rpc./logs./dozzle. offline until
+          # some node is promoted again.
+          if [ "$ACTION" = demote ] && [ "$CONFIRM" != demote ]; then
+            echo "::error::demote drops the Cloudflare tunnel. Re-run with confirm=demote."
             exit 1
           fi
 
@@ -79,11 +96,26 @@ jobs:
         run: |
           set -euo pipefail
 
-          ID=$(aws ec2 describe-instances \
-            --filters "Name=tag:Name,Values=$NAME_TAG" "Name=instance-state-name,Values=running" \
-            --query 'Reservations[].Instances[].InstanceId' --output text | tr '\t' '\n' | head -n1)
-          if [ -z "$ID" ] || [ "$ID" = None ]; then
-            echo "::error::no running EC2 instance tagged Name=$NAME_TAG"; exit 1
+          if [ -n "$INSTANCE_ID" ]; then
+            ID="$INSTANCE_ID"
+            ST=$(aws ec2 describe-instances --instance-ids "$ID" \
+              --query 'Reservations[].Instances[].State.Name' --output text 2>/dev/null || echo None)
+            [ "$ST" = running ] || { echo "::error::$ID is not running (state: $ST)"; exit 1; }
+          else
+            # Default target is the leader: the one node tagged Role=leader, and
+            # so the only one running cloudflared. Ambiguity is an error rather
+            # than an arbitrary pick — an ops action on the wrong node is silent
+            # and, for wipe-state, destructive.
+            IDS=$(aws ec2 describe-instances \
+              --filters "Name=tag:Name,Values=$NAME_TAG" "Name=tag:Role,Values=leader" \
+                        "Name=instance-state-name,Values=running" \
+              --query 'Reservations[].Instances[].InstanceId' --output text | tr '\t' ' ')
+            N=$(wc -w <<<"$IDS")
+            if [ "$N" -ne 1 ]; then
+              echo "::error::expected exactly 1 running instance tagged Name=$NAME_TAG Role=leader, found $N: ${IDS:-none}. Pass instance_id to target one explicitly."
+              exit 1
+            fi
+            ID="$IDS"
           fi
           echo "instance: $ID"
 
