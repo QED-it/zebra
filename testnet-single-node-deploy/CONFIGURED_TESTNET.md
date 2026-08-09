@@ -1,4 +1,4 @@
-# QEDTestnet — Configured Testnet Setup
+# ZSATestnet — Configured Testnet Setup
 
 Zebra as a private testnet (`network = "Testnet"` + `[network.testnet_parameters]`, not `"Regtest"`) with NU7/ZSA at height 1, no peers, no PoW. Config: `testnet-single-node-deploy/testnet-config.toml`.
 
@@ -15,7 +15,7 @@ Zebra starts with an empty state (no hard-coded Testnet genesis, unlike Regtest)
 
 ```bash
 GENESIS_HEX=$(tr -d '[:space:]' < zebra-test/src/vectors/block-test-0-000-000.txt)
-curl -s http://127.0.0.1:18232 -X POST -H 'Content-Type: application/json' \
+curl -s http://localhost:18232 -X POST -H 'Content-Type: application/json' \
   -d "{\"jsonrpc\":\"1.0\",\"id\":\"bootstrap\",\"method\":\"submitblock\",\"params\":[\"$GENESIS_HEX\"]}"
 # repeat after every restart — state is ephemeral
 ```

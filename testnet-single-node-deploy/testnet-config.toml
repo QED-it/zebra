@@ -7,6 +7,8 @@ listen_addr = "0.0.0.0:18233"
 initial_testnet_peers = []
 
 [network.testnet_parameters]
+network_name = "ZSATestnet"
+network_magic = [0x5a, 0x53, 0x41, 0x31]
 disable_pow = true
 extend_funding_stream_addresses_as_required = true
 funding_streams = []
