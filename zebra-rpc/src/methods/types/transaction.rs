@@ -151,15 +151,11 @@ impl TransactionTemplate<NegativeOrZero> {
 
         #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
         {
-            let zip233_amount = if cfg!(zcash_unstable = "zip235") {
-                #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
-                // FIXME: Uncommend and fix
-                //zip233_amount.unwrap_or_else(|| ((miner_fee * 6).unwrap() / 10).unwrap())
-                zip233_amount.unwrap_or(Amount::zero())
-            } else {
-                zip233_amount.unwrap_or(Amount::zero())
-            };
-
+            // The upstream ZIP 235 default here doesn't compile, and fixing it would also
+            // require deducting the burn from `miner_reward` above. Use zero for now:
+            // ZIP 233 was dropped from v6, and upstream has since removed this code.
+            // FIXME: drop this block during the next merge.
+            let zip233_amount = zip233_amount.unwrap_or(Amount::zero());
             builder.set_zip233_amount(Zatoshis::try_from(zip233_amount)?);
         }
 
@@ -176,7 +172,8 @@ impl TransactionTemplate<NegativeOrZero> {
                     Some(::orchard::keys::OutgoingViewingKey::from([0u8; 32])),
                     *addr,
                     miner_reward,
-                    // FIXME: Should we pass a real asset?
+                    // A coinbase pays the miner reward in native ZEC. Custom assets can only
+                    // enter circulation via an issuance bundle, which a coinbase never has.
                     ::orchard::note::AssetBase::zatoshi(),
                     memo.clone(),
                 ),
@@ -254,7 +251,7 @@ impl TransactionTemplate<NegativeOrZero> {
             &sapling_prover,
             &sapling_prover,
             &FeeRule::non_standard(Zatoshis::ZERO),
-            // FIXME: Should we pass a real is_new_asset?
+            // No asset is ever newly issued in a coinbase: its only output asset is native ZEC.
             #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
             |_| false,
         )?;

@@ -2465,7 +2465,9 @@ where
                             height,
                             &params,
                             Amount::zero(),
-                            // FIXME: Should we pass a real zip233_amount?
+                            // `None` defaults to a zero burn, which is correct: the ZIP 233
+                            // burn is a fraction of the block's fees, and this coinbase is
+                            // for an empty block (`txs_fee` is zero above).
                             #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
                             None,
                         )
@@ -2561,7 +2563,9 @@ where
                         server_long_poll_id,
                         vec![],
                         submit_old,
-                        // FIXME: Should we pass a real zip233_amount?
+                        // `None` defaults to a zero burn, which is correct: the ZIP 233 burn
+                        // is a fraction of the block's fees, and this template has no
+                        // transactions (see the empty list above).
                         #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
                         None
                     )

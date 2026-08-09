@@ -653,7 +653,11 @@ impl From<FinalizedBlock> for SemanticallyVerifiedBlock {
             height: finalized.height,
             new_outputs: finalized.new_outputs,
             transaction_hashes: finalized.transaction_hashes,
-            // FIXME: Can we/should we pass real sighashes here?
+
+            // `None` is correct: a `FinalizedBlock`'s issuance is already settled — verified
+            // via sighashes on the contextual path, or trusted on the checkpoint path — and
+            // `FinalizedBlock` carries no sighashes to forward.
+            // Moreover, this impl is unused in the current version of Zebra.
             transaction_sighashes: None,
         }
     }
