@@ -1,0 +1,71 @@
+name: Zebra EC2 Ops
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        type: choice
+        required: true
+        options: [status, logs, genesis, restart, recreate, start, stop, deploy, promote, demote]
+      image_tag:
+        description: deploy only
+        default: latest
+      instance_id:
+        description: Target a specific instance. Empty targets the leader.
+        default: ""
+      confirm:
+        description: Required for stop/demote — type the action name
+        default: ""
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: eu-central-1
+
+jobs:
+  ops:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_OIDC_OPS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Guard destructive actions
+        if: contains(fromJSON('["stop","demote"]'), inputs.action)
+        run: |
+          [ "${{ inputs.confirm }}" = "${{ inputs.action }}" ] \
+            || { echo "::error::set confirm=${{ inputs.action }}"; exit 1; }
+
+      # Empty instance_id resolves to the single Role=leader instance. Fails
+      # loudly on 0 or >1 rather than picking an arbitrary one.
+      - id: target
+        run: |
+          if [ -n "${{ inputs.instance_id }}" ]; then
+            ID="${{ inputs.instance_id }}"
+          else
+            ID=$(aws ec2 describe-instances \
+              --filters "Name=tag:Name,Values=zebra-testnet" \
+                        "Name=tag:Role,Values=leader" \
+                        "Name=instance-state-name,Values=running" \
+              --query 'Reservations[].Instances[].InstanceId' --output text)
+            [ "$(echo $ID | wc -w)" -eq 1 ] \
+              || { echo "::error::expected 1 leader, got: '$ID'"; exit 1; }
+          fi
+          echo "id=$ID" >> $GITHUB_OUTPUT
+          echo "::notice::target $ID"
+
+      - id: run
+        run: |
+          CMD=$(aws ssm send-command --instance-ids "${{ steps.target.outputs.id }}" \
+            --document-name AWS-RunShellScript \
+            --parameters "commands=[\"bash /opt/zebra/ops.sh ${{ inputs.action }} ${{ inputs.image_tag }}\"]" \
+            --query Command.CommandId --output text)
+          aws ssm wait command-executed --command-id "$CMD" \
+            --instance-id "${{ steps.target.outputs.id }}" || true
+          aws ssm get-command-invocation --command-id "$CMD" \
+            --instance-id "${{ steps.target.outputs.id }}" \
+            --query '[Status,StandardOutputContent,StandardErrorContent]' --output text \
+            | tee -a $GITHUB_STEP_SUMMARY
