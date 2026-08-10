@@ -1,0 +1,15 @@
+[Unit]
+# Re-runs the election on every boot, not just first boot. Without this a
+# stopped instance that lost the claim would come back and have docker's
+# restart policy start its cloudflared anyway.
+Description=Zebra tunnel leader election
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash /opt/zebra/leader.sh elect
+
+[Install]
+WantedBy=multi-user.target
