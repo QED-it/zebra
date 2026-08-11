@@ -60,6 +60,10 @@ jobs:
           tool: cargo-nextest
 
       - name: Run tests
+        env:
+          # Without this, nextest uses [profile.default] and runs the stateful
+          # network tests ZF runs in the GCP integration workflows instead.
+          NEXTEST_PROFILE: all-tests
         run: |
           timeout --preserve-status 1h \
             cargo nextest run --workspace --locked
