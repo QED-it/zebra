@@ -69,15 +69,11 @@ jobs:
           # and network-dependent tests, which belong to the integration
           # workflows.
           NEXTEST_PROFILE: all-tests
-          RUST_LOG: info,zebra_network=debug
         run: |
-          cargo nextest run --workspace --locked --no-capture \
-            -E 'test(=trusted_chain_sync_handles_forks_correctly)'
-#        run: |
-#          # Backstop only: nextest enforces its own per-test timeouts. This
-#          # budget also covers compilation, which takes several minutes.
-#          timeout --preserve-status 90m \
-#            cargo nextest run --workspace --locked
+          # Backstop only: nextest enforces its own per-test timeouts. This
+          # budget also covers compilation, which takes several minutes.
+          timeout --preserve-status 90m \
+            cargo nextest run --workspace --locked
 
       - name: Run doc tests
         run: |
