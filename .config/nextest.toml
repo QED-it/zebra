@@ -44,8 +44,9 @@ status-level = "retry"
 # Stop one late flake from discarding every test still queued.
 fail-fast = false
 
-# Backoff: immediate retries usually hit the same transient condition.
-retries = { backoff = "exponential", count = 2, delay = "5s", jitter = true }
+# No profile-wide retries: unit and integration tests must fail on the first
+# attempt so real bugs are not masked. Retries are scoped to the acceptance
+# binary only, at the bottom of this file.
 
 default-filter = "not test(check_no_git_dependencies) and not test(=fully_synced_rpc_z_getsubtreesbyindex_snapshot_test) and not test(=lwd_rpc_test) and not test(=lwd_rpc_send_tx) and not test(=lwd_grpc_wallet) and not test(=lwd_integration) and not test(=lwd_sync_full) and not test(=lwd_sync_update) and not test(=lightwalletd_test_suite) and not test(=rpc_get_block_template) and not test(=rpc_submit_block) and not test(=get_peer_info) and not test(~generate_checkpoints_) and not test(=sync_update_mainnet) and not test(=activate_mempool_mainnet)"
 
@@ -148,10 +149,14 @@ default-filter = 'package(zebrad) and test(=lightwalletd_test_suite)'
 slow-timeout = { period = "30m", terminate-after = 2 }
 default-filter = 'package(zebrad) and test(=fully_synced_rpc_z_getsubtreesbyindex_snapshot_test)'
 
-# Serialise the heavy zebrad acceptance binary (see [test-groups] above).
+# Acceptance tests spawn zebrad processes, bind ports and enforce wall-clock
+# deadlines -- the only real sources of flakiness here. Retries are scoped to
+# this binary so unit tests (including all ZSA code) still fail on attempt 1.
+# `status-level = "retry"` keeps every retry visible as FLAKY n/m in the log.
 [[profile.all-tests.overrides]]
 filter = 'binary(acceptance)'
 test-group = 'zebrad-acceptance'
+retries = { backoff = "exponential", count = 2, delay = "5s", jitter = true }
 
 # [[profile.all-tests.overrides]]
 # filter = 'test(=trusted_chain_sync_handles_forks_correctly)'
