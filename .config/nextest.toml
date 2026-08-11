@@ -3,21 +3,23 @@
 
 [profile.default]
 fail-fast = true
-# "pass" logs all ~1000 passing tests, burying the real failures.
+# Only log retried and failed tests; "pass" buries failures under ~1000 lines.
 status-level = "retry"
 
 # --- Test groups ---
 
-# Each acceptance test spawns full zebrad processes; 4 in parallel on a 4-vCPU
-# runner starves them and trips their internal deadlines.
+# Limits how many tests from a group run at once, on top of the global
+# test-threads limit. Acceptance tests each spawn full zebrad processes with
+# their own thread pools and RocksDB instances, so running many at once on a
+# small CI runner starves them and trips their internal wall-clock deadlines.
 [test-groups]
 zebrad-acceptance = { max-threads = 2 }
 
 # --- Platform-specific overrides ---
 
-# Skip Windows-incompatible tests.
-# Must be `default-filter`: `filter` only scopes an override's settings, it
-# deselects nothing, so the previous `filter` form was a no-op.
+# Tests that cannot run on Windows.
+# Use `default-filter` to deselect tests. `filter` does not deselect anything:
+# it only chooses which tests an override's other settings apply to.
 [[profile.default.overrides]]
 platform = 'cfg(target_os = "windows")'
 default-filter = "not test(=trusted_chain_sync_handles_forks_correctly) and not test(=delete_old_databases)"
@@ -41,13 +43,14 @@ default-filter = "not test(=trusted_chain_sync_handles_forks_correctly) and not 
 failure-output = "immediate"
 status-level = "retry"
 
-# Stop one late flake from discarding every test still queued.
+# Run every test even after one fails, so a single failure late in the run does
+# not hide the state of everything still queued.
 fail-fast = false
 
-# No profile-wide retries: unit tests must fail on the first attempt so real
-# bugs are not masked. Retries are scoped to the acceptance binary below.
+# Retries are set per-binary below, not here: unit tests must fail on their
+# first attempt so that real bugs are not hidden behind a passing retry.
 
-default-filter = "not test(check_no_git_dependencies) and not test(=fully_synced_rpc_z_getsubtreesbyindex_snapshot_test) and not test(=lwd_rpc_test) and not test(=lwd_rpc_send_tx) and not test(=lwd_grpc_wallet) and not test(=lwd_integration) and not test(=lwd_sync_full) and not test(=lwd_sync_update) and not test(=lightwalletd_test_suite) and not test(=rpc_get_block_template) and not test(=rpc_submit_block) and not test(=get_peer_info) and not test(~generate_checkpoints_) and not test(=sync_update_mainnet) and not test(=activate_mempool_mainnet)"
+default-filter = "not test(check_no_git_dependencies) and not test(=fully_synced_rpc_z_getsubtreesbyindex_snapshot_test) and not test(=lwd_rpc_test) and not test(=lwd_rpc_send_tx) and not test(=lwd_grpc_wallet) and not test(=lwd_integration) and not test(=lwd_sync_full) and not test(=lwd_sync_update) and not test(=lightwalletd_test_suite) and not test(=rpc_get_block_template) and not test(=rpc_submit_block) and not test(=get_peer_info) and not test(~generate_checkpoints_) and not test(=sync_update_mainnet) and not test(=activate_mempool_mainnet) and not test(=disconnects_from_misbehaving_peers)"
 
 # --- Individual Test Profiles ---
 
@@ -148,37 +151,29 @@ default-filter = 'package(zebrad) and test(=lightwalletd_test_suite)'
 slow-timeout = { period = "30m", terminate-after = 2 }
 default-filter = 'package(zebrad) and test(=fully_synced_rpc_z_getsubtreesbyindex_snapshot_test)'
 
-# --- Acceptance test overrides ---
-# NOTE: the first matching override wins per setting, so specific rules must
-# come before the binary-wide one.
+# --- Acceptance test settings ---
 
-# A panic here does not end the test: the child zebrad processes run in
-# spawn_blocking loops until `is_finished`, which the panic skips, so the binary
-# hangs (2917s in CI, killed by the job timeout). Retrying multiplies the hang.
-# It also asserts on peers after a fixed 20s sleep instead of polling, which is
-# a race under load. See acceptance.rs:4467.
-[[profile.all-tests.overrides]]
-filter = 'test(=disconnects_from_misbehaving_peers)'
-retries = 0
-slow-timeout = { period = "60s", terminate-after = 3 }
-
-# Acceptance tests spawn zebrad processes, bind ports and enforce wall-clock
-# deadlines -- the only real sources of flakiness. terminate-after caps any
-# single test at 10 min so it cannot eat the whole job budget; the slowest
-# honest test in CI runs ~5 min.
+# Acceptance tests launch real zebrad processes, bind TCP ports and wait on
+# wall-clock deadlines, which makes them the main source of intermittent
+# failures. They get retries; the rest of the suite does not.
+#
+# `terminate-after` caps a single test at 10 minutes. Without it, a test that
+# hangs instead of failing runs until the workflow-level timeout and takes the
+# whole job down with it. The slowest healthy test here takes about 5 minutes.
 [[profile.all-tests.overrides]]
 filter = 'binary(acceptance)'
 test-group = 'zebrad-acceptance'
 retries = { backoff = "exponential", count = 2, delay = "5s", jitter = true }
 slow-timeout = { period = "60s", terminate-after = 10 }
 
-# --- QEDIT temporary retries ---
+# --- Retries for known-flaky tests, default profile only ---
 
-# NOTE: `get_peer_info` and `activate_mempool_mainnet` are excluded by
-# `all-tests`, so this only applies to `profile.default` (local runs).
+# `all-tests` deselects most of these, so this override mainly affects local
+# runs started without an explicit profile.
 #
-# TODO: Remove retries after investigating periodic random failures.
-# Add more tests here only after confirming similar intermittent failures.
+# TODO: Remove once the underlying flakiness is fixed.
+# Only add a test here after confirming it fails intermittently, never to
+# silence a test that fails consistently.
 [[profile.default.overrides]]
 filter = '''
 test(=sync_large_checkpoints_mempool_mainnet)
@@ -186,3 +181,21 @@ or test(=get_peer_info)
 or test(=activate_mempool_mainnet)
 '''
 retries = 3
+
+# --- Disabled tests ---
+
+# `disconnects_from_misbehaving_peers` is deselected in `all-tests` above.
+# It launches two zebrad nodes on deliberately incompatible custom testnets and
+# asserts they connect and then disconnect. Three problems make it unsuitable
+# for CI as written (zebrad/tests/acceptance.rs):
+#
+#   1. It sleeps for a fixed 20s and then asserts the nodes have connected,
+#      instead of polling `getpeerinfo` until a deadline. Under load on a small
+#      runner the connection is not always established in time.
+#   2. A panic does not end the test. The child nodes run in `spawn_blocking`
+#      loops that exit only when the `is_finished` flag is set at the end of the
+#      test, which a panic skips, so the binary hangs until it is killed.
+#   3. Neither `spawn_blocking` result is joined, so node startup errors are
+#      silently discarded and never appear in the failure output.
+#
+# Re-enable once these are fixed upstream.

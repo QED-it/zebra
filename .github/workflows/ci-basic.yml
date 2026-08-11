@@ -10,6 +10,9 @@ jobs:
     runs-on: ubuntu-latest
 
     strategy:
+      # Run both matrix legs to completion: a failure in one should not cancel
+      # the other, since they exercise different feature configurations.
+      fail-fast: false
       matrix:
         nu7:
           - true
@@ -61,11 +64,15 @@ jobs:
 
       - name: Run tests
         env:
-          # Without this, nextest uses [profile.default] and runs the stateful
-          # network tests ZF runs in the GCP integration workflows instead.
+          # Selects the CI test set from .config/nextest.toml. Without it,
+          # nextest falls back to [profile.default] and also runs the stateful
+          # and network-dependent tests, which belong to the integration
+          # workflows.
           NEXTEST_PROFILE: all-tests
         run: |
-          timeout --preserve-status 1h \
+          # Backstop only: nextest enforces its own per-test timeouts. This
+          # budget also covers compilation, which takes several minutes.
+          timeout --preserve-status 90m \
             cargo nextest run --workspace --locked
 
       - name: Run doc tests
