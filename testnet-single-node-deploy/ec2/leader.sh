@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 # /opt/zebra/leader.sh <elect|promote|demote|status>
 #
-# The leader is the one instance tagged Role=leader, and the only one running
-# cloudflared — two connectors on one tunnel makes Cloudflare round-robin the
-# public hostnames between nodes on divergent chains.
+# The leader is the one instance tagged Role=leader, and the only one running cloudflared.
 #
 # Claim is an SSM put-parameter WITHOUT --overwrite, which fails if the key
 # exists. That is the atomic bit: simultaneous boots cannot both win.
