@@ -1,64 +1,60 @@
 #!/usr/bin/env bash
-# /opt/zebra/leader.sh <elect|promote|demote|status>
+# /opt/zebra/leader.sh [apply|status]
 #
-# The leader is the one instance tagged Role=leader, and the only one running cloudflared.
+# Only one instance may run cloudflared. Every process holding the tunnel token
+# registers as another connector and Cloudflare load-balances across them, but
+# these nodes are not replicas — each has its own ephemeral chain, so two
+# connectors means one hostname answering from two different chains.
 #
-# Claim is an SSM put-parameter WITHOUT --overwrite, which fails if the key
-# exists. That is the atomic bit: simultaneous boots cannot both win.
+# Role=leader marks the instance allowed to run it. The ops workflow writes that
+# tag; this script only makes the box match it. Nothing here elects and nothing
+# here writes the tag, so there is no shared state to race over.
 set -euo pipefail
-PARAM=/zebra/leader
+cd /opt/zebra
 REGION="${AWS_REGION:-eu-central-1}"
+TOKEN_PARAM=/zebra/zebra-testnet/cf-tunnel-token
+IMDS=http://169.254.169.254/latest
 
-TOKEN=$(curl -sX PUT http://169.254.169.254/latest/api/token \
+T=$(curl -sf --retry 5 --retry-delay 1 -X PUT "$IMDS/api/token" \
   -H 'X-aws-ec2-metadata-token-ttl-seconds: 60')
-ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
-  http://169.254.169.254/latest/meta-data/instance-id)
+ID=$(curl -sf --retry 5 --retry-delay 1 -H "X-aws-ec2-metadata-token: $T" \
+  "$IMDS/meta-data/instance-id")
+[[ $ID == i-* ]] || { echo "bad instance id: '$ID'" >&2; exit 1; }
 
-put() { aws ssm put-parameter --region "$REGION" --name "$PARAM" \
-  --type String --value "$ID" "$@" >/dev/null; }
-get() { aws ssm get-parameter --region "$REGION" --name "$PARAM" \
-  --query Parameter.Value --output text 2>/dev/null || true; }
-# Role=leader exists only on the leader. Followers carry no Role tag at all.
-tag()   { aws ec2 create-tags --region "$REGION" --resources "$ID" --tags Key=Role,Value=leader; }
-untag() { aws ec2 delete-tags --region "$REGION" --resources "$ID" --tags Key=Role; }
+# cloudflared sits in a compose profile, so a bare `docker compose up -d` cannot
+# start a connector by accident. Always address it through the profile.
+dc() { docker compose --profile tunnel "$@"; }
+running() { [ -n "$(dc ps -q cloudflared)" ]; }
+# Prints the Role tag, or "None". Non-zero means we could not find out, which is
+# not the same as "not the leader" — see the hard exit below.
+role() { aws ec2 describe-tags --region "$REGION" \
+  --filters "Name=resource-id,Values=$ID" "Name=key,Values=Role" \
+  --query 'Tags[0].Value' --output text; }
 
-# 0 if we hold the claim afterwards. Takes over from any holder that is not
-# actually serving: gone, terminated, or stopped. Safe because elect runs on
-# every boot (zebra-leader.service), so a stopped holder that comes back finds
-# it has lost and shuts its own cloudflared down.
-claim() {
-  put 2>/dev/null && return 0
-  local cur state
-  cur=$(get)
-  [ "$cur" = "$ID" ] && return 0
-  state=$(aws ec2 describe-instances --region "$REGION" --instance-ids "$cur" \
-    --query 'Reservations[].Instances[].State.Name' --output text 2>/dev/null || echo gone)
-  case "$state" in
-    ""|None|gone|terminated|shutting-down|stopped|stopping) put --overwrite; return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-start_tunnel() {
+up() {
+  if running; then return 0; fi
   local t
-  t=$(aws ssm get-parameter --region "$REGION" --name /zebra/zebra-testnet/cf-tunnel-token \
+  t=$(aws ssm get-parameter --region "$REGION" --name "$TOKEN_PARAM" \
     --with-decryption --query Parameter.Value --output text)
-  sed -i "s|^CF_TUNNEL_TOKEN=.*|CF_TUNNEL_TOKEN=$t|" /opt/zebra/.env
-  cd /opt/zebra && docker compose up -d cloudflared
+  grep -q '^CF_TUNNEL_TOKEN=' .env || { echo "no CF_TUNNEL_TOKEN= line in .env" >&2; return 1; }
+  sed -i "s|^CF_TUNNEL_TOKEN=.*|CF_TUNNEL_TOKEN=$t|" .env
+  dc up -d cloudflared
 }
 
-case "${1:-elect}" in
-  # Runs at every boot. Losing means stopping our own cloudflared: docker's
-  # restart policy would otherwise resurrect it on a box that lost the claim
-  # while it was stopped, putting two connectors on the tunnel.
-  elect)   if claim; then tag; start_tunnel; echo leader
-           else untag 2>/dev/null || true
-                cd /opt/zebra && docker compose stop cloudflared >/dev/null 2>&1 || true
-                echo follower; fi ;;
-  promote) put --overwrite; tag; start_tunnel; echo "leader: $ID" ;;
-  # Releases the claim too, so the next elect can take over while this box lives.
-  demote)  untag; aws ssm delete-parameter --region "$REGION" --name "$PARAM" 2>/dev/null || true
-           cd /opt/zebra && docker compose stop cloudflared; echo "released: $ID" ;;
-  status)  echo "self=$ID leader=$(get)" ;;
-  *) echo "usage: leader.sh <elect|promote|demote|status>"; exit 2 ;;
-esac
+ACTION="${1:-apply}"
+case $ACTION in apply|status) ;; *) echo "usage: leader.sh [apply|status]" >&2; exit 2 ;; esac
+
+# Fail closed. A throttled or denied lookup must not read as "not the leader",
+# which would take the tunnel down over a transient API error.
+R=$(role) || { echo "Role tag lookup failed; leaving cloudflared as-is" >&2; exit 1; }
+
+# apply runs at boot and on demand. At boot it also undoes docker's restart
+# policy reviving a connector on a box that lost the tag while it was stopped.
+if [ "$ACTION" = status ]; then
+  echo "self=$ID leader=$([ "$R" = leader ] && echo yes || echo no)" \
+       "cloudflared=$(running && echo up || echo down)"
+elif [ "$R" = leader ]; then
+  up
+else
+  dc stop cloudflared >/dev/null
+fi
