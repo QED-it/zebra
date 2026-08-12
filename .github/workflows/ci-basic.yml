@@ -5,6 +5,11 @@ on: [push]
 permissions:
   contents: read
 
+# Only keep the newest run per branch: older runs test superseded commits.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -56,6 +61,13 @@ jobs:
         run: |
           sed -i 's|.*"--cfg", .feature="tx_v6".*|# &|' .cargo/config.toml
           sed -i 's|.*"--cfg", "zcash_unstable=\\"nu7\\"".*|# &|' .cargo/config.toml
+          # Fail loudly if the patterns stop matching: a silent no-op would make
+          # this leg build with the ZSA flags still on, so both matrix legs
+          # would test the same configuration without anyone noticing.
+          if git diff --quiet .cargo/config.toml; then
+            echo "::error::nu7/tx_v6 flags not found in .cargo/config.toml"
+            exit 1
+          fi
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@305bebabd4457bed9b82541755f034994382465b # v2.68.10
@@ -72,12 +84,13 @@ jobs:
         run: |
           # Backstop only: nextest enforces its own per-test timeouts. This
           # budget also covers compilation, which takes several minutes.
-          timeout --preserve-status 90m \
+          # -k sends SIGKILL if the process ignores the initial SIGTERM.
+          timeout -k 60s --preserve-status 90m \
             cargo nextest run --workspace --locked
 
       - name: Run doc tests
         run: |
-          timeout --preserve-status 30m \
+          timeout -k 60s --preserve-status 30m \
             cargo test --doc --workspace --locked
 
       - name: Run doc check
@@ -89,13 +102,20 @@ jobs:
       - name: Run clippy
         run: cargo clippy --workspace --all-targets --features "default-release-binaries proptest-impl lightwalletd-grpc-tests zebra-checkpoints"
 
+      # Runs even when an earlier step failed, so the checkout is left in the
+      # state the next job on this machine expects.
       - name: Restore cargo config
+        if: ${{ !cancelled() }}
         run: git checkout -- .cargo/config.toml
 
       - name: Verify working directory is clean
         run: git diff --exit-code
 
+      # Runs even when an earlier step failed: disk and memory numbers are most
+      # useful when diagnosing a failed run, and a step with no `if` defaults to
+      # running only on success.
       - name: Show system resource summary
+        if: always()
         run: |
           df -h
           free -h

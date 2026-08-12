@@ -3,26 +3,15 @@
 
 [profile.default]
 fail-fast = true
-# Log only retried and failed tests; "pass" buries failures under ~1000 lines.
-status-level = "retry"
-
-# --- Test groups ---
-
-# Caps how many tests from a group run at once, independently of the global
-# test-threads limit. Acceptance tests each launch full zebrad processes with
-# their own thread pools and RocksDB instances, so running several at once on a
-# small CI runner starves them and trips their internal wall-clock deadlines.
-[test-groups]
-zebrad-acceptance = { max-threads = 2 }
+status-level = "pass"
 
 # --- Platform-specific overrides ---
 
-# Tests that cannot run on Windows.
-# Use `default-filter` to deselect tests: `filter` deselects nothing, it only
-# chooses which tests an override's other settings apply to.
+# Skip Windows-incompatible tests
 [[profile.default.overrides]]
 platform = 'cfg(target_os = "windows")'
-default-filter = "not test(=trusted_chain_sync_handles_forks_correctly) and not test(=delete_old_databases)"
+
+filter = "not test(=trusted_chain_sync_handles_forks_correctly) and not test(=delete_old_databases)"
 
 # --- All Tests profile ---
 # CI-friendly test selection.
@@ -41,15 +30,12 @@ default-filter = "not test(=trusted_chain_sync_handles_forks_correctly) and not 
 # TODO: We need a better test architecture to run all non-stateful
 [profile.all-tests]
 failure-output = "immediate"
-status-level = "retry"
 
-# Keep running after a failure so that one failing test does not hide the state
-# of everything still queued.
+# Keep going after a failure so that one broken test does not hide the state of
+# everything still queued, and log only retried and failed tests: "pass" buries
+# real failures under ~1000 lines of output.
 fail-fast = false
-
-# Retries are set per-binary below, not here: unit tests must fail on their
-# first attempt so that real bugs are not hidden behind a passing retry.
-
+status-level = "retry"
 default-filter = "not test(check_no_git_dependencies) and not test(=fully_synced_rpc_z_getsubtreesbyindex_snapshot_test) and not test(=lwd_rpc_test) and not test(=lwd_rpc_send_tx) and not test(=lwd_grpc_wallet) and not test(=lwd_integration) and not test(=lwd_sync_full) and not test(=lwd_sync_update) and not test(=lightwalletd_test_suite) and not test(=rpc_get_block_template) and not test(=rpc_submit_block) and not test(=get_peer_info) and not test(~generate_checkpoints_) and not test(=sync_update_mainnet) and not test(=activate_mempool_mainnet)"
 
 # --- Individual Test Profiles ---
@@ -151,8 +137,16 @@ default-filter = 'package(zebrad) and test(=lightwalletd_test_suite)'
 slow-timeout = { period = "30m", terminate-after = 2 }
 default-filter = 'package(zebrad) and test(=fully_synced_rpc_z_getsubtreesbyindex_snapshot_test)'
 
-# --- Acceptance test settings ---
-#
+# --- Acceptance test scheduling ---
+
+# Caps how many tests from a group run at once, independently of the global
+# test-threads limit. Acceptance tests each launch full zebrad processes with
+# their own thread pools and RocksDB instances, so running several at once on a
+# small CI runner starves them and trips their internal wall-clock deadlines.
+# Tuned for a 4-vCPU runner; raise it on larger machines.
+[test-groups]
+zebrad-acceptance = { max-threads = 2 }
+
 # Overrides are matched top to bottom and the first match wins for each
 # individual setting, so narrower rules must come before broader ones.
 
@@ -186,19 +180,3 @@ filter = 'binary(acceptance)'
 test-group = 'zebrad-acceptance'
 retries = { backoff = "exponential", count = 2, delay = "5s", jitter = true }
 slow-timeout = { period = "60s", terminate-after = 10 }
-
-# --- Retries for known-flaky tests, default profile only ---
-
-# `all-tests` deselects most of these, so this mainly affects local runs started
-# without an explicit profile.
-#
-# TODO: Remove once the underlying flakiness is fixed. Only add a test here
-# after confirming it fails intermittently, never to silence a consistent
-# failure.
-[[profile.default.overrides]]
-filter = '''
-test(=sync_large_checkpoints_mempool_mainnet)
-or test(=get_peer_info)
-or test(=activate_mempool_mainnet)
-'''
-retries = 3
