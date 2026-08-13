@@ -36,6 +36,11 @@ failure-output = "immediate"
 # real failures under ~1000 lines of output.
 fail-fast = false
 status-level = "retry"
+
+# Hard cap for every test in this profile, so a test that hangs instead of
+# failing cannot run until the workflow timeout and take the whole job down.
+# Tests needing a different cap override it below.
+slow-timeout = { period = "5m", terminate-after = 4 }
 default-filter = "not test(check_no_git_dependencies) and not test(=fully_synced_rpc_z_getsubtreesbyindex_snapshot_test) and not test(=lwd_rpc_test) and not test(=lwd_rpc_send_tx) and not test(=lwd_grpc_wallet) and not test(=lwd_integration) and not test(=lwd_sync_full) and not test(=lwd_sync_update) and not test(=lightwalletd_test_suite) and not test(=rpc_get_block_template) and not test(=rpc_submit_block) and not test(=get_peer_info) and not test(~generate_checkpoints_) and not test(=sync_update_mainnet) and not test(=activate_mempool_mainnet)"
 
 # --- Individual Test Profiles ---
@@ -140,10 +145,7 @@ default-filter = 'package(zebrad) and test(=fully_synced_rpc_z_getsubtreesbyinde
 # --- Acceptance test scheduling ---
 
 # Caps how many tests from a group run at once, independently of the global
-# test-threads limit. Acceptance tests each launch full zebrad processes with
-# their own thread pools and RocksDB instances, so running several at once on a
-# small CI runner starves them and trips their internal wall-clock deadlines.
-# Tuned for a 4-vCPU runner; raise it on larger machines.
+# test-threads limit. Tuned for a 4-vCPU runner; raise it on larger machines.
 [test-groups]
 zebrad-acceptance = { max-threads = 2 }
 
@@ -166,17 +168,28 @@ filter = 'test(=trusted_chain_sync_handles_forks_correctly)'
 threads-required = "num-test-threads"
 retries = 0
 
-# Everything else in the acceptance binary.
+# Known-flaky acceptance tests, retried by name.
 #
-# These tests launch real zebrad processes, bind TCP ports and wait on
-# wall-clock deadlines, which makes them the main source of intermittent
-# failures, so they get retries while the rest of the suite does not.
+# `disconnects_from_misbehaving_peers` starts two nodes on incompatible custom
+# testnets and asserts on peer state after a fixed delay, so it fails when the
+# nodes come up in an unlucky order. It also hangs rather than exits on failure,
+# hence the tighter cap.
+[[profile.all-tests.overrides]]
+filter = 'test(=disconnects_from_misbehaving_peers)'
+retries = 2
+slow-timeout = { period = "5m", terminate-after = 2 }
+
+# `non_blocking_logger` starts a node against live Mainnet and depends on
+# reaching a usable peer; the initial peer set is often mostly unreachable.
+[[profile.all-tests.overrides]]
+filter = 'test(=non_blocking_logger)'
+retries = 2
+
+# Everything in the acceptance binary shares the concurrency group.
 #
-# `terminate-after` caps a single test at 10 minutes. Without it a test that
-# hangs rather than fails runs until the workflow timeout and takes the whole
-# job down with it; the slowest healthy test here takes about 5 minutes.
+# These tests launch real zebrad processes with their own thread pools and
+# RocksDB instances, so running several at once on a small CI runner starves
+# them and trips their internal wall-clock deadlines.
 [[profile.all-tests.overrides]]
 filter = 'binary(acceptance)'
 test-group = 'zebrad-acceptance'
-retries = { backoff = "exponential", count = 2, delay = "5s", jitter = true }
-slow-timeout = { period = "60s", terminate-after = 10 }
