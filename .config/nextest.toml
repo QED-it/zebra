@@ -148,6 +148,9 @@ default-filter = 'package(zebrad) and test(=fully_synced_rpc_z_getsubtreesbyinde
 # test-threads limit. Tuned for a 4-vCPU runner; raise it on larger machines.
 [test-groups]
 zebrad-acceptance = { max-threads = 2 }
+# Live Mainnet tests compete for the same limited set of usable peers when they
+# connect concurrently from one public IP.
+serial-live-mainnet = { max-threads = 1 }
 
 # Overrides are matched top to bottom and the first match wins for each
 # individual setting, so narrower rules must come before broader ones.
@@ -167,6 +170,15 @@ zebrad-acceptance = { max-threads = 2 }
 filter = 'test(=trusted_chain_sync_handles_forks_correctly)'
 threads-required = "num-test-threads"
 retries = 0
+
+# These tests sync mainnet to genesis from live peers; they normally finish in
+# ~10-30s, but a slow/unreachable peer can stall them. Fail fast after 10m and
+# retry instead of hanging until the profile-wide cap.
+[[profile.all-tests.overrides]]
+filter = 'test(=sync_one_checkpoint_mainnet) or test(=restart_stop_at_height)'
+test-group = 'serial-live-mainnet'
+slow-timeout = { period = "5m", terminate-after = 2 }
+retries = 2
 
 # Known-flaky acceptance tests, retried by name.
 #
