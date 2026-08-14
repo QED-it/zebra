@@ -9,10 +9,12 @@ set -euo pipefail
 PARAM=/zebra/leader
 REGION="${AWS_REGION:-eu-central-1}"
 
-TOKEN=$(curl -sX PUT http://169.254.169.254/latest/api/token \
+IMDS=http://169.254.169.254/latest
+
+TOKEN=$(curl -sX PUT "$IMDS/api/token" \
   -H 'X-aws-ec2-metadata-token-ttl-seconds: 60')
 ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
-  http://169.254.169.254/latest/meta-data/instance-id)
+  "$IMDS/meta-data/instance-id")
 
 put() { aws ssm put-parameter --region "$REGION" --name "$PARAM" \
   --type String --value "$ID" "$@" >/dev/null; }
