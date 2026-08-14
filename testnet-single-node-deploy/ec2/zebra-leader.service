@@ -1,15 +1,14 @@
 [Unit]
-# Re-runs the election on every boot, not just first boot. Without this a
-# stopped instance that lost the claim would come back and have docker's
-# restart policy start its cloudflared anyway.
-Description=Zebra tunnel leader election
-After=docker.service
+Description=Match Zebra tunnel state to the Role tag
+# docker for compose, network-online for IMDS and the EC2 API.
 Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/bash /opt/zebra/leader.sh elect
+ExecStart=/bin/bash /opt/zebra/leader.sh apply
 
 [Install]
 WantedBy=multi-user.target

@@ -19,10 +19,19 @@ services:
         max-size: "50m"
         max-file: "5"
 
+  # Started and stopped only by leader.sh. The profile keeps a bare
+  # `docker compose up -d` from starting a second connector by accident;
+  # `unless-stopped` brings the leader's back after a reboot, and leader.sh
+  # stops it at boot on a box that is no longer the leader.
   cloudflared:
+    profiles: [tunnel]
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
-    command: tunnel run --token ${CF_TUNNEL_TOKEN}
+    # Token via env, not argv: on the command line it shows up in `docker
+    # inspect` and the host process list.
+    environment:
+      - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
+    command: tunnel run
 
   dozzle:
     image: amir20/dozzle:latest

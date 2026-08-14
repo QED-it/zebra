@@ -31,7 +31,7 @@ case "$ACTION" in
   stop)       docker compose stop zebra-testnet ;;
   logs)       docker compose logs zebra-testnet --tail=200 --no-color ;;
   status)     docker compose ps; bash /opt/zebra/leader.sh status ;;
-  promote)    bash /opt/zebra/leader.sh promote ;;
-  demote)     bash /opt/zebra/leader.sh demote ;;
+  # promote/demote are the workflow writing the Role tag; the box only matches it.
+  apply)      bash /opt/zebra/leader.sh apply ;;
   *) echo "unknown action: $ACTION"; exit 2 ;;
 esac
