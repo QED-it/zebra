@@ -16,8 +16,18 @@ ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
 
 put() { aws ssm put-parameter --region "$REGION" --name "$PARAM" \
   --type String --value "$ID" "$@" >/dev/null; }
-get() { aws ssm get-parameter --region "$REGION" --name "$PARAM" \
-  --query Parameter.Value --output text 2>/dev/null || true; }
+# 0 = value on stdout, 1 = unclaimed, 2 = could not tell
+get() {
+  local out errf rc
+  errf=$(mktemp)
+  out=$(aws ssm get-parameter --region "$REGION" --name "$PARAM" \
+        --query Parameter.Value --output text 2>"$errf"); rc=$?
+  if [ $rc -eq 0 ]; then rm -f "$errf"; printf '%s' "$out"; return 0; fi
+  if grep -q ParameterNotFound "$errf"; then rm -f "$errf"; return 1; fi
+  echo "leader: cannot read $PARAM: $(cat "$errf")" >&2
+  rm -f "$errf"
+  return 2
+}
 # Role=leader exists only on the leader. Followers carry no Role tag at all.
 tag()   { aws ec2 create-tags --region "$REGION" --resources "$ID" --tags Key=Role,Value=leader; }
 untag() { aws ec2 delete-tags --region "$REGION" --resources "$ID" --tags Key=Role; }
@@ -28,8 +38,10 @@ untag() { aws ec2 delete-tags --region "$REGION" --resources "$ID" --tags Key=Ro
 # it has lost and shuts its own cloudflared down.
 claim() {
   put 2>/dev/null && return 0
-  local cur state
-  cur=$(get)
+  local cur state rc
+  cur=$(get); rc=$?
+  [ $rc -eq 2 ] && return 1
+  [ $rc -eq 1 ] && { put --overwrite; return 0; }
   [ "$cur" = "$ID" ] && return 0
   state=$(aws ec2 describe-instances --region "$REGION" --instance-ids "$cur" \
     --query 'Reservations[].Instances[].State.Name' --output text 2>/dev/null || echo gone)
@@ -59,6 +71,6 @@ case "${1:-elect}" in
   # Releases the claim too, so the next elect can take over while this box lives.
   demote)  untag; aws ssm delete-parameter --region "$REGION" --name "$PARAM" 2>/dev/null || true
            cd /opt/zebra && docker compose stop cloudflared; echo "released: $ID" ;;
-  status)  echo "self=$ID leader=$(get)" ;;
+  status)  cur=$(get) || cur="<unset>"; echo "self=$ID leader=$cur" ;;
   *) echo "usage: leader.sh <elect|promote|demote|status>"; exit 2 ;;
 esac
