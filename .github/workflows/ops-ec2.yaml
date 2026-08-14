@@ -77,7 +77,8 @@ jobs:
             --query Command.CommandId --output text)
           aws ssm wait command-executed --command-id "$CMD" \
             --instance-id "$TARGET_ID" || true
-          aws ssm get-command-invocation --command-id "$CMD" \
-            --instance-id "$TARGET_ID" \
-            --query '[Status,StandardOutputContent,StandardErrorContent]' --output text \
-            | tee -a $GITHUB_STEP_SUMMARY
+          INV=$(aws ssm get-command-invocation --command-id "$CMD" --instance-id "$TARGET_ID")
+          jq -r '[.Status, .StandardOutputContent, .StandardErrorContent] | @tsv' <<<"$INV" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+          ST=$(jq -r .Status <<<"$INV")
+          [ "$ST" = Success ] || { echo "::error::ops.sh $ACTION -> $ST"; exit 1; }
