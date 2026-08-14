@@ -17,6 +17,11 @@ serve_genesis() {
 
 case "$ACTION" in
   deploy)     sed -i "s|^IMAGE=.*|IMAGE=$IMAGE_REPO:$TAG|" .env
+              case "$IMAGE_REPO" in
+                *.dkr.ecr.*.amazonaws.com/*)
+                  aws ecr get-login-password --region "${AWS_REGION:-eu-central-1}" \
+                    | docker login --username AWS --password-stdin "${IMAGE_REPO%%/*}" ;;
+              esac
               docker compose up -d --pull always zebra-testnet
               serve_genesis ;;
   restart)    docker compose restart zebra-testnet; serve_genesis ;;
