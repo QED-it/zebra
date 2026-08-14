@@ -35,16 +35,22 @@ jobs:
 
       - name: Guard destructive actions
         if: contains(fromJSON('["stop","demote"]'), inputs.action)
+        env:
+          ACTION: ${{ inputs.action }}
+          CONFIRM: ${{ inputs.confirm }}
         run: |
-          [ "${{ inputs.confirm }}" = "${{ inputs.action }}" ] \
-            || { echo "::error::set confirm=${{ inputs.action }}"; exit 1; }
+          [ "$CONFIRM" = "$ACTION" ] || { echo "::error::set confirm=$ACTION"; exit 1; }
 
       # Empty instance_id resolves to the single Role=leader instance. Fails
       # loudly on 0 or >1 rather than picking an arbitrary one.
       - id: target
+        env:
+          INSTANCE_ID: ${{ inputs.instance_id }}
         run: |
-          if [ -n "${{ inputs.instance_id }}" ]; then
-            ID="${{ inputs.instance_id }}"
+          if [ -n "$INSTANCE_ID" ]; then
+            printf '%s' "$INSTANCE_ID" | grep -Eq '^i-[0-9a-f]{8,17}$' \
+              || { echo "::error::invalid instance id: $INSTANCE_ID"; exit 1; }
+            ID="$INSTANCE_ID"
           else
             ID=$(aws ec2 describe-instances \
               --filters "Name=tag:Name,Values=zebra-testnet" \
@@ -58,14 +64,20 @@ jobs:
           echo "::notice::target $ID"
 
       - id: run
+        env:
+          ACTION: ${{ inputs.action }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          TARGET_ID: ${{ steps.target.outputs.id }}
         run: |
-          CMD=$(aws ssm send-command --instance-ids "${{ steps.target.outputs.id }}" \
+          printf '%s' "$IMAGE_TAG" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$' \
+            || { echo "::error::invalid image tag: $IMAGE_TAG"; exit 1; }
+          CMD=$(aws ssm send-command --instance-ids "$TARGET_ID" \
             --document-name AWS-RunShellScript \
-            --parameters "commands=[\"bash /opt/zebra/ops.sh ${{ inputs.action }} ${{ inputs.image_tag }}\"]" \
+            --parameters "$(jq -nc --arg c "bash /opt/zebra/ops.sh $ACTION $IMAGE_TAG" '{commands:[$c]}')" \
             --query Command.CommandId --output text)
           aws ssm wait command-executed --command-id "$CMD" \
-            --instance-id "${{ steps.target.outputs.id }}" || true
+            --instance-id "$TARGET_ID" || true
           aws ssm get-command-invocation --command-id "$CMD" \
-            --instance-id "${{ steps.target.outputs.id }}" \
+            --instance-id "$TARGET_ID" \
             --query '[Status,StandardOutputContent,StandardErrorContent]' --output text \
             | tee -a $GITHUB_STEP_SUMMARY
