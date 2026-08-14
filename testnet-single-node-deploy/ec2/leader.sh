@@ -38,13 +38,16 @@ untag() { aws ec2 delete-tags --region "$REGION" --resources "$ID" --tags Key=Ro
 # it has lost and shuts its own cloudflared down.
 claim() {
   put 2>/dev/null && return 0
-  local cur state rc
+  local cur state rc errf
   cur=$(get); rc=$?
   [ $rc -eq 2 ] && return 1
   [ $rc -eq 1 ] && { put --overwrite; return 0; }
   [ "$cur" = "$ID" ] && return 0
+  errf=$(mktemp)
   state=$(aws ec2 describe-instances --region "$REGION" --instance-ids "$cur" \
-    --query 'Reservations[].Instances[].State.Name' --output text 2>/dev/null || echo gone)
+    --query 'Reservations[].Instances[].State.Name' --output text 2>"$errf") ||
+    { grep -q InvalidInstanceID "$errf" || { rm -f "$errf"; return 1; }; state=gone; }
+  rm -f "$errf"
   case "$state" in
     ""|None|gone|terminated|shutting-down|stopped|stopping) put --overwrite; return 0 ;;
     *) return 1 ;;
