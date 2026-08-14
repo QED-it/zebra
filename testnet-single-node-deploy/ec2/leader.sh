@@ -41,7 +41,7 @@ claim() {
   local cur state rc errf
   cur=$(get); rc=$?
   [ $rc -eq 2 ] && return 1
-  [ $rc -eq 1 ] && { put --overwrite; return 0; }
+  [ $rc -eq 1 ] && { put --overwrite; return; }
   [ "$cur" = "$ID" ] && return 0
   errf=$(mktemp)
   state=$(aws ec2 describe-instances --region "$REGION" --instance-ids "$cur" \
@@ -49,7 +49,7 @@ claim() {
     { grep -q InvalidInstanceID "$errf" || { rm -f "$errf"; return 1; }; state=gone; }
   rm -f "$errf"
   case "$state" in
-    ""|None|gone|terminated|shutting-down|stopped|stopping) put --overwrite; return 0 ;;
+    ""|None|gone|terminated|shutting-down|stopped|stopping) put --overwrite ;;
     *) return 1 ;;
   esac
 }
