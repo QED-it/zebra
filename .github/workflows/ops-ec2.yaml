@@ -42,9 +42,12 @@ jobs:
           [ "$CONFIRM" = "$ACTION" ] || { echo "::error::set confirm=$ACTION"; exit 1; }
 
       # Empty instance_id resolves to the single Role=leader instance. Fails
-      # loudly on 0 or >1 rather than picking an arbitrary one.
+      # loudly on 0 or >1 rather than picking an arbitrary one. promote is
+      # exempt from the Role filter: it is what creates a leader, and after a
+      # demote there is none.
       - id: target
         env:
+          ACTION: ${{ inputs.action }}
           INSTANCE_ID: ${{ inputs.instance_id }}
         run: |
           if [ -n "$INSTANCE_ID" ]; then
@@ -52,13 +55,13 @@ jobs:
               || { echo "::error::invalid instance id: $INSTANCE_ID"; exit 1; }
             ID="$INSTANCE_ID"
           else
-            ID=$(aws ec2 describe-instances \
-              --filters "Name=tag:Name,Values=zebra-testnet" \
-                        "Name=tag:Role,Values=leader" \
-                        "Name=instance-state-name,Values=running" \
+            FILTERS=("Name=tag:Name,Values=zebra-testnet"
+                     "Name=instance-state-name,Values=running")
+            [ "$ACTION" = promote ] || FILTERS+=("Name=tag:Role,Values=leader")
+            ID=$(aws ec2 describe-instances --filters "${FILTERS[@]}" \
               --query 'Reservations[].Instances[].InstanceId' --output text)
             [ "$(echo $ID | wc -w)" -eq 1 ] \
-              || { echo "::error::expected 1 leader, got: '$ID'"; exit 1; }
+              || { echo "::error::expected 1 target for $ACTION, got: '$ID'"; exit 1; }
           fi
           echo "id=$ID" >> $GITHUB_OUTPUT
           echo "::notice::target $ID"
