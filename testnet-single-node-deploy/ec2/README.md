@@ -23,53 +23,54 @@ All public and unauthenticated, and 18232/18233/8080 are open on the instance IP
 too. `enable_cookie_auth = false`, so anyone reaching 18232 can `stop` or
 `invalidateblock`. Disposable testnet only.
 
-## Instance tags and leader election
+## Leader election
 
 A Cloudflare Tunnel has one token, and every `cloudflared` holding it registers
 as another connector — Cloudflare then round-robins the public hostnames across
-them. So exactly one instance runs `cloudflared`: the one tagged `Role=leader`.
-**Only the leader carries that tag**; every other instance has no `Role` tag.
+them. That is meant for replicas. These nodes are not replicas: state is
+ephemeral, so each has its own chain, and two connectors means one hostname
+answering from two different chains. Hence exactly one instance may run
+`cloudflared`.
 
-`zebra-leader.service` runs `leader.sh elect` on **every** boot:
+**`Role=leader` marks that instance.** Only the leader carries the tag; every
+other instance has no `Role` tag.
+
+Nothing on the box elects, and nothing on the box writes the tag. `leader.sh
+apply` reads it and makes the box match:
 
 ```
-put-parameter /zebra/leader = <own-instance-id>   (no --overwrite)
-
-  success                            -> tag Role=leader, start cloudflared
-  ParameterAlreadyExists
-    holder gone/terminated/stopped   -> overwrite, tag, start cloudflared
-    holder running                   -> untag, stop own cloudflared
+Role=leader present -> ensure cloudflared up
+absent              -> ensure cloudflared down
 ```
 
-Without `--overwrite` the write fails if the key exists. That single atomic write
-is the whole election — two instances booting at once cannot both win.
+That runs at boot (`zebra-leader.service`) and on demand (`ops.sh apply`). There
+is no shared lock, no claim, and no state two boxes can disagree about — the tag
+is written in one place and every box is a follower of it.
 
-Nothing releases the parameter when a leader dies; termination runs no hook.
-Cleanup is lazy: the next instance to boot fails its claim, sees the holder is
-gone, and overwrites. Terminate everything, launch one, and the hostnames come
-back with no manual step.
+The ops workflow owns the verbs:
 
-Electing on every boot (not just first boot) is what makes taking over from a
-*stopped* holder safe. Compose uses `restart: unless-stopped`, so a box that lost
-the claim while stopped would otherwise have docker resurrect its connector,
-putting two on one tunnel — hence the losing branch stops cloudflared rather than
-just skipping it.
+| | |
+| --- | --- |
+| `promote B` | untag the current leader, tag B, `apply` to both |
+| `demote` | untag, `apply` |
+| leader terminated | nothing reclaims automatically — `promote` the replacement |
+| `up` fails | `apply` exits non-zero; run it again |
 
-`ops.sh promote` / `demote` move the tunnel without relaunching; `demote` also
-deletes the parameter so another node can claim it. `ops.sh status` prints
-`self=` and `leader=`.
+Two things keep a stale connector from coming back. `cloudflared` sits in the
+`tunnel` compose profile, so a bare `docker compose up -d` never starts one —
+only `leader.sh` does. And `restart: unless-stopped` revives the leader's
+connector after a reboot, which `apply` at boot undoes on a box that lost the tag
+while it was stopped.
 
-**`Name=zebra-testnet`** is how ops finds the box. The ops workflow with
-`instance_id` empty resolves `Name` + `Role=leader` + running and fails unless
-that is exactly one instance; set `instance_id` to target any other. Note the IAM
-role scopes `ssm:SendCommand` by `ssm:resourceTag/Name` against `instance/*`, so
-the `Name` tag is effectively a capability — tagging any instance in the account
-`zebra-testnet` grants the ops role shell on it.
+Instance profile needs only `ec2:DescribeTags` and `ssm:GetParameter`+
+`kms:Decrypt` on the tunnel token — no write permissions at all. Enabling
+instance metadata tags on the launch template would drop `ec2:DescribeTags` too,
+making `is_leader` a plain IMDS read.
 
-Election needs, on the instance profile: `ssm:PutParameter`/`GetParameter`/
-`DeleteParameter` on `/zebra/leader`, `ssm:GetParameter`+`kms:Decrypt` on the
-tunnel token, `ec2:CreateTags`+`ec2:DeleteTags` on itself scoped to the `Role`
-key, and `ec2:DescribeInstances`.
+**`Name=zebra-testnet`** is how ops finds the box. The IAM role scopes
+`ssm:SendCommand` by `ssm:resourceTag/Name` against `instance/*`, so that tag is
+effectively a capability — tagging any instance in the account `zebra-testnet`
+grants the ops role shell on it.
 
 ## Genesis
 
@@ -103,7 +104,8 @@ Must be built from this branch — its `zebra-network/src/config.rs` makes
 every block is rejected with `Deferred(-7875000000000)`. 20-40 min cold.
 
 **2. Launch** — Console → Launch Templates → `zebra-testnet` → *Launch instance
-from template*. First boot takes 2-3 min and elects.
+from template*. First boot takes 2-3 min. It comes up without a connector until
+the workflow tags it `Role=leader`.
 
 **3. Genesis + verify**
 
@@ -126,8 +128,8 @@ ZCASH_NODE_ADDRESS=rpc.test-zsa.org ZCASH_NODE_PORT=443 ZCASH_NODE_PROTOCOL=http
 ## ops.sh
 
 `deploy <tag>` · `restart` · `start` · `stop` · `recreate` · `genesis` · `logs` ·
-`status` · `promote` · `demote`. Everything that starts the node re-serves
-genesis.
+`status` · `apply`. Everything that starts the node re-serves genesis.
+`promote`/`demote` are workflow actions, not box actions — see above.
 
 Normally driven by the ops workflow. To run an action by hand — the box has no
 inbound ports and no SSH key, so it goes over SSM:
