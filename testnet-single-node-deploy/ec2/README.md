@@ -95,7 +95,7 @@ back empty and stays at height 0 until someone runs `ops.sh genesis`.
 
 ```sh
 REPO=496038263219.dkr.ecr.eu-central-1.amazonaws.com/dev-zebra-server
-aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin ${REPO%%/*}
+aws ecr get-login-password --region "${AWS_REGION:-eu-central-1}" | docker login --username AWS --password-stdin ${REPO%%/*}
 docker build -f testnet-single-node-deploy/dockerfile -t $REPO:latest . && docker push $REPO:latest
 ```
 
@@ -104,12 +104,13 @@ Must be built from this branch — its `zebra-network/src/config.rs` makes
 every block is rejected with `Deferred(-7875000000000)`. 20-40 min cold.
 
 **2. Launch** — Console → Launch Templates → `zebra-testnet` → *Launch instance
-from template*. First boot takes 2-3 min and elects.
+from template*. First boot takes 2-3 min. It comes up without a connector until
+the workflow tags it `Role=leader`.
 
 **3. Genesis + verify**
 
 ```sh
-aws ssm send-command --region eu-central-1 --instance-ids <id> \
+aws ssm send-command --region "${AWS_REGION:-eu-central-1}" --instance-ids <id> \
   --document-name AWS-RunShellScript --parameters 'commands=["bash /opt/zebra/ops.sh genesis"]'
 curl -s https://rpc.test-zsa.org -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"1.0","id":"1","method":"getblockchaininfo","params":[]}'
@@ -129,6 +130,24 @@ ZCASH_NODE_ADDRESS=rpc.test-zsa.org ZCASH_NODE_PORT=443 ZCASH_NODE_PROTOCOL=http
 `deploy <tag>` · `restart` · `start` · `stop` · `recreate` · `genesis` · `logs` ·
 `status` · `apply`. Everything that starts the node re-serves genesis.
 `promote`/`demote` are workflow actions, not box actions — see above.
+
+Normally driven by the ops workflow. To run an action by hand — the box has no
+inbound ports and no SSH key, so it goes over SSM:
+
+```sh
+REGION=${AWS_REGION:-eu-central-1}
+aws ssm send-command --region "$REGION" --instance-ids <id> \
+  --document-name AWS-RunShellScript \
+  --parameters 'commands=["bash /opt/zebra/ops.sh <action> [tag]"]'
+```
+
+Output comes back separately:
+
+```sh
+aws ssm get-command-invocation --region "$REGION" \
+  --command-id <command-id> --instance-id <id> \
+  --query '[Status,StandardOutputContent,StandardErrorContent]' --output text
+```
 
 ECR login expires after 12h and the box only logs in at first boot, so a manual
 `deploy` on an older box 401s — `docker login` first.
