@@ -6,12 +6,12 @@ on:
       action:
         type: choice
         required: true
-        options: [status, logs, genesis, restart, recreate, start, stop, deploy, promote, demote]
+        options: [status, logs, genesis, restart, recreate, start, stop, deploy, apply, promote, demote]
       image_tag:
         description: deploy only
         default: latest
       instance_id:
-        description: Target a specific instance. Empty targets the leader.
+        description: Target a specific instance. Empty targets the leader. Required for promote.
         default: ""
       confirm:
         description: Required for stop/demote — type the action name
@@ -42,49 +42,106 @@ jobs:
           [ "$CONFIRM" = "$ACTION" ] || { echo "::error::set confirm=$ACTION"; exit 1; }
 
       # Empty instance_id resolves to the single Role=leader instance. Fails
-      # loudly on 0 or >1 rather than picking an arbitrary one. promote is
-      # exempt from the Role filter: it is what creates a leader, and after a
-      # demote there is none.
+      # loudly on 0 or >1 rather than picking an arbitrary one. promote is the
+      # exception: its target is the *new* leader, so it must be named.
       - id: target
         env:
           ACTION: ${{ inputs.action }}
           INSTANCE_ID: ${{ inputs.instance_id }}
         run: |
+          if [ "$ACTION" = promote ] && [ -z "$INSTANCE_ID" ]; then
+            echo "::error::promote needs an explicit instance_id — its target is the new leader"; exit 1
+          fi
           if [ -n "$INSTANCE_ID" ]; then
             printf '%s' "$INSTANCE_ID" | grep -Eq '^i-[0-9a-f]{8,17}$' \
               || { echo "::error::invalid instance id: $INSTANCE_ID"; exit 1; }
             ID="$INSTANCE_ID"
           else
-            FILTERS=("Name=tag:Name,Values=zebra-testnet"
-                     "Name=instance-state-name,Values=running")
-            [ "$ACTION" = promote ] || FILTERS+=("Name=tag:Role,Values=leader")
-            ID=$(aws ec2 describe-instances --filters "${FILTERS[@]}" \
+            ID=$(aws ec2 describe-instances \
+              --filters "Name=tag:Name,Values=zebra-testnet" \
+                        "Name=tag:Role,Values=leader" \
+                        "Name=instance-state-name,Values=running" \
               --query 'Reservations[].Instances[].InstanceId' --output text)
             [ "$(echo $ID | wc -w)" -eq 1 ] \
-              || { echo "::error::expected 1 target for $ACTION, got: '$ID'"; exit 1; }
+              || { echo "::error::expected 1 leader, got: '$ID'"; exit 1; }
           fi
           echo "id=$ID" >> $GITHUB_OUTPUT
           echo "::notice::target $ID"
+
+      # promote/demote are tag moves, done here. The box never runs them; it
+      # only runs `apply` and matches whatever the tag now says. Both instances
+      # are applied to, so the old leader drops its connector as the new one
+      # picks it up.
+      - id: tag
+        if: contains(fromJSON('["promote","demote"]'), inputs.action)
+        env:
+          ACTION: ${{ inputs.action }}
+          TARGET_ID: ${{ steps.target.outputs.id }}
+        run: |
+          LEADER=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=zebra-testnet" \
+                      "Name=tag:Role,Values=leader" \
+                      "Name=instance-state-name,Values=pending,running,stopping,stopped" \
+            --query 'Reservations[].Instances[].InstanceId' --output text)
+          [ "$(echo $LEADER | wc -w)" -le 1 ] \
+            || { echo "::error::more than one Role=leader: '$LEADER'"; exit 1; }
+
+          ALSO=""
+          if [ "$ACTION" = demote ]; then
+            aws ec2 delete-tags --resources "$TARGET_ID" --tags Key=Role
+          else
+            if [ -n "$LEADER" ] && [ "$LEADER" != "$TARGET_ID" ]; then
+              # A stopped incumbent cannot be stood down: SSM can't reach it, and
+              # docker's restart policy revives its connector on next start.
+              ST=$(aws ec2 describe-instances --instance-ids "$LEADER" \
+                --query 'Reservations[].Instances[].State.Name' --output text)
+              case "$ST" in
+                stopped|stopping)
+                  echo "::error::leader $LEADER is $ST — start it and demote it before promoting"; exit 1 ;;
+              esac
+              aws ec2 delete-tags --resources "$LEADER" --tags Key=Role
+              ALSO="$LEADER"
+            fi
+            aws ec2 create-tags --resources "$TARGET_ID" --tags Key=Role,Value=leader
+          fi
+          echo "also=$ALSO" >> $GITHUB_OUTPUT
+          echo "::notice::Role tag moved for $ACTION; applying to $TARGET_ID $ALSO"
 
       - id: run
         env:
           ACTION: ${{ inputs.action }}
           IMAGE_TAG: ${{ inputs.image_tag }}
           TARGET_ID: ${{ steps.target.outputs.id }}
+          ALSO_ID: ${{ steps.tag.outputs.also }}
         run: |
           printf '%s' "$IMAGE_TAG" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$' \
             || { echo "::error::invalid image tag: $IMAGE_TAG"; exit 1; }
-          CMD=$(aws ssm send-command --instance-ids "$TARGET_ID" \
-            --document-name AWS-RunShellScript \
-            --parameters "$(jq -nc --arg c "bash /opt/zebra/ops.sh $ACTION $IMAGE_TAG" '{commands:[$c]}')" \
-            --query Command.CommandId --output text)
-          for _ in $(seq 1 180); do
-            INV=$(aws ssm get-command-invocation --command-id "$CMD" \
-              --instance-id "$TARGET_ID" 2>/dev/null || echo '{}')
-            ST=$(jq -r '.Status // "Pending"' <<<"$INV")
-            case "$ST" in Success|Failed|Cancelled|TimedOut) break ;; esac
-            sleep 5
-          done
-          jq -r '[.Status, .StandardOutputContent, .StandardErrorContent] | @tsv' <<<"$INV" \
-            | tee -a "$GITHUB_STEP_SUMMARY"
-          [ "$ST" = Success ] || { echo "::error::ops.sh $ACTION -> $ST"; exit 1; }
+
+          case "$ACTION" in
+            promote|demote) OPS="apply" ;;
+            deploy)         OPS="deploy $IMAGE_TAG" ;;
+            *)              OPS="$ACTION" ;;
+          esac
+
+          send() {
+            local id=$1 cmd st inv
+            cmd=$(aws ssm send-command --instance-ids "$id" \
+              --document-name AWS-RunShellScript \
+              --parameters "$(jq -nc --arg c "bash /opt/zebra/ops.sh $OPS" '{commands:[$c]}')" \
+              --query Command.CommandId --output text)
+            for _ in $(seq 1 180); do
+              inv=$(aws ssm get-command-invocation --command-id "$cmd" \
+                --instance-id "$id" 2>/dev/null || echo '{}')
+              st=$(jq -r '.Status // "Pending"' <<<"$inv")
+              case "$st" in Success|Failed|Cancelled|TimedOut) break ;; esac
+              sleep 5
+            done
+            { echo "### $id — ops.sh $OPS"
+              jq -r '[.Status, .StandardOutputContent, .StandardErrorContent] | @tsv' <<<"$inv"
+            } | tee -a "$GITHUB_STEP_SUMMARY"
+            [ "$st" = Success ] || { echo "::error::$id: ops.sh $OPS -> $st"; return 1; }
+          }
+
+          RC=0
+          for I in $TARGET_ID $ALSO_ID; do send "$I" || RC=1; done
+          exit $RC
