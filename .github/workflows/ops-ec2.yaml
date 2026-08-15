@@ -55,7 +55,14 @@ jobs:
           if [ -n "$INSTANCE_ID" ]; then
             printf '%s' "$INSTANCE_ID" | grep -Eq '^i-[0-9a-f]{8,17}$' \
               || { echo "::error::invalid instance id: $INSTANCE_ID"; exit 1; }
-            ID="$INSTANCE_ID"
+            # Confirm it is one of ours before acting on it. Without this an
+            # explicit instance_id reaches any instance in the account.
+            ID=$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" \
+              --filters "Name=tag:Name,Values=zebra-testnet" \
+                        "Name=instance-state-name,Values=running" \
+              --query 'Reservations[].Instances[].InstanceId' --output text 2>/dev/null)
+            [ "$ID" = "$INSTANCE_ID" ] \
+              || { echo "::error::$INSTANCE_ID is not a running zebra-testnet instance"; exit 1; }
           else
             ID=$(aws ec2 describe-instances \
               --filters "Name=tag:Name,Values=zebra-testnet" \
