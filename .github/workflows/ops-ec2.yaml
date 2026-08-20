@@ -47,8 +47,13 @@ jobs:
       - id: target
         env:
           ACTION: ${{ inputs.action }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
           INSTANCE_ID: ${{ inputs.instance_id }}
         run: |
+          # Validated here, before the tag step: a bad tag must not abort the
+          # run after the Role tag has already moved.
+          printf '%s' "$IMAGE_TAG" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$' \
+            || { echo "::error::invalid image tag: $IMAGE_TAG"; exit 1; }
           if [ "$ACTION" = promote ] && [ -z "$INSTANCE_ID" ]; then
             echo "::error::promote needs an explicit instance_id — its target is the new leader"; exit 1
           fi
@@ -121,9 +126,6 @@ jobs:
           TARGET_ID: ${{ steps.target.outputs.id }}
           ALSO_ID: ${{ steps.tag.outputs.also }}
         run: |
-          printf '%s' "$IMAGE_TAG" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$' \
-            || { echo "::error::invalid image tag: $IMAGE_TAG"; exit 1; }
-
           case "$ACTION" in
             promote|demote) OPS="apply" ;;
             deploy)         OPS="deploy $IMAGE_TAG" ;;

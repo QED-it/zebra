@@ -20,7 +20,7 @@ LISTEN_PORT = 8080
 DEFAULT_LIMIT = 200
 MAX_LIMIT = 500
 # How far past container start to look for the startup banner.
-STARTUP_WINDOW_SECS = 120
+STARTUP_WINDOW_SECS = 240
 
 VERSION_PATTERNS = {
     "version": r"version:\s*([^\n]+)",
@@ -155,7 +155,10 @@ class Handler(BaseHTTPRequestHandler):
         try:
             self._send(200, build_payload(limit))
         except Exception as exc:
-            self._send(500, {"error": str(exc)})
+            # Detail goes to the container log; the endpoint is public, so the
+            # response says nothing about internals.
+            self.log_message("error building payload: %s", exc)
+            self._send(500, {"error": "internal error"})
 
     def do_POST(self):
         self._send(405, {"error": "method not allowed"})
