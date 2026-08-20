@@ -149,8 +149,8 @@ aws ssm get-command-invocation --region "$REGION" \
   --query '[Status,StandardOutputContent,StandardErrorContent]' --output text
 ```
 
-ECR login expires after 12h and the box only logs in at first boot, so a manual
-`deploy` on an older box 401s — `docker login` first.
+`deploy` refreshes the ECR login itself before pulling, since the box's
+boot-time token expires after 12h.
 
 ## Changing a running box
 
