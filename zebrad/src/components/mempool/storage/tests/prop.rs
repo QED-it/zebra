@@ -16,7 +16,7 @@ use zebra_chain::{
     sapling,
     serialization::AtLeastOne,
     sprout,
-    transaction::{self, JoinSplitData, SigHash, Transaction, UnminedTxId, VerifiedUnminedTx},
+    transaction::{self, JoinSplitData, Transaction, UnminedTxId, VerifiedUnminedTx},
     transparent, LedgerState,
 };
 
@@ -492,7 +492,6 @@ impl SpendConflictTestInput {
                 0,
                 0,
                 std::sync::Arc::new(vec![]),
-                SigHash([0; 32]),
             )
             .expect("verification should pass"),
             VerifiedUnminedTx::new(
@@ -502,7 +501,6 @@ impl SpendConflictTestInput {
                 0,
                 0,
                 std::sync::Arc::new(vec![]),
-                SigHash([0; 32]),
             )
             .expect("verification should pass"),
         )
@@ -531,7 +529,6 @@ impl SpendConflictTestInput {
                 0,
                 0,
                 std::sync::Arc::new(vec![]),
-                SigHash([0; 32]),
             )
             .expect("verification should pass"),
             VerifiedUnminedTx::new(
@@ -541,7 +538,6 @@ impl SpendConflictTestInput {
                 0,
                 0,
                 std::sync::Arc::new(vec![]),
-                SigHash([0; 32]),
             )
             .expect("verification should pass"),
         )

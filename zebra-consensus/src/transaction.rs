@@ -206,9 +206,6 @@ pub enum Response {
         /// The number of legacy signature operations in this transaction's
         /// transparent inputs and outputs.
         sigops: u32,
-
-        /// Shielded sighash for this transaction.
-        tx_sighash: SigHash,
     },
 
     /// A response to a mempool transaction verification request.
@@ -526,7 +523,7 @@ where
 
             tracing::trace!(?tx_id, "got state UTXOs");
 
-            let (mut async_checks, tx_sighash) = match tx.as_ref() {
+            let mut async_checks = match tx.as_ref() {
                 Transaction::V1 { .. } | Transaction::V2 { .. } | Transaction::V3 { .. } => {
                     tracing::debug!(?tx, "got transaction with wrong version");
                     return Err(TransactionError::WrongVersion);
@@ -622,7 +619,6 @@ where
                     // sigops. See
                     // <https://github.com/ZcashFoundation/zebra/security/advisories/GHSA-jv4h-j224-23cc>.
                     sigops: sigops.saturating_add(cached_ffi_transaction.p2sh_sigops()),
-                    tx_sighash
                 },
                 Request::Mempool { transaction: tx, .. } => {
                     // TODO: `spent_outputs` may not align with `tx.inputs()` when a transaction
@@ -637,7 +633,6 @@ where
                         sigops,
                         cached_ffi_transaction.p2sh_sigops(),
                         spent_outputs.into(),
-                        tx_sighash,
                     )?;
 
                     if let Some(mut mempool) = mempool {
@@ -869,7 +864,7 @@ where
         script_verifier: script::Verifier,
         cached_ffi_transaction: Arc<CachedFfiTransaction>,
         joinsplit_data: &Option<transaction::JoinSplitData<Groth16Proof>>,
-    ) -> Result<(AsyncChecks, SigHash), TransactionError> {
+    ) -> Result<AsyncChecks, TransactionError> {
         let tx = request.transaction();
         let nu = request.upgrade(network);
 
@@ -889,7 +884,7 @@ where
         .and(Self::verify_sprout_shielded_data(joinsplit_data, &sighash)?)
         .and(Self::verify_sapling_bundle(sapling_bundle, &sighash));
 
-        Ok((async_check, sighash))
+        Ok(async_check)
     }
 
     /// Verifies if a V4 `transaction` is supported by `network_upgrade`.
@@ -961,7 +956,7 @@ where
         network: &Network,
         script_verifier: script::Verifier,
         cached_ffi_transaction: Arc<CachedFfiTransaction>,
-    ) -> Result<(AsyncChecks, SigHash), TransactionError> {
+    ) -> Result<AsyncChecks, TransactionError> {
         let transaction = request.transaction();
         let nu = request.upgrade(network);
 
@@ -982,7 +977,7 @@ where
         .and(Self::verify_sapling_bundle(sapling_bundle, &sighash))
         .and(Self::verify_orchard_bundle(orchard_bundle, &sighash, nu));
 
-        Ok((async_check, sighash))
+        Ok(async_check)
     }
 
     /// Verifies if a V5 `transaction` is supported by `network_upgrade`.
@@ -1026,7 +1021,7 @@ where
         }
     }
 
-    /// Verify a V5 transaction.
+    /// Verify a V6 transaction.
     ///
     /// Returns a set of asynchronous checks that must all succeed for the transaction to be
     /// considered valid. These checks include:
@@ -1036,6 +1031,9 @@ where
     /// - sapling shielded data
     /// - orchard shielded data
     ///
+    /// The issue bundle's authorization signature is checked synchronously, see
+    /// [`check::issue_bundle_signature`].
+    ///
     /// The parameters of this method are:
     ///
     /// - the `request` to verify (that contains the transaction and other metadata, see [`Request`]
@@ -1043,19 +1041,13 @@ where
     /// - the `network` to consider when verifying
     /// - the `script_verifier` to use for verifying the transparent transfers
     /// - the prepared `cached_ffi_transaction` used by the script verifier
-    /// - the sapling shielded data of the transaction, if any
-    /// - the orchard shielded data of the transaction, if any
-    // FIXME: This function performs no V6-specific issuance or burn semantic checks
-    // (ZIP-226 / ZIP-227). Those rules are enforced only in `zebra-state` via
-    // `IssuedAssetChanges::validate_and_get_changes`. Either move that validation here
-    // or document the contract that the state layer cannot be bypassed.
     #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
     fn verify_v6_transaction(
         request: &Request,
         network: &Network,
         script_verifier: script::Verifier,
         cached_ffi_transaction: Arc<CachedFfiTransaction>,
-    ) -> Result<(AsyncChecks, SigHash), TransactionError> {
+    ) -> Result<AsyncChecks, TransactionError> {
         let transaction = request.transaction();
         let nu = request.upgrade(network);
 
@@ -1068,6 +1060,11 @@ where
             .sighasher()
             .sighash(HashType::ALL, None);
 
+        // Issuance signatures are BIP 340 Schnorr, so there is no batch verifier for them to
+        // join. Check synchronously, before the async checks, so we don't verify an Orchard
+        // proof for a transaction whose much cheaper issuance signature is already invalid.
+        check::issue_bundle_signature(&transaction, &sighash)?;
+
         let async_check = Self::verify_transparent_inputs_and_outputs(
             request,
             script_verifier,
@@ -1076,7 +1073,7 @@ where
         .and(Self::verify_sapling_bundle(sapling_bundle, &sighash))
         .and(Self::verify_orchard_bundle(orchard_bundle, &sighash, nu));
 
-        Ok((async_check, sighash))
+        Ok(async_check)
     }
 
     /// Verifies if a V6 `transaction` is supported by `network_upgrade`.

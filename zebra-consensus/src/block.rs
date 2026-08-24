@@ -8,7 +8,7 @@
 //! verification, where it may be accepted or rejected.
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     future::Future,
     pin::Pin,
     sync::Arc,
@@ -294,10 +294,6 @@ where
             let mut sigops = 0;
             let mut block_miner_fees = Ok(Amount::zero());
 
-            // Collect tx sighashes during verification and later emit them in block order (for ZSA issuance auth).
-            let mut tx_sighash_by_tx_id: HashMap<transaction::UnminedTxId, transaction::SigHash> =
-                HashMap::with_capacity(block.transactions.len());
-
             use futures::StreamExt;
             while let Some(result) = async_checks.next().await {
                 tracing::trace!(?result, remaining = async_checks.len());
@@ -316,13 +312,6 @@ where
                 // so they don't add any value to the block's total miner fee.
                 if let Some(miner_fee) = response.miner_fee() {
                     block_miner_fees += miner_fee;
-                }
-
-                if let crate::transaction::Response::Block {
-                    tx_id, tx_sighash, ..
-                } = response
-                {
-                    tx_sighash_by_tx_id.insert(tx_id, tx_sighash);
                 }
             }
 
@@ -356,24 +345,12 @@ where
             let new_outputs = Arc::into_inner(known_utxos)
                 .expect("all verification tasks using known_utxos are complete");
 
-            // Rebuild sighashes in block order to align with `block.transactions` indexing.
-            let transaction_sighashes: Arc<[transaction::SigHash]> = block
-                .transactions
-                .iter()
-                .map(|tx| {
-                    *tx_sighash_by_tx_id
-                        .get(&tx.unmined_id())
-                        .expect("every verified tx must return a sighash")
-                })
-                .collect();
-
             let prepared_block = zs::SemanticallyVerifiedBlock {
                 block,
                 hash,
                 height,
                 new_outputs,
                 transaction_hashes,
-                transaction_sighashes: Some(transaction_sighashes),
             };
 
             // Return early for proposal requests.

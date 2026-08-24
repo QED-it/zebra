@@ -22,7 +22,7 @@ use crate::{
     block::Height,
     serialization::ZcashSerialize,
     transaction::{
-        AuthDigest, Hash, SigHash,
+        AuthDigest, Hash,
         Transaction::{self, *},
         WtxId,
     },
@@ -386,9 +386,6 @@ pub struct VerifiedUnminedTx {
     /// Used by mempool policy checks (`AreInputsStandard`, `GetP2SHSigOpCount`).
     /// Empty for transactions with no transparent inputs or in test contexts.
     pub spent_outputs: Arc<Vec<transparent::Output>>,
-
-    /// The shielded sighash for this transaction.
-    pub tx_sighash: SigHash,
 }
 
 impl fmt::Debug for VerifiedUnminedTx {
@@ -418,7 +415,6 @@ impl VerifiedUnminedTx {
         legacy_sigop_count: u32,
         p2sh_sigop_count: u32,
         spent_outputs: Arc<Vec<transparent::Output>>,
-        tx_sighash: SigHash,
     ) -> Result<Self, zip317::Error> {
         let fee_weight_ratio = zip317::conventional_fee_weight_ratio(&transaction, miner_fee);
         let conventional_actions = zip317::conventional_actions(&transaction.transaction);
@@ -437,7 +433,6 @@ impl VerifiedUnminedTx {
             time: None,
             height: None,
             spent_outputs,
-            tx_sighash,
         })
     }
 

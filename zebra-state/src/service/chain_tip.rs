@@ -117,7 +117,6 @@ impl From<SemanticallyVerifiedBlock> for ChainTipBlock {
             transaction_hashes,
             // Sighashes are not needed here - they are only used during block validation,
             // which has already completed before a block reaches `ChainTipBlock`.
-            transaction_sighashes: _,
         } = prepared;
 
         Self {

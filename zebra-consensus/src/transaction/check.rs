@@ -21,6 +21,9 @@ use zebra_chain::{
     transparent,
 };
 
+#[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
+use zebra_chain::transaction::SigHash;
+
 use crate::error::TransactionError;
 
 /// Checks if the transaction's lock time allows this transaction to be included in a block.
@@ -191,6 +194,28 @@ pub fn coinbase_tx_no_prevout_joinsplit_spend(tx: &Transaction) -> Result<(), Tr
     }
 
     Ok(())
+}
+
+/// Checks the authorization signature of `tx`'s issue bundle, if it has one.
+///
+/// # Consensus
+///
+/// > The issuance authorization signature MUST be a valid signature over the transaction's
+/// > SIGHASH under the issuance validating key `ik` of the issue bundle.
+///
+/// <https://zips.z.cash/zip-0227#issuance-authorization-signature-scheme>
+///
+/// This is the only ZIP-227 rule that needs the sighash, and it needs no chain state. The rules
+/// that do need chain state are checked when the block is committed, in
+/// `IssuedAssetChanges::validate_state_and_get_changes`.
+#[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
+pub fn issue_bundle_signature(tx: &Transaction, sighash: &SigHash) -> Result<(), TransactionError> {
+    let Some(issue_data) = tx.orchard_zsa_issue_data() else {
+        return Ok(());
+    };
+
+    orchard::issuance::verify_issue_bundle_signature(issue_data.inner(), *sighash.as_ref())
+        .map_err(TransactionError::InvalidIssueBundleSignature)
 }
 
 /// Check if JoinSplits in the transaction have one of its v_{pub} values equal

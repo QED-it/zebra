@@ -11,9 +11,7 @@ use thiserror::Error;
 pub use orchard::note::AssetBase;
 use orchard::{
     bundle::burn_validation::{validate_bundle_burn, BurnError},
-    issuance::{
-        check_issue_bundle_without_sighash, verify_issue_bundle, AssetRecord, Error as IssueError,
-    },
+    issuance::{check_issue_bundle_without_sighash, AssetRecord, Error as IssueError},
     note::Nullifier,
     value::NoteValue,
     Note,
@@ -21,7 +19,7 @@ use orchard::{
 
 use zcash_primitives::transaction::components::issuance::{read_note, write_note};
 
-use crate::transaction::{SigHash, Transaction};
+use crate::transaction::Transaction;
 
 /// Wraps orchard's AssetRecord for use in zebra state management.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -158,36 +156,23 @@ fn apply_updates(
 }
 
 impl IssuedAssetChanges {
-    /// Validates burns and issuances across transactions, returning the map of changes.
+    /// Validates the burn and issuance rules that depend on chain state, and returns the map of
+    /// changes.
     ///
-    /// # Signature Verification Modes
+    /// `get_state` resolves assets against one specific chain fork, so this must run on the
+    /// state writer, atomically with the block commit.
     ///
-    /// - **With `transaction_sighashes` (Some)**: Full validation for Contextually Verified Blocks
-    ///   from the consensus workflow. Performs signature verification using `verify_issue_bundle`.
-    ///
-    /// - **Without `transaction_sighashes` (None)**: Trusted validation for Checkpoint Verified Blocks
-    ///   loaded during bootstrap/startup from disk. These blocks are within checkpoint ranges and
-    ///   are considered trusted, so signature verification is skipped using `check_issue_bundle_without_sighash`.
+    /// Issue bundle signatures are not checked here: they need the sighash rather than chain
+    /// state, so they are verified in `zebra-consensus`, in the transaction verifier.
     #[allow(clippy::unwrap_in_result)]
-    pub fn validate_and_get_changes(
+    pub fn validate_state_and_get_changes(
         transactions: &[Arc<Transaction>],
-        transaction_sighashes: Option<&[SigHash]>,
         get_state: impl Fn(&AssetBase) -> Option<AssetState>,
     ) -> Result<Self, AssetStateError> {
-        if let Some(sighashes) = transaction_sighashes {
-            if transactions.len() != sighashes.len() {
-                return Err(AssetStateError::InvalidInput(format!(
-                    "transaction count ({}) does not match sighash count ({})",
-                    transactions.len(),
-                    sighashes.len(),
-                )));
-            }
-        }
-
         // Track old and current states - old_state is None for newly created assets
         let mut states = HashMap::<AssetBase, (Option<AssetState>, AssetState)>::new();
 
-        for (i, tx) in transactions.iter().enumerate() {
+        for tx in transactions.iter() {
             // Validate and apply burns
             if let Some(burn) = tx.orchard_burns() {
                 let burn_records = validate_bundle_burn(
@@ -204,7 +189,7 @@ impl IssuedAssetChanges {
                 // ZIP-0227 defines issued-note rho as DeriveIssuedRho(nf_{0,0}, i_action, i_note),
                 // so we must pass the first Action nullifier (nf_{0,0}). We rely on
                 // `orchard_nullifiers()` preserving Action order, so `.next()` returns nf_{0,0}.
-                // Nullifier type conversion via bytes: both types wrap pallas::Point
+                // Nullifier type conversion via bytes: both types wrap pallas::Base
                 // but lack a direct conversion path in the current orchard API.
                 let raw_nullifier = tx.orchard_nullifiers().next().ok_or_else(|| {
                     AssetStateError::InvalidInput(
@@ -214,27 +199,12 @@ impl IssuedAssetChanges {
                 let first_nullifier = &Nullifier::from_bytes(&<[u8; 32]>::from(*raw_nullifier))
                     .expect("valid zebra nullifier bytes convert to orchard nullifier");
 
-                let issue_records = match transaction_sighashes {
-                    Some(sighashes) => {
-                        // Full verification with signature check (Contextually Verified Block)
-                        verify_issue_bundle(
-                            issue_data.inner(),
-                            *sighashes[i].as_ref(),
-                            |asset| Self::get_or_cache_record(&mut states, asset, &get_state),
-                            first_nullifier,
-                        )
-                        .map_err(AssetStateError::Issue)?
-                    }
-                    None => {
-                        // Trusted verification without signature check (Checkpoint Verified Block)
-                        check_issue_bundle_without_sighash(
-                            issue_data.inner(),
-                            |asset| Self::get_or_cache_record(&mut states, asset, &get_state),
-                            first_nullifier,
-                        )
-                        .map_err(AssetStateError::Issue)?
-                    }
-                };
+                let issue_records = check_issue_bundle_without_sighash(
+                    issue_data.inner(),
+                    |asset| Self::get_or_cache_record(&mut states, asset, &get_state),
+                    first_nullifier,
+                )
+                .map_err(AssetStateError::Issue)?;
 
                 apply_updates(&mut states, issue_records);
             }
