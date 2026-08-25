@@ -2,8 +2,6 @@
 
 Zebra as a private testnet (`network = "Testnet"` + `[network.testnet_parameters]`, not `"Regtest"`) with NU7/ZSA at height 1, no peers, no PoW. Config: `testnet-single-node-deploy/testnet-config.toml`.
 
-**Code change (already applied):** `zebra-network/src/config.rs` — `funding_streams = []` in TOML now actually clears default testnet funding streams/lockbox disbursements (previously ignored, causing every block to be rejected with `Deferred(Constraint { value: -7875000000000 })`).
-
 ## Run
 
 ```bash

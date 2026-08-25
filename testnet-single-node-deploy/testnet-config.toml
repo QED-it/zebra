@@ -10,8 +10,9 @@ initial_testnet_peers = []
 network_name = "ZSATestnet"
 network_magic = [0x5a, 0x53, 0x41, 0x31]
 disable_pow = true
+# else the default testnet funding streams fail a startup address-count assert
 extend_funding_stream_addresses_as_required = true
-funding_streams = []
+# else the NU6.1 disbursement (78,750 ZEC) is due at height 1 and every block is rejected
 lockbox_disbursements = []
 
 [network.testnet_parameters.activation_heights]
