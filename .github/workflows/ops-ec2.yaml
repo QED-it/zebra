@@ -6,13 +6,16 @@ on:
       action:
         type: choice
         required: true
-        options: [status, logs, genesis, restart, recreate, start, stop, deploy, apply, promote, demote]
+        options: [status, logs, genesis, restart, recreate, start, stop, deploy, apply, promote, demote, deploy-files]
       image_tag:
         description: deploy only
         default: latest
       instance_id:
         description: Target a specific instance. Empty targets the leader. Required for promote.
         default: ""
+      ref:
+        description: deploy-files only — branch to pull the box files from
+        default: zsa1
       confirm:
         description: Required for stop/demote — type the action name
         default: ""
@@ -27,6 +30,8 @@ jobs:
     environment: dev
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
+      # deploy-files pulls the box files from here.
+      FILES_URL: https://raw.githubusercontent.com/QED-it/zebra/${{ inputs.ref }}/testnet-single-node-deploy/ec2
     steps:
       - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
@@ -123,6 +128,7 @@ jobs:
         env:
           ACTION: ${{ inputs.action }}
           IMAGE_TAG: ${{ inputs.image_tag }}
+          REF: ${{ inputs.ref }}
           TARGET_ID: ${{ steps.target.outputs.id }}
           ALSO_ID: ${{ steps.tag.outputs.also }}
         run: |
@@ -132,11 +138,28 @@ jobs:
             *)              OPS="$ACTION" ;;
           esac
 
+          # deploy-files copies the ec2/ files from branch $REF onto the box.
+          # Files only; nothing is restarted, so a compose change takes effect
+          # on the next recreate/restart rather than immediately.
+          if [ "$ACTION" = deploy-files ]; then
+            echo "::notice::pulling from $FILES_URL"
+            CMD="set -e
+            cd /opt/zebra
+            for f in docker-compose.yml ops.sh leader.sh logs-api.py; do
+              curl -fsSL \"$FILES_URL/\$f\" -o \$f
+            done
+            curl -fsSL \"$FILES_URL/zebra-leader.service\" -o /etc/systemd/system/zebra-leader.service
+            chmod +x ops.sh leader.sh
+            systemctl daemon-reload"
+          else
+            CMD="bash /opt/zebra/ops.sh $OPS"
+          fi
+
           send() {
             local id=$1 cmd st inv
             cmd=$(aws ssm send-command --instance-ids "$id" \
               --document-name AWS-RunShellScript \
-              --parameters "$(jq -nc --arg c "bash /opt/zebra/ops.sh $OPS" '{commands:[$c]}')" \
+              --parameters "$(jq -nc --arg c "$CMD" '{commands:[$c]}')" \
               --query Command.CommandId --output text)
             for _ in $(seq 1 180); do
               inv=$(aws ssm get-command-invocation --command-id "$cmd" \
@@ -145,10 +168,10 @@ jobs:
               case "$st" in Success|Failed|Cancelled|TimedOut) break ;; esac
               sleep 5
             done
-            { echo "### $id — ops.sh $OPS"
+            { echo "### $id — $ACTION"
               jq -r '[.Status, .StandardOutputContent, .StandardErrorContent] | @tsv' <<<"$inv"
             } | tee -a "$GITHUB_STEP_SUMMARY"
-            [ "$st" = Success ] || { echo "::error::$id: ops.sh $OPS -> $st"; return 1; }
+            [ "$st" = Success ] || { echo "::error::$id: $ACTION -> $st"; return 1; }
           }
 
           RC=0
