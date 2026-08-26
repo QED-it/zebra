@@ -1,4 +1,4 @@
-# ZSATestnet — Configured Testnet Setup
+# ZSA1_1 — Configured Testnet Setup
 
 Zebra as a private testnet (`network = "Testnet"` + `[network.testnet_parameters]`, not `"Regtest"`) with NU7/ZSA at height 1, no peers, no PoW. Config: `testnet-single-node-deploy/testnet-config.toml`.
 
