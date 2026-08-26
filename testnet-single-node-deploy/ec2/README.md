@@ -1,7 +1,7 @@
-# ZSATestnet on EC2
+# ZSA1_1 testnet on EC2
 
-Four containers on one box running `../testnet-config.toml` (ZSATestnet, magic
-`5a534131`, NU5/6/7 at height 1, no PoW, no peers). The launch template was
+Four containers on one box running `../testnet-config.toml` (`ZSA1_1`, magic
+`[0, 1, 0, 255]`, NU5/6/7 at height 1, no PoW, no peers). The launch template was
 created manually in the console; the box is driven by GitHub Actions over SSM.
 
 | File | On the box |

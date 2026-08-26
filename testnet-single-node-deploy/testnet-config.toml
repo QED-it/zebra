@@ -7,11 +7,13 @@ listen_addr = "0.0.0.0:18233"
 initial_testnet_peers = []
 
 [network.testnet_parameters]
-network_name = "ZSATestnet"
-network_magic = [0x5a, 0x53, 0x41, 0x31]
+# IDENTICAL on both nodes
+network_name = "ZSA1_1"
+network_magic = [0, 1, 0, 255]
 disable_pow = true
+# else the default testnet funding streams fail a startup address-count assert
 extend_funding_stream_addresses_as_required = true
-funding_streams = []
+# else the NU6.1 disbursement (78,750 ZEC) is due at height 1 and every block is rejected
 lockbox_disbursements = []
 
 [network.testnet_parameters.activation_heights]
