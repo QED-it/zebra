@@ -17,7 +17,7 @@ on:
         description: deploy-files only — branch to pull the box files from
         default: zsa1
       confirm:
-        description: Required for stop/demote — type the action name
+        description: Required for stop/demote/restart/start/recreate/deploy — type the action name
         default: ""
 
 permissions:
@@ -39,7 +39,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Guard destructive actions
-        if: contains(fromJSON('["stop","demote"]'), inputs.action)
+        if: contains(fromJSON('["stop","demote","restart","start","recreate","deploy"]'), inputs.action)
         env:
           ACTION: ${{ inputs.action }}
           CONFIRM: ${{ inputs.confirm }}
@@ -161,7 +161,7 @@ jobs:
               --document-name AWS-RunShellScript \
               --parameters "$(jq -nc --arg c "$CMD" '{commands:[$c]}')" \
               --query Command.CommandId --output text)
-            for _ in $(seq 1 180); do
+            for _ in $(seq 1 48); do
               inv=$(aws ssm get-command-invocation --command-id "$cmd" \
                 --instance-id "$id" 2>/dev/null || echo '{}')
               st=$(jq -r '.Status // "Pending"' <<<"$inv")
@@ -169,11 +169,14 @@ jobs:
               sleep 5
             done
             { echo "### $id — $ACTION"
-              jq -r '[.Status, .StandardOutputContent, .StandardErrorContent] | @tsv' <<<"$inv"
+              echo "status: $(jq -r '.Status // "unknown"' <<<"$inv")"
+              echo '```'
+              jq -r '.StandardOutputContent // "", .StandardErrorContent // ""' <<<"$inv"
+              echo '```'
             } | tee -a "$GITHUB_STEP_SUMMARY"
             [ "$st" = Success ] || { echo "::error::$id: $ACTION -> $st"; return 1; }
           }
 
           RC=0
-          for I in $TARGET_ID $ALSO_ID; do send "$I" || RC=1; done
+          for I in $ALSO_ID $TARGET_ID; do send "$I" || RC=1; done
           exit $RC
