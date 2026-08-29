@@ -2,6 +2,9 @@ name: Basic checks
 
 on: [push]
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -19,7 +22,10 @@ jobs:
       SNAPPY_LIB_DIR: /usr/lib/x86_64-linux-gnu
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
       - name: Show system resource summary (before cleanup)
         run: |
           df -h
@@ -35,6 +41,7 @@ jobs:
 
       - name: Install dependencies on Ubuntu
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler librocksdb-dev
+
       - name: Install formatting & linting tools
         run: rustup component add rustfmt clippy
 
@@ -47,16 +54,33 @@ jobs:
           sed -i 's|.*"--cfg", .feature="tx_v6".*|# &|' .cargo/config.toml
           sed -i 's|.*"--cfg", "zcash_unstable=\\"nu7\\"".*|# &|' .cargo/config.toml
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@305bebabd4457bed9b82541755f034994382465b # v2.68.10
+        with:
+          tool: cargo-nextest
+
       - name: Run tests
-        run: timeout --preserve-status 1h cargo test --verbose --locked
+        run: |
+          timeout --preserve-status 1h \
+            cargo nextest run --workspace --locked
+
+      - name: Run doc tests
+        run: |
+          timeout --preserve-status 30m \
+            cargo test --doc --workspace --locked
+
       - name: Run doc check
         run: cargo doc --workspace --no-deps --all-features --document-private-items --locked
+
       - name: Run format check
         run: cargo fmt -- --check
+
       - name: Run clippy
         run: cargo clippy --workspace --all-targets --features "default-release-binaries proptest-impl lightwalletd-grpc-tests zebra-checkpoints"
+
       - name: Restore cargo config
         run: git checkout -- .cargo/config.toml
+
       - name: Verify working directory is clean
         run: git diff --exit-code
 

@@ -1,0 +1,32 @@
+[mining]
+miner_address = "tmLTZegcJN5zaufWQBARHkvqC62mTumm3jR"
+
+[network]
+network = "Testnet"
+listen_addr = "0.0.0.0:18233"
+initial_testnet_peers = []
+
+[network.testnet_parameters]
+# IDENTICAL on both nodes
+network_name = "ZSA1_1"
+network_magic = [0, 1, 0, 255]
+disable_pow = true
+# else the default testnet funding streams fail a startup address-count assert
+extend_funding_stream_addresses_as_required = true
+# else the NU6.1 disbursement (78,750 ZEC) is due at height 1 and every block is rejected
+lockbox_disbursements = []
+
+[network.testnet_parameters.activation_heights]
+NU5 = 1
+NU6 = 1
+NU7 = 1
+
+[state]
+ephemeral = true
+
+[mempool]
+debug_enable_at_height = 0
+
+[rpc]
+listen_addr = "0.0.0.0:18232"
+enable_cookie_auth = false
