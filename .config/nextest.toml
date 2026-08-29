@@ -180,6 +180,14 @@ test-group = 'serial-live-mainnet'
 slow-timeout = { period = "5m", terminate-after = 2 }
 retries = 2
 
+# `sync_large_checkpoints_mempool_mainnet` is `#[ignore]`d, so it only runs under
+# `--run-ignored`. It enforces its own 8m deadline, so the cap here is a hang backstop.
+[[profile.all-tests.overrides]]
+filter = 'test(=sync_large_checkpoints_mempool_mainnet)'
+test-group = 'serial-live-mainnet'
+slow-timeout = { period = "10m", terminate-after = 2 }
+retries = 3
+
 # Known-flaky acceptance tests, retried by name.
 #
 # `disconnects_from_misbehaving_peers` starts two nodes on incompatible custom
