@@ -10,7 +10,8 @@
 //!   * the same proof is **rejected** by the post-NU6.2 (fixed) key, so the verifier is not
 //!     "fail-open" — it does not accept whatever it is handed regardless of era; and
 //!   * [`verifier_for`] routes each network upgrade to the service holding the matching key,
-//!     with NU6.2 and every later upgrade going to the fixed-key verifier.
+//!     with NU6.2 and every later upgrade going to the fixed-key verifier, and never to the ZSA
+//!     verifier — flavor is routed at the call site, not here.
 
 use std::sync::Arc;
 
@@ -107,9 +108,6 @@ async fn verifier_for_routes_each_upgrade_to_the_correct_key() {
     let pre: &'static super::VerifierService = &VERIFIER_PRE_NU6_2;
     let post: &'static super::VerifierService = &VERIFIER_POST_NU6_2;
 
-    #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
-    let zsa: &'static super::VerifierService = &VERIFIER_ZSA;
-
     // Everything before NU6.2 (including upgrades from before Orchard existed) routes to the
     // insecure key, which is the only key any pre-NU6.2 Orchard history verifies under.
     for nu in [
@@ -123,22 +121,23 @@ async fn verifier_for_routes_each_upgrade_to_the_correct_key() {
         );
     }
 
-    // NU6.2 and every later upgrade route to the fixed key, except NU7 in ZSA builds,
-    // which routes to the dedicated ZSA verifier. Nu7 still guards that "NU6.2 and later"
-    // does not silently fall back to the insecure verifier for future upgrades.
+    // NU6.2 and every later upgrade route to the fixed key. Nu7 is included because it carries
+    // vanilla bundles too, in V5 transactions.
     for nu in [NetworkUpgrade::Nu6_2, NetworkUpgrade::Nu7] {
-        #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
-        if nu == NetworkUpgrade::Nu7 {
-            assert!(
-                std::ptr::eq(verifier_for(nu), zsa),
-                "{nu:?} must route to the ZSA verifier"
-            );
-            continue;
-        }
-
         assert!(
             std::ptr::eq(verifier_for(nu), post),
             "{nu:?} must route to the post-NU6.2 (fixed) verifier"
+        );
+    }
+
+    // The ZSA circuit is a separate axis, so `verifier_for` must never return its verifier.
+    #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
+    {
+        let zsa: &'static super::VerifierService = &VERIFIER_ZSA;
+
+        assert!(
+            !std::ptr::eq(zsa, pre) && !std::ptr::eq(zsa, post),
+            "the ZSA verifier must not alias either era verifier"
         );
     }
 }

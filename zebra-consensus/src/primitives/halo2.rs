@@ -259,7 +259,11 @@ pub static VERIFIER_POST_NU6_2: Lazy<VerifierService> =
 #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
 pub static VERIFIER_ZSA: Lazy<VerifierService> = Lazy::new(|| batch_verifier(&VERIFYING_KEY_ZSA));
 
-/// Returns the global Halo2 verifier for Orchard bundles in blocks at `network_upgrade`.
+/// Returns the global Halo2 verifier for `OrchardVanilla` bundles in blocks at `network_upgrade`.
+///
+/// Era and flavor are independent axes; this covers only the era. `OrchardZSA` bundles are routed
+/// by flavor to [`VERIFIER_ZSA`] before this is reached. NU7 carries both flavors, because V5
+/// transactions stay valid at NU7, so the upgrade alone cannot pick the key.
 ///
 /// The Orchard Action circuit — and therefore its verifying key — changed at NU6.2 (the fixed
 /// variable-base scalar-multiplication circuit; see GHSA-jfw5-j458-pfv6), and a proof produced
@@ -285,15 +289,7 @@ pub fn verifier_for(network_upgrade: NetworkUpgrade) -> &'static VerifierService
 
         // NU6.2 ships the fixed circuit, and every upgrade after it inherits that fixed circuit,
         // so all of them verify under the fixed key.
-        Nu6_2 => &VERIFIER_POST_NU6_2,
-
-        // Without ZSA V6 support, NU7 continues using the fixed post-NU6.2 Orchard circuit.
-        #[cfg(not(all(zcash_unstable = "nu7", feature = "tx_v6")))]
-        Nu7 => &VERIFIER_POST_NU6_2,
-
-        // With ZSA V6 support, NU7 uses the dedicated OrchardZSA circuit and verifying key.
-        #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
-        Nu7 => &VERIFIER_ZSA,
+        Nu6_2 | Nu7 => &VERIFIER_POST_NU6_2,
 
         // `ZFuture` only exists under the `zcash_unstable = "zfuture"` cfg. It is a post-NU6.2
         // upgrade, so it inherits the fixed circuit and is bound to the fixed key here on purpose
