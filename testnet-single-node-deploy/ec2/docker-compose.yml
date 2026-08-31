@@ -1,4 +1,8 @@
-# IMAGE and CF_TUNNEL_TOKEN come from /opt/zebra/.env
+# IMAGE, CF_TUNNEL_TOKEN and the CipherScan DB_* values come from /opt/zebra/.env
+#
+# One stack: node, tunnel, log endpoints, explorer. Explorer build contexts are
+# absolute because they need the clone at ${CIPHERSCAN_DIR}. See
+# cipherscan/README.md.
 services:
   zebra-testnet:
     image: ${IMAGE}
@@ -51,3 +55,97 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /opt/zebra/logs-api.py:/app/logs-api.py:ro
     command: ["python", "-u", "/app/logs-api.py"]
+
+  # ---------------------------------------------------------------------------
+  # CipherScan explorer (cipherscan/README.md)
+  #
+  # Service names are load-bearing: the Cloudflare tunnel ingress resolves
+  # origins by service name on this network, so `api` and `web` must keep those
+  # names even though they read as generic here.
+  # ---------------------------------------------------------------------------
+
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16-bookworm}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-zcash_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-zcash_explorer}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-zcash_user} -d ${DB_NAME:-zcash_explorer}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    image: ${API_IMAGE:-cipherscan-api:local}
+    build:
+      context: ${CIPHERSCAN_DIR:-/opt/cipherscan}/server
+      dockerfile: qedit-api.Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22.14.0-bookworm-slim}
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-zcash_explorer}
+      DB_USER: ${DB_USER:-zcash_user}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      API_CACHE_NAMESPACE: ${API_CACHE_NAMESPACE:-zsatestnet}
+      # The node in this same stack. 18232, not upstream's 8232.
+      ZEBRA_RPC_URL: http://zebra-testnet:18232
+      CORS_ORIGINS: ${CORS_ORIGINS}
+    volumes:
+      - api-cache:/app/cache
+
+  web:
+    image: ${WEB_IMAGE:-cipherscan-web:local}
+    build:
+      context: ${CIPHERSCAN_DIR:-/opt/cipherscan}
+      dockerfile: qedit-web.Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22.14.0-bookworm-slim}
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        NEXT_PUBLIC_NETWORK: ${NEXT_PUBLIC_NETWORK:-testnet}
+        # NEXT_PUBLIC_* are compiled into the browser bundle, so this must be a
+        # build arg, not just runtime env. Upstream's Dockerfile omits it, and
+        # for `testnet` upstream ignores it entirely — see qedit-web.Dockerfile.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    restart: unless-stopped
+    depends_on: [api]
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      NEXT_PUBLIC_NETWORK: ${NEXT_PUBLIC_NETWORK:-testnet}
+      NEXT_TELEMETRY_DISABLED: "1"
+      ZCASH_RPC_URL: http://zebra-testnet:18232
+      CIPHERSCAN_API_URL: http://api:3001
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+
+  # Fills the tables the API reads, by opening the node's RocksDB in secondary
+  # mode. Profiled off: needs the ZSA-ported image and persistent node state,
+  # neither of which a default box has. See cipherscan/README.md.
+  indexer:
+    profiles: [indexer]
+    image: ${INDEXER_IMAGE:-cipherscan-indexer:local}
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgres://${DB_USER:-zcash_user}:${DB_PASSWORD:?set DB_PASSWORD}@postgres:5432/${DB_NAME:-zcash_explorer}
+      ZEBRA_STATE_PATH: ${ZEBRA_STATE_PATH:?set ZEBRA_STATE_PATH}
+      ZEBRA_RPC_URL: http://zebra-testnet:18232
+      NETWORK: ${NETWORK:-testnet}
+    volumes:
+      - ${ZEBRA_STATE_HOST_DIR:-/var/lib/zebra-state}:/zebra-state:ro
+
+volumes:
+  postgres-data:
+  api-cache:
