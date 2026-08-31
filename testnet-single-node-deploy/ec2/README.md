@@ -23,6 +23,18 @@ All public and unauthenticated, and 18232/18233/8080 are open on the instance IP
 too. `enable_cookie_auth = false`, so anyone reaching 18232 can `stop` or
 `invalidateblock`. Disposable testnet only.
 
+## Hardware, and what's on the box
+
+Zebra asks for 2 CPU / 4 GB minimum (4 CPU / 16 GB recommended) and 300 GB disk.
+This runs on a `t3.medium` — 2 vCPU, 4 GB — with an 80 GB gp3 root. The disk
+figure is for syncing Mainnet; this network is private, ephemeral and mined from
+genesis, so it never approaches it.
+
+The launch template boots Amazon Linux 2023 (AMI resolved at launch) and
+`user_data` installs only `docker` plus the compose v2 CLI plugin, then writes
+the files above. `aws` and the SSM agent ship with AL2023. Everything else is a
+container image: zebrad from ECR, `cloudflared`, `dozzle`, `python:3.12-slim`.
+
 ## Leader election
 
 A Cloudflare Tunnel has one token, and every `cloudflared` holding it registers
