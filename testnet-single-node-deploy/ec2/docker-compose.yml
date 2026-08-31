@@ -1,16 +1,34 @@
-# IMAGE and CF_TUNNEL_TOKEN come from /opt/zebra/.env
+# IMAGE, CF_TUNNEL_TOKEN and the CipherScan DB_* values come from /opt/zebra/.env
+#
+# One stack: the node, the tunnel, the log endpoints, and the CipherScan
+# explorer. The explorer services build from a clone of
+# github.com/QED-it/cipherscan at ${CIPHERSCAN_DIR} — its build contexts need
+# that tree, which is why the paths are absolute rather than relative to this
+# file. See cipherscan/README.md.
 services:
   zebra-testnet:
     image: ${IMAGE}
     container_name: zebra-testnet
     restart: unless-stopped
-    # The image ENTRYPOINT hardcodes regtest-config.toml
-    entrypoint: ["target/release/zebrad", "-c", "/app/testnet-single-node-deploy/testnet-config.toml"]
+    # The image ENTRYPOINT hardcodes regtest-config.toml. ZEBRA_CONFIG lets a
+    # box override the in-image config with one bind-mounted from /etc/zebra —
+    # which is what the current instance does, so its settings are not lost on
+    # recreate. Unset, the in-image config wins as before.
+    entrypoint: ["target/release/zebrad", "-c", "${ZEBRA_CONFIG:-/app/testnet-single-node-deploy/testnet-config.toml}"]
     environment:
       # Only delta from the in-image config: the node is driven remotely, and
       # without this zebrad reports itself ~4.1M blocks behind real Testnet and
       # getblocktemplate refuses.
       - ZEBRA_RPC__DEBUG_FORCE_FINISHED_SYNC=true
+      # The explorer's indexer reads the node's RocksDB directly, which needs
+      # state on disk. Defaults to the ephemeral behaviour of the base config.
+      - ZEBRA_STATE__EPHEMERAL=${ZEBRA_STATE_EPHEMERAL:-true}
+    volumes:
+      # Bound unconditionally so a recreate never silently drops persistent
+      # state; ignored while ephemeral is true. /etc/zebra is a directory so the
+      # bind still resolves on a box that has no config there.
+      - ${ZEBRA_STATE_HOST_DIR:-/var/lib/zebra-state}:/root/.cache/zebra
+      - /etc/zebra:/etc/zebra:ro
     ports:
       - "18232:18232" # RPC, unauthenticated
       - "18233:18233" # P2P
@@ -51,3 +69,98 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /opt/zebra/logs-api.py:/app/logs-api.py:ro
     command: ["python", "-u", "/app/logs-api.py"]
+
+  # ---------------------------------------------------------------------------
+  # CipherScan explorer (cipherscan/README.md)
+  #
+  # Service names are load-bearing: the Cloudflare tunnel ingress resolves
+  # origins by service name on this network, so `api` and `web` must keep those
+  # names even though they read as generic here.
+  # ---------------------------------------------------------------------------
+
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16-bookworm}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-zcash_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-zcash_explorer}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-zcash_user} -d ${DB_NAME:-zcash_explorer}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    image: ${API_IMAGE:-cipherscan-api:local}
+    build:
+      context: ${CIPHERSCAN_DIR:-/opt/cipherscan}/server
+      dockerfile: qedit-api.Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22.14.0-bookworm-slim}
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-zcash_explorer}
+      DB_USER: ${DB_USER:-zcash_user}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      API_CACHE_NAMESPACE: ${API_CACHE_NAMESPACE:-zsatestnet}
+      # The node in this same stack. 18232, not upstream's 8232.
+      ZEBRA_RPC_URL: http://zebra-testnet:18232
+      CORS_ORIGINS: ${CORS_ORIGINS}
+    volumes:
+      - api-cache:/app/cache
+
+  web:
+    image: ${WEB_IMAGE:-cipherscan-web:local}
+    build:
+      context: ${CIPHERSCAN_DIR:-/opt/cipherscan}
+      dockerfile: qedit-web.Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22.14.0-bookworm-slim}
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        NEXT_PUBLIC_NETWORK: ${NEXT_PUBLIC_NETWORK:-testnet}
+        # NEXT_PUBLIC_* are compiled into the browser bundle, so this must be a
+        # build arg, not just runtime env. Upstream's Dockerfile omits it, and
+        # for `testnet` upstream ignores it entirely — see qedit-web.Dockerfile.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    restart: unless-stopped
+    depends_on: [api]
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      NEXT_PUBLIC_NETWORK: ${NEXT_PUBLIC_NETWORK:-testnet}
+      NEXT_TELEMETRY_DISABLED: "1"
+      ZCASH_RPC_URL: http://zebra-testnet:18232
+      CIPHERSCAN_API_URL: http://api:3001
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+
+  # Meant to fill the tables the API reads, by opening the node's RocksDB in
+  # secondary mode. Profiled off: it cannot parse this chain's transactions yet
+  # (version group id mismatch, see cipherscan/README.md), so leaving it in the
+  # default set only produces a log full of parse errors.
+  indexer:
+    profiles: [indexer]
+    image: ${INDEXER_IMAGE:-cipherscan-indexer:local}
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgres://${DB_USER:-zcash_user}:${DB_PASSWORD:?set DB_PASSWORD}@postgres:5432/${DB_NAME:-zcash_explorer}
+      ZEBRA_STATE_PATH: ${ZEBRA_STATE_PATH:?set ZEBRA_STATE_PATH}
+      ZEBRA_RPC_URL: http://zebra-testnet:18232
+      NETWORK: ${NETWORK:-testnet}
+    volumes:
+      - ${ZEBRA_STATE_HOST_DIR:-/var/lib/zebra-state}:/zebra-state:ro
+
+volumes:
+  postgres-data:
+  api-cache:
