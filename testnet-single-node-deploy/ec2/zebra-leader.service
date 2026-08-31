@@ -1,0 +1,15 @@
+[Unit]
+Description=Match Zebra tunnel state to the Role tag
+# docker for compose, network-online for IMDS and the EC2 API.
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash /opt/zebra/leader.sh apply
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
