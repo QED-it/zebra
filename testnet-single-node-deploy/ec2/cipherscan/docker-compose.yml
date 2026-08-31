@@ -1,0 +1,100 @@
+# CipherScan (https://github.com/Kenbak/cipherscan) against the ZSATestnet node
+# already running on this box.
+#
+# Copy to the cipherscan clone root and run from there, so the build contexts
+# resolve:
+#   docker compose -f docker-compose.qedit.yml --env-file .env.qedit up -d
+#
+# Upstream's zebrad and lightwalletd are dropped: the API talks to the existing
+# zebra-testnet container over the zebra stack's compose network.
+name: cipherscan
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16-bookworm}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-zcash_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-zcash_explorer}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-zcash_user} -d ${DB_NAME:-zcash_explorer}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: ${REDIS_IMAGE:-redis:7-bookworm}
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - redis-data:/data
+
+  api:
+    image: ${API_IMAGE:-cipherscan-api:local}
+    build:
+      context: ./server
+      dockerfile: qedit-api.Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22.14.0-bookworm-slim}
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-zcash_explorer}
+      DB_USER: ${DB_USER:-zcash_user}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      API_CACHE_NAMESPACE: ${API_CACHE_NAMESPACE:-zsatestnet}
+      # The node this box already runs. 18232, not upstream's 8232.
+      ZEBRA_RPC_URL: http://zebra-testnet:18232
+      CORS_ORIGINS: ${CORS_ORIGINS}
+    volumes:
+      - api-cache:/app/cache
+    networks: [default, zebra]
+
+  web:
+    image: ${WEB_IMAGE:-cipherscan-web:local}
+    build:
+      context: .
+      dockerfile: qedit-web.Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22.14.0-bookworm-slim}
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        NEXT_PUBLIC_NETWORK: ${NEXT_PUBLIC_NETWORK:-testnet}
+        # NEXT_PUBLIC_* are compiled into the browser bundle, so this must be a
+        # build arg, not just runtime env. Upstream's Dockerfile omits it.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    restart: unless-stopped
+    depends_on: [api]
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      NEXT_PUBLIC_NETWORK: ${NEXT_PUBLIC_NETWORK:-testnet}
+      NEXT_TELEMETRY_DISABLED: "1"
+      ZCASH_RPC_URL: http://zebra-testnet:18232
+      CIPHERSCAN_API_URL: http://api:3001
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    networks: [default, zebra]
+
+volumes:
+  postgres-data:
+  redis-data:
+  api-cache:
+
+networks:
+  default:
+  # Created by the zebra stack in /opt/zebra; joins cloudflared, zebra-testnet
+  # and these services on one network.
+  zebra:
+    external: true
+    name: zebra_default
