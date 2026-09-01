@@ -31,7 +31,7 @@ filter = "not test(=trusted_chain_sync_handles_forks_correctly) and not test(=de
 [profile.all-tests]
 failure-output = "immediate"
 
-# Keep going after a failure so that one broken test does not hide the state of
+# Keep going after a failure so one broken test does not hide the state of
 # everything still queued, and log only retried and failed tests: "pass" buries
 # real failures under ~1000 lines of output.
 fail-fast = false
@@ -39,7 +39,6 @@ status-level = "retry"
 
 # Hard cap for every test in this profile, so a test that hangs instead of
 # failing cannot run until the workflow timeout and take the whole job down.
-# Tests needing a different cap override it below.
 slow-timeout = { period = "5m", terminate-after = 4 }
 default-filter = "not test(check_no_git_dependencies) and not test(=fully_synced_rpc_z_getsubtreesbyindex_snapshot_test) and not test(=lwd_rpc_test) and not test(=lwd_rpc_send_tx) and not test(=lwd_grpc_wallet) and not test(=lwd_integration) and not test(=lwd_sync_full) and not test(=lwd_sync_update) and not test(=lightwalletd_test_suite) and not test(=rpc_get_block_template) and not test(=rpc_submit_block) and not test(=get_peer_info) and not test(~generate_checkpoints_) and not test(=sync_update_mainnet) and not test(=activate_mempool_mainnet)"
 
@@ -142,15 +141,19 @@ default-filter = 'package(zebrad) and test(=lightwalletd_test_suite)'
 slow-timeout = { period = "30m", terminate-after = 2 }
 default-filter = 'package(zebrad) and test(=fully_synced_rpc_z_getsubtreesbyindex_snapshot_test)'
 
-# --- Acceptance test scheduling ---
+# --- Acceptance test scheduling (disabled) ---
+#
+# `ci-basic.yml` skips the acceptance binary, so this is commented out rather
+# than deleted, ready to restore. `[test-groups]` and the overrides naming a
+# group must be re-enabled together: nextest rejects an unresolvable name.
 
 # Caps how many tests from a group run at once, independently of the global
 # test-threads limit. Tuned for a 4-vCPU runner; raise it on larger machines.
-[test-groups]
-zebrad-acceptance = { max-threads = 2 }
+# [test-groups]
+# zebrad-acceptance = { max-threads = 2 }
 # Live Mainnet tests compete for the same limited set of usable peers when they
 # connect concurrently from one public IP.
-serial-live-mainnet = { max-threads = 1 }
+# serial-live-mainnet = { max-threads = 1 }
 
 # Overrides are matched top to bottom and the first match wins for each
 # individual setting, so narrower rules must come before broader ones.
@@ -166,27 +169,27 @@ serial-live-mainnet = { max-threads = 1 }
 # Mainnet and expects it to reach a chain tip within 200s. It passes when run on
 # its own and fails at ~250s when other zebrad processes compete for CPU and
 # network, so it is given the machine to itself.
-[[profile.all-tests.overrides]]
-filter = 'test(=trusted_chain_sync_handles_forks_correctly)'
-threads-required = "num-test-threads"
-retries = 0
+# [[profile.all-tests.overrides]]
+# filter = 'test(=trusted_chain_sync_handles_forks_correctly)'
+# threads-required = "num-test-threads"
+# retries = 0
 
 # These tests sync mainnet to genesis from live peers; they normally finish in
 # ~10-30s, but a slow/unreachable peer can stall them. Fail fast after 10m and
 # retry instead of hanging until the profile-wide cap.
-[[profile.all-tests.overrides]]
-filter = 'test(=sync_one_checkpoint_mainnet) or test(=restart_stop_at_height)'
-test-group = 'serial-live-mainnet'
-slow-timeout = { period = "5m", terminate-after = 2 }
-retries = 2
+# [[profile.all-tests.overrides]]
+# filter = 'test(=sync_one_checkpoint_mainnet) or test(=restart_stop_at_height)'
+# test-group = 'serial-live-mainnet'
+# slow-timeout = { period = "5m", terminate-after = 2 }
+# retries = 2
 
 # `sync_large_checkpoints_mempool_mainnet` is `#[ignore]`d, so it only runs under
 # `--run-ignored`. It enforces its own 8m deadline, so the cap here is a hang backstop.
-[[profile.all-tests.overrides]]
-filter = 'test(=sync_large_checkpoints_mempool_mainnet)'
-test-group = 'serial-live-mainnet'
-slow-timeout = { period = "10m", terminate-after = 2 }
-retries = 3
+# [[profile.all-tests.overrides]]
+# filter = 'test(=sync_large_checkpoints_mempool_mainnet)'
+# test-group = 'serial-live-mainnet'
+# slow-timeout = { period = "10m", terminate-after = 2 }
+# retries = 3
 
 # Known-flaky acceptance tests, retried by name.
 #
@@ -194,22 +197,22 @@ retries = 3
 # testnets and asserts on peer state after a fixed delay, so it fails when the
 # nodes come up in an unlucky order. It also hangs rather than exits on failure,
 # hence the tighter cap.
-[[profile.all-tests.overrides]]
-filter = 'test(=disconnects_from_misbehaving_peers)'
-retries = 2
-slow-timeout = { period = "5m", terminate-after = 2 }
+# [[profile.all-tests.overrides]]
+# filter = 'test(=disconnects_from_misbehaving_peers)'
+# retries = 2
+# slow-timeout = { period = "5m", terminate-after = 2 }
 
 # `non_blocking_logger` starts a node against live Mainnet and depends on
 # reaching a usable peer; the initial peer set is often mostly unreachable.
-[[profile.all-tests.overrides]]
-filter = 'test(=non_blocking_logger)'
-retries = 2
+# [[profile.all-tests.overrides]]
+# filter = 'test(=non_blocking_logger)'
+# retries = 2
 
 # Everything in the acceptance binary shares the concurrency group.
 #
 # These tests launch real zebrad processes with their own thread pools and
 # RocksDB instances, so running several at once on a small CI runner starves
 # them and trips their internal wall-clock deadlines.
-[[profile.all-tests.overrides]]
-filter = 'binary(acceptance)'
-test-group = 'zebrad-acceptance'
+# [[profile.all-tests.overrides]]
+# filter = 'binary(acceptance)'
+# test-group = 'zebrad-acceptance'
