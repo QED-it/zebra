@@ -6,6 +6,8 @@
 //! [ZIP-227]: https://zips.z.cash/zip-0227.html
 //! [ZIP-317]: https://zips.z.cash/zip-0317#fee-calculation
 
+use std::collections::HashSet;
+
 use zcash_primitives::transaction::fees::zip317::CREATION_COST;
 
 use crate::transaction::Transaction;
@@ -13,7 +15,8 @@ use crate::transaction::Transaction;
 /// Returns the number of ZIP-317 `logical_actions` contributed by ZIP-227 issuance in
 /// `transaction`: `nIssueNotes + CREATION_COST * nReferenceNotes`.
 ///
-/// `nReferenceNotes` is the number of Issue Actions whose first note is a [reference note].
+/// `nReferenceNotes` is the number of distinct Assets whose Issue Action in this transaction
+/// starts with a [reference note].
 /// It is used in place of `nAssetCreations`, which the current ZIP-227 defines in terms of the
 /// Global Issuance State and which therefore cannot be computed from the transaction alone:
 ///
@@ -32,8 +35,9 @@ use crate::transaction::Transaction;
 ///
 /// A reference note is required on the first issuance of an Asset and optional on subsequent
 /// issuance, so `nReferenceNotes >= nAssetCreations` and the fee can never be underpaid. It is
-/// higher only if an issuer voluntarily places a reference note first in a re-issuance action,
-/// which has no practical benefit and only raises their own fee.
+/// higher only if an issuer voluntarily places a reference note first when re-issuing an Asset,
+/// which has no practical benefit and only raises their own fee. Counting distinct Assets rather
+/// than Issue Actions keeps that overcount as small as the transaction data allows.
 ///
 /// [reference note]: https://zips.z.cash/zip-0227.html#reference-notes
 //
@@ -50,8 +54,12 @@ pub fn logical_actions(transaction: &Transaction) -> usize {
     let n_reference_notes = issue_bundle
         .actions()
         .iter()
-        .filter(|action| action.get_reference_note().is_some())
-        .count();
+        .filter_map(|action| action.get_reference_note())
+        // An Asset is created at most once, so count each Asset once however many Issue
+        // Actions in this transaction carry a reference note for it.
+        .map(|note| note.asset().to_bytes())
+        .collect::<HashSet<_>>()
+        .len();
 
     n_issue_notes + (CREATION_COST * n_reference_notes)
 }
