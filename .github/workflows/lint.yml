@@ -22,6 +22,9 @@ permissions:
 
 env:
   CLICOLOR: 1
+  # Mirror the cfgs in .cargo/config.toml: RUSTFLAGS/RUSTDOCFLAGS replace the
+  # config's rustflags rather than adding to them, compiling out NU7/ZSA code.
+  ZEBRA_CFGS: '--cfg zcash_unstable="nu7" --cfg feature="tx_v6"'
 
 jobs:
   changes:
@@ -70,6 +73,7 @@ jobs:
           persist-credentials: false
       - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 #v1.16.1
         with:
+          rustflags: '-D warnings ${{ env.ZEBRA_CFGS }}'
           components: clippy
           toolchain: ${{ matrix.rust-version }}
           cache-on-failure: true
@@ -91,6 +95,7 @@ jobs:
           persist-credentials: false
       - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 #v1.16.1
         with:
+          rustflags: '-D warnings ${{ env.ZEBRA_CFGS }}'
           cache-on-failure: true
       - uses: taiki-e/install-action@65851e10cd6c377f11a60e600abc07cb08643468 #v2.79.3
         with:
@@ -118,6 +123,7 @@ jobs:
           persist-credentials: false
       - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 #v1.16.1
         with:
+          rustflags: '-D warnings ${{ env.ZEBRA_CFGS }}'
           toolchain: 1.91 # MSRV
           cache-on-failure: true
       - uses: ./.github/actions/setup-zebra-build
@@ -138,6 +144,7 @@ jobs:
           persist-credentials: false
       - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 #v1.16.1
         with:
+          rustflags: '-D warnings ${{ env.ZEBRA_CFGS }}'
           toolchain: nightly
           cache-on-failure: true
       - uses: ./.github/actions/setup-zebra-build
@@ -146,7 +153,7 @@ jobs:
           # Keep in sync with ./book.yml:jobs.build
           # The -A and -W settings must be the same as the `rustdocflags` in:
           # https://github.com/ZcashFoundation/zebra/blob/main/.cargo/config.toml#L87
-          RUSTDOCFLAGS: --html-in-header katex-header.html -A rustdoc::private_intra_doc_links -D warnings
+          RUSTDOCFLAGS: --html-in-header katex-header.html -A rustdoc::private_intra_doc_links -D warnings ${{ env.ZEBRA_CFGS }}
 
   fmt:
     name: fmt
@@ -184,6 +191,7 @@ jobs:
           persist-credentials: false
       - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 #v1.16.1
         with:
+          rustflags: '-D warnings ${{ env.ZEBRA_CFGS }}'
           # TODO: QED-it temp nightly pin: matches Zebra v4.2.0 CI test period; remove before upstream merge.
           toolchain: nightly-2026-03-06
           cache-on-failure: true
@@ -237,7 +245,7 @@ jobs:
       - uses: ./.github/actions/setup-zebra-build
       - run: cargo hack check --all
         env:
-          RUSTFLAGS: -D warnings
+          RUSTFLAGS: -D warnings ${{ env.ZEBRA_CFGS }}
 
   check-cargo-lock:
     name: check-cargo-lock
@@ -254,6 +262,7 @@ jobs:
           persist-credentials: false
       - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 #v1.16.1
         with:
+          rustflags: '-D warnings ${{ env.ZEBRA_CFGS }}'
           toolchain: stable
           cache-on-failure: true
       - uses: ./.github/actions/setup-zebra-build
