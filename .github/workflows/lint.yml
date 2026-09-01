@@ -104,7 +104,7 @@ jobs:
       - run: cargo hack check --workspace
 
   msrv:
-    name: MSRV
+    name: MSRV (nu7=${{ matrix.nu7 }})
     needs: changes
     if: needs.changes.outputs.lint == 'true'
     permissions:
@@ -114,7 +114,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
+      # Both legs run to completion: they check different code, and the two
+      # configurations fail independently.
+      fail-fast: false
       matrix:
+        nu7:
+          - true
+          - false
         include:
           - binary: zebrad
     steps:
@@ -123,8 +129,11 @@ jobs:
           persist-credentials: false
       - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 #v1.16.1
         with:
-          rustflags: '-D warnings ${{ env.ZEBRA_CFGS }}'
+          # The nu7=false leg is the only job that still checks the MSRV build
+          # without the ZSA code paths, which is what upstream compiles.
+          rustflags: ${{ matrix.nu7 && format('-D warnings {0}', env.ZEBRA_CFGS) || '-D warnings' }}
           toolchain: 1.91 # MSRV
+          cache-key: msrv-nu7-${{ matrix.nu7 }}
           cache-on-failure: true
       - uses: ./.github/actions/setup-zebra-build
       - run: cargo build --bin "${{ matrix.binary }}" --workspace
