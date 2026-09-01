@@ -1293,8 +1293,10 @@ where
     ///
     /// * flavor: `OrchardZSA` bundles use the ZSA circuit, whatever the upgrade.
     /// * era, for `OrchardVanilla` bundles: the vanilla circuit changed at NU6.2 to fix
-    ///   GHSA-jfw5-j458-pfv6, so [`primitives::halo2::verifier_for`] maps `network_upgrade` — the
-    ///   upgrade at the transaction's block height — to the historical or fixed key.
+    ///   GHSA-jfw5-j458-pfv6, so `network_upgrade` — the upgrade at the transaction's block
+    ///   height — selects the historical or the fixed key.
+    ///
+    /// [`primitives::halo2::verifier_for_bundle`] composes both.
     ///
     /// Both are needed: NU7 carries vanilla bundles (in V5 transactions, still valid at NU7) as
     /// well as ZSA ones. Each verifier holds one key and batches separately, so circuits never mix.
@@ -1318,18 +1320,9 @@ where
             // Actions in one transaction. So we queue it for verification
             // only once instead of queuing it up for every Action description.
             //
-            // Route the bundle to the verifier holding the key for its circuit: by flavor for
-            // OrchardZSA, otherwise by era.
-            let verifier = match &bundle {
-                OrchardBundle::OrchardVanilla(_) => {
-                    primitives::halo2::verifier_for(network_upgrade)
-                }
-                #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
-                OrchardBundle::OrchardZSA(_) => &*primitives::halo2::VERIFIER_ZSA,
-            };
-
+            // Route the bundle to the verifier holding the key for its circuit.
             async_checks.push(
-                verifier
+                primitives::halo2::verifier_for_bundle(&bundle, network_upgrade)
                     .clone()
                     .oneshot(primitives::halo2::Item::new(bundle, *sighash)),
             );

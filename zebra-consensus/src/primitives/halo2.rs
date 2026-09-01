@@ -261,9 +261,9 @@ pub static VERIFIER_ZSA: Lazy<VerifierService> = Lazy::new(|| batch_verifier(&VE
 
 /// Returns the global Halo2 verifier for `OrchardVanilla` bundles in blocks at `network_upgrade`.
 ///
-/// Era and flavor are independent axes; this covers only the era. `OrchardZSA` bundles are routed
-/// by flavor to [`VERIFIER_ZSA`] before this is reached. NU7 carries both flavors, because V5
-/// transactions stay valid at NU7, so the upgrade alone cannot pick the key.
+/// Era and flavor are independent axes; this covers only the era. [`verifier_for_bundle`] composes
+/// flavor on top, sending `OrchardZSA` bundles to [`VERIFIER_ZSA`] instead. NU7 carries both
+/// flavors, because V5 transactions stay valid at NU7, so the upgrade alone cannot pick the key.
 ///
 /// The Orchard Action circuit — and therefore its verifying key — changed at NU6.2 (the fixed
 /// variable-base scalar-multiplication circuit; see GHSA-jfw5-j458-pfv6), and a proof produced
@@ -297,6 +297,23 @@ pub fn verifier_for(network_upgrade: NetworkUpgrade) -> &'static VerifierService
         // build configuration.
         #[cfg(zcash_unstable = "zfuture")]
         ZFuture => &VERIFIER_POST_NU6_2,
+    }
+}
+
+/// Returns the global Halo2 verifier holding the key for `bundle`'s circuit, in a block at
+/// `network_upgrade`.
+///
+/// This composes the two axes: flavor picks the circuit family, and for vanilla bundles
+/// [`verifier_for`] then picks the era. NU7 needs both, because a V5 transaction there carries a
+/// vanilla bundle while a V6 one carries a ZSA bundle.
+pub fn verifier_for_bundle(
+    bundle: &OrchardBundle<orchard::bundle::Authorized>,
+    network_upgrade: NetworkUpgrade,
+) -> &'static VerifierService {
+    match bundle {
+        OrchardBundle::OrchardVanilla(_) => verifier_for(network_upgrade),
+        #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
+        OrchardBundle::OrchardZSA(_) => &VERIFIER_ZSA,
     }
 }
 

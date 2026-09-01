@@ -11,7 +11,8 @@
 //!     "fail-open" — it does not accept whatever it is handed regardless of era; and
 //!   * [`verifier_for`] routes each network upgrade to the service holding the matching key,
 //!     with NU6.2 and every later upgrade going to the fixed-key verifier, and never to the ZSA
-//!     verifier — flavor is routed at the call site, not here.
+//!     verifier — flavor is composed on top by [`verifier_for_bundle`], which must send vanilla
+//!     bundles to the era verifier even at NU7.
 
 use std::sync::Arc;
 
@@ -26,8 +27,8 @@ use zebra_chain::{
 };
 
 use super::{
-    verifier_for, Item, VERIFIER_POST_NU6_2, VERIFIER_PRE_NU6_2, VERIFYING_KEY_POST_NU6_2,
-    VERIFYING_KEY_PRE_NU6_2,
+    verifier_for, verifier_for_bundle, Item, VERIFIER_POST_NU6_2, VERIFIER_PRE_NU6_2,
+    VERIFYING_KEY_POST_NU6_2, VERIFYING_KEY_PRE_NU6_2,
 };
 
 #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
@@ -140,4 +141,48 @@ async fn verifier_for_routes_each_upgrade_to_the_correct_key() {
             "the ZSA verifier must not alias either era verifier"
         );
     }
+}
+
+/// A vanilla Orchard bundle at NU7 is routed by era, not to the ZSA verifier.
+///
+/// V5 transactions stay valid at NU7 and carry vanilla bundles, so routing on the upgrade alone —
+/// as the v5.2.0 merge briefly did — sends them to the OrchardZSA key, which cannot verify a
+/// vanilla proof.
+///
+/// The choice is asserted rather than the outcome, because both the right and the wrong key reject
+/// this pre-NU6.2 fixture. The ZSA direction is covered end to end by `check_orchard_zsa_workflow`.
+#[tokio::test(flavor = "multi_thread")]
+async fn vanilla_bundle_at_nu7_is_routed_by_era_not_flavor() {
+    let (bundle, _sighash) = pre_nu6_2_bundle_and_sighash();
+
+    assert!(
+        matches!(bundle, OrchardBundle::OrchardVanilla(_)),
+        "a V5 transaction's bundle must be the vanilla flavor"
+    );
+
+    assert!(
+        std::ptr::eq(
+            verifier_for_bundle(&bundle, NetworkUpgrade::Nu7),
+            &*VERIFIER_POST_NU6_2
+        ),
+        "a vanilla bundle at NU7 must route to the post-NU6.2 (fixed) verifier"
+    );
+
+    #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
+    assert!(
+        !std::ptr::eq(
+            verifier_for_bundle(&bundle, NetworkUpgrade::Nu7),
+            &*VERIFIER_ZSA
+        ),
+        "a vanilla bundle must never route to the ZSA verifier"
+    );
+
+    // The era axis still applies below NU6.2, so historical blocks re-sync.
+    assert!(
+        std::ptr::eq(
+            verifier_for_bundle(&bundle, NetworkUpgrade::Nu5),
+            &*VERIFIER_PRE_NU6_2
+        ),
+        "a vanilla bundle at NU5 must route to the pre-NU6.2 (insecure) verifier"
+    );
 }
