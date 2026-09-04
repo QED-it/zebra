@@ -86,10 +86,10 @@ jobs:
           # budget also covers compilation, which takes several minutes.
           # -k sends SIGKILL if the process ignores the initial SIGTERM.
           #
-          # The acceptance tests launch real zebrad processes that connect to
-          # live Mainnet peers, and fail whenever the runner cannot reach one.
-          # They are excluded here until they can run against a network this
-          # branch is able to follow.
+          # The acceptance tests are excluded until Ironwood support is
+          # merged: Mainnet and Testnet have activated NU6.3 (heights
+          # 3_428_143 / 4_134_000), and this v5.2.0-based branch cannot
+          # verify blocks past those heights.
           timeout -k 60s --preserve-status 90m \
             cargo nextest run --workspace --locked -E 'not binary(=acceptance)'
 
