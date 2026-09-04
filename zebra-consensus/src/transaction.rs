@@ -43,7 +43,7 @@ use zebra_node_services::mempool;
 use zebra_script::{CachedFfiTransaction, Sigops};
 use zebra_state as zs;
 
-use crate::{error::TransactionError, groth16::DescriptionWrapper, primitives, script, BoxError};
+use crate::{error::TransactionError, primitives, script, BoxError};
 
 pub mod check;
 #[cfg(test)]
@@ -406,21 +406,47 @@ where
         async move {
             tracing::trace!(?tx_id, ?req, "got tx verify request");
 
-            if let Some(result) = Self::find_verified_unmined_tx(&req, mempool.clone(), state.clone()).await {
-                let verified_tx = result?;
-
-                return Ok(Response::Block {
-                    tx_id,
-                    miner_fee: Some(verified_tx.miner_fee),
-                    sigops: verified_tx.legacy_sigop_count,
-                    tx_sighash: verified_tx.tx_sighash,
-                });
-            }
-
             // Do quick checks first
             check::has_inputs_and_outputs(&tx)?;
             check::has_enough_orchard_flags(&tx)?;
             check::consensus_branch_id(&tx, req.height(), &network)?;
+
+            // Soft fork: temporarily require transactions to not contain Orchard actions.
+            //
+            // This soft fork was added while NU 6.1 was the active epoch on the Zcash
+            // chain, but we apply it uniformly even if NU 6.1 is not active in case it is
+            // ported to other chains with a different sequence of NUs.
+            //
+            // This will be treated as "Rules that apply generally before the next NU"
+            // when we add the NU that re-enables Orchard actions.
+            if network.is_orchard_temporarily_disabled(req.height()) && tx.has_orchard_shielded_data() {
+                return Err(TransactionError::Other("transaction has Orchard actions (temporarily disabled)".into()));
+            }
+
+            // From the network upgrade that re-enables Orchard actions (NU6.2), require
+            // that any Orchard proof has the canonical length for its number of actions.
+            // A proof that is present but not canonically sized can be padded with
+            // arbitrary trailing data without affecting its validity, allowing excess
+            // bandwidth and storage costs to be imposed while paying only fees sized to a
+            // canonical proof (GHSA-jfw5-j458-pfv6).
+            //
+            // This is a constricting rule, so it is gated on that network upgrade:
+            // Orchard actions mined before it, under earlier rules that did not enforce
+            // the proof size, must remain valid so that nodes can sync and reindex the
+            // chain before the soft fork that temporarily disabled Orchard. Orchard
+            // bundles are deserialized leniently, so the size is checked here, where the
+            // block height is available, rather than during parsing.
+            //
+            // The gate activates at the NU6.2 activation height committed in
+            // MAINNET/TESTNET_ACTIVATION_HEIGHTS. See
+            // `Network::orchard_canonical_proof_size_rule_active`.
+            if network.orchard_canonical_proof_size_rule_active(req.height()) {
+                if let Some(proof_size_is_canonical) = tx.orchard_proof_size_is_canonical() {
+                    if !proof_size_is_canonical {
+                        return Err(TransactionError::OrchardProofSize);
+                    }
+                }
+            }
 
             // Validate the coinbase input consensus rules
             if req.is_mempool() && tx.is_coinbase() {
@@ -547,7 +573,7 @@ where
                         );
                         Ok(())
                     }
-                );
+                    );
 
                 async_checks.push(check_anchors_and_revealed_nullifiers_query);
             }
@@ -589,7 +615,13 @@ where
                 Request::Block { .. } => Response::Block {
                     tx_id,
                     miner_fee,
-                    sigops,
+                    // In block validation, the consensus sigop total must include P2SH
+                    // redeem-script sigops, matching zcashd's `ConnectBlock` which sums
+                    // `GetLegacySigOpCount` and `GetP2SHSigOpCount` per transaction before
+                    // comparing against `MAX_BLOCK_SIGOPS`. Coinbase inputs contribute zero P2SH
+                    // sigops. See
+                    // <https://github.com/ZcashFoundation/zebra/security/advisories/GHSA-jv4h-j224-23cc>.
+                    sigops: sigops.saturating_add(cached_ffi_transaction.p2sh_sigops()),
                     tx_sighash
                 },
                 Request::Mempool { transaction: tx, .. } => {
@@ -603,6 +635,7 @@ where
                         tx,
                         miner_fee.expect("fee should have been checked earlier"),
                         sigops,
+                        cached_ffi_transaction.p2sh_sigops(),
                         spent_outputs.into(),
                         tx_sighash,
                     )?;
@@ -627,12 +660,12 @@ where
 
             Ok(rsp)
         }
-        .inspect(move |result| {
-            // Hide the transaction data to avoid filling the logs
-            tracing::trace!(?tx_id, result = ?result.as_ref().map(|_tx| ()), "got tx verify result");
-        })
-        .instrument(span)
-        .boxed()
+            .inspect(move |result| {
+                // Hide the transaction data to avoid filling the logs
+                tracing::trace!(?tx_id, result = ?result.as_ref().map(|_tx| ()), "got tx verify result");
+            })
+            .instrument(span)
+            .boxed()
     }
 }
 
@@ -665,74 +698,6 @@ where
         } else {
             unreachable!("Request::BestChainNextMedianTimePast always responds with BestChainNextMedianTimePast")
         }
-    }
-
-    /// Attempts to find a transaction in the mempool by its transaction hash and checks
-    /// that all of its dependencies are available in the block or in the state.  Waits
-    /// for UTXOs being spent by the given transaction to arrive in the state if they're
-    /// not found elsewhere.
-    ///
-    /// Returns [`Some(Ok(VerifiedUnminedTx))`](VerifiedUnminedTx) if successful,
-    /// None if the transaction id was not found in the mempool,
-    /// or `Some(Err(TransparentInputNotFound))` if the transaction was found, but some of its
-    /// dependencies were not found in the block or state after a timeout.
-    async fn find_verified_unmined_tx(
-        req: &Request,
-        mempool: Option<Timeout<Mempool>>,
-        state: Timeout<ZS>,
-    ) -> Option<Result<VerifiedUnminedTx, TransactionError>> {
-        let tx = req.transaction();
-
-        if req.is_mempool() || tx.is_coinbase() {
-            return None;
-        }
-
-        let mempool = mempool?;
-        let known_outpoint_hashes = req.known_outpoint_hashes();
-        let tx_id = req.tx_mined_id();
-
-        let mempool::Response::TransactionWithDeps {
-            transaction: verified_tx,
-            dependencies,
-        } = mempool
-            .oneshot(mempool::Request::TransactionWithDepsByMinedId(tx_id))
-            .await
-            .ok()?
-        else {
-            panic!("unexpected response to TransactionWithDepsByMinedId request");
-        };
-
-        // Note: This does not verify that the spends are in order, the spend order
-        //       should be verified during contextual validation in zebra-state.
-        let missing_deps: HashSet<_> = dependencies
-            .into_iter()
-            .filter(|dependency_id| !known_outpoint_hashes.contains(dependency_id))
-            .collect();
-
-        if missing_deps.is_empty() {
-            return Some(Ok(verified_tx));
-        }
-
-        let missing_outpoints = tx.inputs().iter().filter_map(|input| {
-            if let transparent::Input::PrevOut { outpoint, .. } = input {
-                missing_deps.contains(&outpoint.hash).then_some(outpoint)
-            } else {
-                None
-            }
-        });
-
-        for missing_outpoint in missing_outpoints {
-            let query = state
-                .clone()
-                .oneshot(zebra_state::Request::AwaitUtxo(*missing_outpoint));
-            match query.await {
-                Ok(zebra_state::Response::Utxo(_)) => {}
-                Err(_) => return Some(Err(TransactionError::TransparentInputNotFound)),
-                _ => unreachable!("AwaitUtxo always responds with Utxo"),
-            };
-        }
-
-        Some(Ok(verified_tx))
     }
 
     /// Wait for the UTXOs that are being spent by the given transaction.
@@ -955,6 +920,7 @@ where
             | NetworkUpgrade::Nu5
             | NetworkUpgrade::Nu6
             | NetworkUpgrade::Nu6_1
+            | NetworkUpgrade::Nu6_2
             | NetworkUpgrade::Nu7 => Ok(()),
 
             #[cfg(zcash_unstable = "zfuture")]
@@ -1014,7 +980,7 @@ where
             cached_ffi_transaction,
         )?
         .and(Self::verify_sapling_bundle(sapling_bundle, &sighash))
-        .and(Self::verify_orchard_bundle(orchard_bundle, &sighash));
+        .and(Self::verify_orchard_bundle(orchard_bundle, &sighash, nu));
 
         Ok((async_check, sighash))
     }
@@ -1040,6 +1006,7 @@ where
             NetworkUpgrade::Nu5
             | NetworkUpgrade::Nu6
             | NetworkUpgrade::Nu6_1
+            | NetworkUpgrade::Nu6_2
             | NetworkUpgrade::Nu7 => Ok(()),
 
             #[cfg(zcash_unstable = "zfuture")]
@@ -1107,7 +1074,7 @@ where
             cached_ffi_transaction,
         )?
         .and(Self::verify_sapling_bundle(sapling_bundle, &sighash))
-        .and(Self::verify_orchard_bundle(orchard_bundle, &sighash));
+        .and(Self::verify_orchard_bundle(orchard_bundle, &sighash, nu));
 
         Ok((async_check, sighash))
     }
@@ -1146,7 +1113,8 @@ where
             | NetworkUpgrade::Canopy
             | NetworkUpgrade::Nu5
             | NetworkUpgrade::Nu6
-            | NetworkUpgrade::Nu6_1 => Err(TransactionError::UnsupportedByNetworkUpgrade(
+            | NetworkUpgrade::Nu6_1
+            | NetworkUpgrade::Nu6_2 => Err(TransactionError::UnsupportedByNetworkUpgrade(
                 transaction.version(),
                 network_upgrade,
             )),
@@ -1209,7 +1177,7 @@ where
                 // checks that (at a minimum) must pass for the
                 // transaction to verify.
                 checks.push(primitives::groth16::JOINSPLIT_VERIFIER.oneshot(
-                    DescriptionWrapper(&(joinsplit, &joinsplit_data.pub_key)).try_into()?,
+                    primitives::groth16::Item::from_joinsplit(joinsplit, &joinsplit_data.pub_key)?,
                 ));
             }
 
@@ -1319,12 +1287,24 @@ where
     }
 
     /// Verifies a transaction's Orchard shielded data.
+    ///
+    /// A proof only verifies under the key for the circuit that produced it, so the verifier is
+    /// selected on two independent axes:
+    ///
+    /// * flavor: `OrchardZSA` bundles use the ZSA circuit, whatever the upgrade.
+    /// * era, for `OrchardVanilla` bundles: the vanilla circuit changed at NU6.2 to fix
+    ///   GHSA-jfw5-j458-pfv6, so `network_upgrade` — the upgrade at the transaction's block
+    ///   height — selects the historical or the fixed key.
+    ///
+    /// [`primitives::halo2::verifier_for_bundle`] composes both.
+    ///
+    /// Both are needed: NU7 carries vanilla bundles (in V5 transactions, still valid at NU7) as
+    /// well as ZSA ones. Each verifier holds one key and batches separately, so circuits never mix.
     fn verify_orchard_bundle(
         bundle: Option<OrchardBundle<::orchard::bundle::Authorized>>,
         sighash: &SigHash,
+        network_upgrade: NetworkUpgrade,
     ) -> AsyncChecks {
-        use zcash_primitives::transaction::OrchardBundle;
-
         let mut async_checks = AsyncChecks::new();
 
         if let Some(bundle) = bundle {
@@ -1339,20 +1319,13 @@ where
             // aggregated Halo2 proof per transaction, even with multiple
             // Actions in one transaction. So we queue it for verification
             // only once instead of queuing it up for every Action description.
-            let item = primitives::halo2::Item::new(bundle.clone(), *sighash);
-            let check = match &bundle {
-                OrchardBundle::OrchardVanilla(_) => primitives::halo2::VERIFIER_VANILLA
+            //
+            // Route the bundle to the verifier holding the key for its circuit.
+            async_checks.push(
+                primitives::halo2::verifier_for_bundle(&bundle, network_upgrade)
                     .clone()
-                    .oneshot(item)
-                    .boxed(),
-                #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
-                OrchardBundle::OrchardZSA(_) => primitives::halo2::VERIFIER_ZSA
-                    .clone()
-                    .oneshot(item)
-                    .boxed(),
-            };
-
-            async_checks.push(check);
+                    .oneshot(primitives::halo2::Item::new(bundle, *sighash)),
+            );
         }
 
         async_checks

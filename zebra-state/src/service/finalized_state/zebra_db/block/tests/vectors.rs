@@ -13,6 +13,7 @@
 use std::{iter, sync::Arc};
 
 use zebra_chain::{
+    amount::DeferredPoolBalanceChange,
     block::{
         tests::generate::{
             large_multi_transaction_block, large_single_transaction_block_many_inputs,
@@ -137,13 +138,15 @@ fn test_block_db_round_trip_with(
                 new_outputs,
                 transaction_hashes,
                 transaction_sighashes: None,
-                deferred_pool_balance_change: None,
             })
         };
 
         let dummy_treestate = Treestate::default();
-        let finalized =
-            FinalizedBlock::from_checkpoint_verified(checkpoint_verified, dummy_treestate);
+        let finalized = FinalizedBlock::from_checkpoint_verified(
+            checkpoint_verified,
+            dummy_treestate,
+            DeferredPoolBalanceChange::zero(),
+        );
 
         // Skip validation by writing the block directly to the database
         let mut batch = DiskWriteBatch::new();

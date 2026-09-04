@@ -32,19 +32,18 @@ edition = "2021"
 incrementalmerkletree = { version = "0.8.2", features = ["legacy-api"] }
 # TODO: Remove the `temporary-zebra` feature once upstream `orchard` exposes the APIs
 # Zebra needs without this transition feature.
-orchard = { version = "0.12", features = ["zsa-issuance", "temporary-zebra"] }
-sapling-crypto = "0.6"
-zcash_address = "0.10.1"
-zcash_encoding = "0.3.0"
+orchard = { version = "0.14", features = ["zsa-issuance", "temporary-zebra"] }
+sapling-crypto = "0.7"
+zcash_address = "0.12.0"
+zcash_encoding = "0.4.0"
 zcash_history = "0.4.0"
-zcash_keys = "0.12.0"
-zcash_primitives = { version = "0.26.4", features = ["zsa-issuance", "zip-233"] }
-zcash_proofs = "0.26.1"
-zcash_transparent = "0.6.3"
-zcash_protocol = "0.7.2"
+zcash_keys = "0.14.0"
+zcash_primitives = { version = "0.28.0", features = ["zsa-issuance", "zip-233"] }
+zcash_proofs = "0.28.0"
+zcash_transparent = "0.8.0"
+zcash_protocol = "0.9.0"
 zip32 = "0.2"
 abscissa_core = "0.7"
-atty = "0.2.14"
 base64 = "0.22.1"
 bech32 = "0.11.0"
 bellman = "0.14"
@@ -61,15 +60,15 @@ bytes = "1.10"
 chrono = { version = "0.4.40", default-features = false }
 clap = "4.5"
 color-eyre = { version = "0.6.3", default-features = false }
-console-subscriber = "0.4"
+console-subscriber = "0.5"
 criterion = "0.5"
 crossbeam-channel = "0.5.14"
 derive-getters = "0.5"
 derive-new = "0.5"
 dirs = "6.0"
-ed25519-zebra = "4.0.3"
+ed25519-zebra = "4.2"
 elasticsearch = { version = "8.17.0-alpha.1", default-features = false }
-equihash = "0.2.2"
+equihash = "0.3"
 ff = "0.13"
 futures = "0.3.31"
 futures-core = "0.3.31"
@@ -79,6 +78,7 @@ halo2 = "0.3"
 hex = "0.4.3"
 hex-literal = "0.4"
 howudoin = "0.1"
+http-body = "1.0.1"
 http-body-util = "0.1.3"
 human_bytes = { version = "0.4", default-features = false }
 humantime = "2.2"
@@ -127,7 +127,7 @@ rlimit = "0.10"
 rocksdb = { version = "0.22", default-features = false }
 secp256k1 = "0.29"
 semver = "1.0.26"
-sentry = { version = "0.40", default-features = false }
+sentry = { version = "0.47", default-features = false }
 serde = "1.0.219"
 serde-big-array = "0.5"
 serde_json = "1.0.140"
@@ -138,6 +138,9 @@ schemars = "1"
 spandoc = "0.2"
 static_assertions = "1.1"
 structopt = "0.3"
+anyhow = "1.0"
+strum = "0.27"
+strum_macros = "0.27"
 syn = "2.0.100"
 tempfile = "3.20"
 thiserror = "2.0"
@@ -147,7 +150,7 @@ tokio = "1.44"
 tokio-stream = "0.1.17"
 tokio-test = "0.4"
 tokio-util = "0.7.14"
-toml = "0.9.5"
+toml = "1.0"
 tonic = "0.14"
 tonic-prost = "0.14"
 tonic-prost-build = "0.14"
@@ -162,15 +165,15 @@ tracing-futures = "0.2.5"
 tracing-journald = "0.3"
 tracing-subscriber = "0.3.19"
 tracing-test = "0.2.4"
-tracing-opentelemetry = "0.29"
-opentelemetry = "0.28"
-opentelemetry_sdk = "0.28"
-opentelemetry-otlp = "0.28"
+tracing-opentelemetry = "0.32"
+opentelemetry = "0.31"
+opentelemetry_sdk = "0.31"
+opentelemetry-otlp = "0.31"
 uint = "0.10"
 vergen-git2 = { version = "9", default-features = false }
 x25519-dalek = "2.0.1"
 zcash_note_encryption = "0.4.1"
-zcash_script = "0.4.3"
+zcash_script = "0.4.5"
 config = { version = "0.15.14", features = ["toml"] }
 which = "8.0.0"
 
@@ -288,6 +291,19 @@ overflow-checks = false
 incremental = false
 codegen-units = 16
 
+# The advisory
+# https://github.com/ZcashFoundation/zebra/security/advisories/GHSA-gq4h-3grw-2rhv
+# only reproduces reliably when the bundled libzcash_script C++ code is compiled
+# in release mode since it relies on a buffer to not be zeroed out (arrays in
+# C++ are usually zeroed out when allocated in debug mode). To reliably test
+# against that issue, and to also better simulate real-world usage of
+# libzcash_script, we enable optimizations for it in dev builds.
+[profile.dev.package.libzcash_script]
+opt-level = 3
+debug-assertions = false
+overflow-checks = false
+incremental = false
+codegen-units = 16
 
 [profile.release]
 panic = "abort"
@@ -314,23 +330,71 @@ debug = false
 # The linter should ignore these expected config flags/values
 unexpected_cfgs = { level = "warn", check-cfg = [
     'cfg(tokio_unstable)', # Used by tokio-console
-    'cfg(zcash_unstable, values("zfuture", "nu6.1", "nu7"))' # Used in Zebra and librustzcash
+    'cfg(zcash_unstable, values("zfuture", "nu6.1", "nu7", "zip235"))' # Used in Zebra and librustzcash
 ] }
 
+# High-risk code
+unsafe_code = "deny"
+non_ascii_idents = "deny"
+
+# Compatibility
+rust_2021_compatibility = { level = "warn", priority = -1 }
+nonstandard_style = { level = "warn", priority = -1 }
+future_incompatible = { level = "warn", priority = -1 }
+
+# Documentation
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+# Async code
+await_holding_lock = "warn"
+await_holding_refcell_ref = "warn"
+
+# Pointers
+cast_ptr_alignment = "warn"
+fn_to_numeric_cast_any = "warn"
+
+# Integers
+checked_conversions = "warn"
+implicit_saturating_sub = "warn"
+invalid_upcast_comparisons = "warn"
+range_minus_one = "warn"
+range_plus_one = "warn"
+unnecessary_cast = "warn"
+
+# Incomplete code
+dbg_macro = "warn"
+todo = "warn"
+
+# Manual debugging output — use tracing::trace!() or tracing::debug!() instead
+print_stdout = "warn"
+print_stderr = "warn"
+
+# Code styles we want to accept
+try_err = "allow"
+
+# Panics
+fallible_impl_from = "warn"
+unwrap_in_result = "warn"
+
+# TODOs: fix this lint eventually
+result_large_err = "allow"
+
 [patch.crates-io]
-halo2_proofs = { version = "0.3.0", git = "https://github.com/zcash/halo2", rev = "2308caf68c48c02468b66cfc452dad54e355e32f" }
-halo2_poseidon = { version = "0.1.0", git = "https://github.com/zcash/halo2", rev = "2308caf68c48c02468b66cfc452dad54e355e32f" }
+halo2_gadgets = { version = "0.5.0", git = "https://github.com/QED-it/halo2", rev = "ef3d0ba2e9a513658f8d3d00294ddebd92cc649e" }
+halo2_proofs = { version = "0.3.2", git = "https://github.com/QED-it/halo2", rev = "ef3d0ba2e9a513658f8d3d00294ddebd92cc649e" }
+halo2_poseidon = { version = "0.1.0", git = "https://github.com/QED-it/halo2", rev = "ef3d0ba2e9a513658f8d3d00294ddebd92cc649e" }
 sinsemilla = { git = "https://github.com/zcash/sinsemilla", rev = "aabb707e862bc3d7b803c77d14e5a771bcee3e8c" }
 zcash_note_encryption = { version = "0.4.1", git = "https://github.com/zcash/zcash_note_encryption", rev = "9f7e93d42cef839d02b9d75918117941d453f8cb" }
-sapling-crypto = { package = "sapling-crypto", version = "0.6", git = "https://github.com/QED-it/sapling-crypto", rev = "59535fb5d34b5c5cf1b20ef18269f5c65228378c" }
-orchard = { version = "0.12.0", git = "https://github.com/QED-it/orchard", rev = "77d3274cb1f4620e9a1b86477c490fa123dff6bd" }
-zcash_primitives = { version = "0.26.1", git = "https://github.com/QED-it/librustzcash", rev = "0ea737548f7aea6124056df54d55f6c5a35ef914" }
-zcash_protocol = { version = "0.7.2", git = "https://github.com/QED-it/librustzcash", rev = "0ea737548f7aea6124056df54d55f6c5a35ef914" }
-zcash_address = { version = "0.10.1", git = "https://github.com/QED-it/librustzcash", rev = "0ea737548f7aea6124056df54d55f6c5a35ef914" }
-zcash_encoding = { version = "0.3.0", git = "https://github.com/QED-it/librustzcash", rev = "0ea737548f7aea6124056df54d55f6c5a35ef914" }
-zcash_history = { version = "0.4.0", git = "https://github.com/QED-it/librustzcash", rev = "0ea737548f7aea6124056df54d55f6c5a35ef914" }
-zcash_keys = { version = "0.12.0", git = "https://github.com/QED-it/librustzcash", rev = "0ea737548f7aea6124056df54d55f6c5a35ef914" }
-zcash_transparent = { version = "0.6.3", git = "https://github.com/QED-it/librustzcash", rev = "0ea737548f7aea6124056df54d55f6c5a35ef914" }
-zcash_proofs = { version = "0.26.1", git = "https://github.com/QED-it/librustzcash", rev = "0ea737548f7aea6124056df54d55f6c5a35ef914" }
-equihash = { version = "0.2.2", git = "https://github.com/QED-it/librustzcash", rev = "0ea737548f7aea6124056df54d55f6c5a35ef914" }
+sapling-crypto = { version = "0.7", git = "https://github.com/QED-it/sapling-crypto", rev = "e785faaa5eaf67bd2cb328fdd82a345df44e5754" }
+orchard = { version = "0.14.0", git = "https://github.com/QED-it/orchard", rev = "cf801a5d6701bc128e21678ba0034564af4a2aca" }
+zcash_primitives = { version = "0.28.0", git = "https://github.com/QED-it/librustzcash", rev = "c5c232db9c54eeb8bc1d0f4dc1b8a0e40f981bb0" }
+zcash_protocol = { version = "0.9.0", git = "https://github.com/QED-it/librustzcash", rev = "c5c232db9c54eeb8bc1d0f4dc1b8a0e40f981bb0" }
+zcash_address = { version = "0.12.0", git = "https://github.com/QED-it/librustzcash", rev = "c5c232db9c54eeb8bc1d0f4dc1b8a0e40f981bb0" }
+zcash_encoding = { version = "0.4.0", git = "https://github.com/QED-it/librustzcash", rev = "c5c232db9c54eeb8bc1d0f4dc1b8a0e40f981bb0" }
+zcash_history = { version = "0.4.0", git = "https://github.com/QED-it/librustzcash", rev = "c5c232db9c54eeb8bc1d0f4dc1b8a0e40f981bb0" }
+zcash_keys = { version = "0.14.0", git = "https://github.com/QED-it/librustzcash", rev = "c5c232db9c54eeb8bc1d0f4dc1b8a0e40f981bb0" }
+zcash_transparent = { version = "0.8.0", git = "https://github.com/QED-it/librustzcash", rev = "c5c232db9c54eeb8bc1d0f4dc1b8a0e40f981bb0" }
+zcash_proofs = { version = "0.28.0", git = "https://github.com/QED-it/librustzcash", rev = "c5c232db9c54eeb8bc1d0f4dc1b8a0e40f981bb0" }
+equihash = { version = "0.3.0", git = "https://github.com/QED-it/librustzcash", rev = "c5c232db9c54eeb8bc1d0f4dc1b8a0e40f981bb0" }
 zcash_spec = { git = "https://github.com/QED-it/zcash_spec", rev = "d5e84264d2ad0646b587a837f4e2424ca64d3a05" }

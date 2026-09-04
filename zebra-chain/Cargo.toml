@@ -1,6 +1,6 @@
 [package]
 name = "zebra-chain"
-version = "6.0.0"
+version = "10.1.0"
 authors.workspace = true
 description = "Core Zcash data structures"
 license.workspace = true
@@ -86,7 +86,7 @@ zcash_script.workspace = true
 
 # ECC deps
 halo2 = { package = "halo2_proofs", version = "0.3" }
-orchard = { workspace = true }
+orchard = { workspace = true, features = ["test-dependencies"] }
 zcash_encoding.workspace = true
 zcash_history.workspace = true
 zcash_note_encryption = { workspace = true }
@@ -94,7 +94,7 @@ zcash_primitives = { workspace = true, features = ["transparent-inputs"] }
 sapling-crypto.workspace = true
 zcash_protocol.workspace = true
 zcash_address.workspace = true
-zcash_transparent.workspace = true
+zcash_transparent = { workspace = true }
 sinsemilla = { version = "0.1" }
 
 # Time
@@ -166,6 +166,10 @@ required-features = ["bench"]
 
 [[bench]]
 name = "redpallas"
+harness = false
+
+[[bench]]
+name = "transaction"
 harness = false
 
 [lints]

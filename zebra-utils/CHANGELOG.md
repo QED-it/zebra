@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [8.0.1] - 2026-06-18
+
+### Changed
+
+- `zebra-rpc` dependency bumped to `10.0.1`
+- `zebra-checkpoints` now backs off `MAX_BLOCK_REORG_HEIGHT` (1000) instead of the coinbase
+  maturity (100) when choosing the highest checkpoint.
+
+## [8.0.0] - 2026-06-10
+
+### Changed
+
+- `zebra-chain` dependency bumped to `10.0.0`, `zebra-rpc` to `10.0.0`, and
+  `zebra-node-services` to `8.0.0`. No other changes to this crate.
+
+## [7.0.0] - 2026-06-02
+
+### Changed
+
+- Update to `zebra-chain` 9.0.0, `zebra-rpc` 9.0.0, and `zebra-node-services` 7.0.0
+  (NU6.2 support). No other changes to this crate.
+
+## [6.0.0] - 2026-05-01
+
+### Changed
+
+- `zebra-chain` bumped to `7.0.0`.
+- `zebra-rpc` bumped to `7.0.0`.
+- `zebra-node-services` bumped to `5.0.0`.
+
 ## [5.0.0] - 2026-03-12
 
 ### Breaking Changes
