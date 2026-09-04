@@ -15,9 +15,7 @@ use crate::{
     primitives::{Bctv14Proof, Groth16Proof, Halo2Proof, ZkSnarkProof},
     sapling::{self, AnchorVariant, PerSpendAnchor, SharedAnchor},
     serialization::{self, ZcashDeserializeInto},
-    sprout,
-    transaction::SigHash,
-    transparent,
+    sprout, transparent,
     value_balance::{ValueBalance, ValueBalanceError},
     LedgerState,
 };
@@ -973,7 +971,6 @@ impl Arbitrary for VerifiedUnminedTx {
             any::<f32>(),
             serialization::arbitrary::datetime_u32(),
             any::<block::Height>(),
-            any::<[u8; 32]>().prop_map(SigHash),
         )
             .prop_map(
                 |(
@@ -985,7 +982,6 @@ impl Arbitrary for VerifiedUnminedTx {
                     fee_weight_ratio,
                     time,
                     height,
-                    tx_sighash,
                 )| {
                     if unpaid_actions > conventional_actions {
                         unpaid_actions = conventional_actions;
@@ -1005,7 +1001,6 @@ impl Arbitrary for VerifiedUnminedTx {
                         time: Some(time),
                         height: Some(height),
                         spent_outputs: std::sync::Arc::new(vec![]),
-                        tx_sighash,
                     }
                 },
             )

@@ -103,7 +103,6 @@ impl ContextuallyVerifiedBlock {
             height,
             new_outputs,
             transaction_hashes,
-            transaction_sighashes,
         } = block.into();
 
         Self {
@@ -116,7 +115,6 @@ impl ContextuallyVerifiedBlock {
             // TODO: fix the tests, and stop adding unrelated inputs and outputs.
             spent_outputs: new_outputs,
             transaction_hashes,
-            transaction_sighashes,
             chain_value_pool_change: ValueBalance::zero(),
             #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
             issued_asset_changes: Default::default(),
