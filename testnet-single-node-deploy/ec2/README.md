@@ -111,9 +111,8 @@ aws ecr get-login-password --region "${AWS_REGION:-eu-central-1}" | docker login
 docker build -f testnet-single-node-deploy/dockerfile -t $REPO:latest . && docker push $REPO:latest
 ```
 
-Must be built from this branch — its `zebra-network/src/config.rs` makes
-`funding_streams = []` actually clear the default testnet streams; without it
-every block is rejected with `Deferred(-7875000000000)`. 20-40 min cold.
+Must be built from this branch: it carries the ZSA transaction format the node
+produces.
 
 **2. Launch** — Console → Launch Templates → `zebra-testnet` → *Launch instance
 from template*. First boot takes 2-3 min. It comes up without a connector until

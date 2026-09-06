@@ -54,11 +54,18 @@ jobs:
           ACTION: ${{ inputs.action }}
           IMAGE_TAG: ${{ inputs.image_tag }}
           INSTANCE_ID: ${{ inputs.instance_id }}
+          REF: ${{ inputs.ref }}
         run: |
           # Validated here, before the tag step: a bad tag must not abort the
           # run after the Role tag has already moved.
           printf '%s' "$IMAGE_TAG" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$' \
             || { echo "::error::invalid image tag: $IMAGE_TAG"; exit 1; }
+          # $REF lands in FILES_URL; '.' and '/' are legal in a branch name, so
+          # '..' has to be rejected separately or the URL can traverse.
+          printf '%s' "$REF" | grep -Eq '^[A-Za-z0-9._/-]{1,255}$' \
+            || { echo "::error::invalid ref: $REF"; exit 1; }
+          printf '%s' "$REF" | grep -qv '\.\.' \
+            || { echo "::error::invalid ref: $REF"; exit 1; }
           if [ "$ACTION" = promote ] && [ -z "$INSTANCE_ID" ]; then
             echo "::error::promote needs an explicit instance_id — its target is the new leader"; exit 1
           fi
@@ -86,9 +93,9 @@ jobs:
           echo "::notice::target $ID"
 
       # promote/demote are tag moves, done here. The box never runs them; it
-      # only runs `apply` and matches whatever the tag now says. Both instances
-      # are applied to, so the old leader drops its connector as the new one
-      # picks it up.
+      # only runs `apply` and matches whatever the tag now says. The old leader
+      # is applied to first and is a hard gate: if it fails, the new one is not
+      # brought up.
       - id: tag
         if: contains(fromJSON('["promote","demote"]'), inputs.action)
         env:
@@ -178,5 +185,10 @@ jobs:
           }
 
           RC=0
-          for I in $ALSO_ID $TARGET_ID; do send "$I" || RC=1; done
+          # $ALSO_ID is the outgoing leader on promote. If standing it down
+          # fails, stop: bringing the new one up would leave two connectors.
+          for I in $ALSO_ID; do
+            send "$I" || { echo "::error::failed to stand down $I; not promoting"; exit 1; }
+          done
+          for I in $TARGET_ID; do send "$I" || RC=1; done
           exit $RC

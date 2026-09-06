@@ -18,6 +18,7 @@ self_serve_genesis() {
 
 case "$ACTION" in
   deploy)     grep -q '^IMAGE=' .env || { echo "no IMAGE= line in .env" >&2; exit 1; }
+              [ -n "${IMAGE_REPO:-}" ] || { echo "no IMAGE_REPO= line in .env" >&2; exit 1; }
               case "$IMAGE_REPO" in
                 *.dkr.ecr.*.amazonaws.com/*)
                   aws ecr get-login-password --region "${AWS_REGION:-eu-central-1}" \
