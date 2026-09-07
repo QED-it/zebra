@@ -56,15 +56,11 @@ jobs:
           INSTANCE_ID: ${{ inputs.instance_id }}
           REF: ${{ inputs.ref }}
         run: |
-          # Validated here, before the tag step: a bad input must not abort the
-          # run after the Role tag has already moved. `[[ =~ ]]`, not grep: grep
-          # anchors per line, so a newline smuggles the rest past an anchored
-          # pattern and into the root shell on the box.
+          # Validate before the tag step, so a bad input never aborts a run after
+          # the tag moved. `[[ =~ ]]` not grep: grep anchors per line, newline bypasses it.
           [[ "$IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$ ]] \
             || { echo "::error::invalid image tag: $IMAGE_TAG"; exit 1; }
-          # $REF lands in FILES_URL; '.' and '/' are legal in a branch name, so
-          # '..' needs rejecting separately or the URL can traverse. A case, not
-          # `[[ ]] &&`: a false && list is non-zero and would abort under -e.
+          # $REF lands in FILES_URL; '..' must be rejected or the URL can traverse.
           [[ "$REF" =~ ^[A-Za-z0-9._/-]{1,255}$ ]] \
             || { echo "::error::invalid ref: $REF"; exit 1; }
           case "$REF" in *..*) echo "::error::invalid ref: $REF"; exit 1 ;; esac
@@ -94,10 +90,9 @@ jobs:
           echo "id=$ID" >> $GITHUB_OUTPUT
           echo "::notice::target $ID"
 
-      # promote/demote are tag moves, done here. The box never runs them; it
-      # only runs `apply` and matches whatever the tag now says. On promote the
-      # old leader is stood down first; if that fails the run step rolls this
-      # move back, so a failed promote leaves the tag where it started.
+      # promote/demote only move the tag; the box just runs `apply` and follows it.
+      # On promote the old leader is stood down first; if that fails, run step
+      # rolls the tag back.
       - id: tag
         if: contains(fromJSON('["promote","demote"]'), inputs.action)
         env:
@@ -196,10 +191,9 @@ jobs:
             esac
           }
 
-          # The tag has already moved. If the outgoing leader ($ALSO_ID, promote
-          # only) will not stand down it still holds the tunnel, so roll the tag
-          # back instead of giving one hostname two connectors. Untag the target
-          # first: a rollback that dies partway then leaves no leader, not two.
+          # Tag already moved. If old leader ($ALSO_ID, promote only) won't stand
+          # down, roll the tag back rather than run two connectors. Untag target
+          # first so a half-done rollback leaves no leader, not two.
           if [ -n "$ALSO_ID" ] && ! send "$ALSO_ID"; then
             echo "::error::$ALSO_ID would not stand down; rolling the Role tag back to it"
             aws ec2 delete-tags --resources "$TARGET_ID" --tags Key=Role
