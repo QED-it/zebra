@@ -8,7 +8,7 @@ ACTION="${1:?usage: ops.sh <action> [tag]}"; TAG="${2:-latest}"
 # every start. Idempotent: an already-committed block returns "rejected", HTTP 200.
 self_serve_genesis() {
   local hex
-  hex=$(docker exec zebra-testnet cat /app/zebra-test/src/vectors/block-test-0-000-000.txt | tr -d '[:space:]')
+  hex=$(docker exec zebra-testnet cat /app/testnet-single-node-deploy/genesis.txt | tr -d '[:space:]')
   curl -s --fail-with-body --retry 30 --retry-delay 2 --retry-connrefused --retry-all-errors \
     http://127.0.0.1:18232 -X POST -H 'Content-Type: application/json' \
     -d "{\"jsonrpc\":\"1.0\",\"id\":\"ops\",\"method\":\"submitblock\",\"params\":[\"$hex\"]}" \

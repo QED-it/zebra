@@ -12,7 +12,7 @@ cargo build --release --package zebrad --bin zebrad
 Zebra starts with an empty state (no hard-coded Testnet genesis, unlike Regtest). Inject it once via `submitblock`:
 
 ```bash
-GENESIS_HEX=$(tr -d '[:space:]' < zebra-test/src/vectors/block-test-0-000-000.txt)
+GENESIS_HEX=$(tr -d '[:space:]' < testnet-single-node-deploy/genesis.txt)
 curl -s http://localhost:18232 -X POST -H 'Content-Type: application/json' \
   -d "{\"jsonrpc\":\"1.0\",\"id\":\"bootstrap\",\"method\":\"submitblock\",\"params\":[\"$GENESIS_HEX\"]}"
 # repeat after every restart — state is ephemeral

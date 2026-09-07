@@ -91,7 +91,7 @@ the node parks at `current_height=None` until it is POSTed to `submitblock`.
 `ops.sh` does it from the vector in the image:
 
 ```sh
-hex=$(docker exec zebra-testnet cat /app/zebra-test/src/vectors/block-test-0-000-000.txt | tr -d '[:space:]')
+hex=$(docker exec zebra-testnet cat /app/testnet-single-node-deploy/genesis.txt | tr -d '[:space:]')
 curl -s http://127.0.0.1:18232 -X POST -H 'Content-Type: application/json' \
   -d "{\"jsonrpc\":\"1.0\",\"id\":\"ops\",\"method\":\"submitblock\",\"params\":[\"$hex\"]}"
 ```
