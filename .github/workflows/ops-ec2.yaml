@@ -165,12 +165,13 @@ jobs:
           fi
 
           send() {
-            local id=$1 cmd st inv tries=48
+            # 20 min: a cold ECR pull plus genesis retries outruns anything less.
+            local id=$1 cmd st inv budget_secs=1200
             cmd=$(aws ssm send-command --instance-ids "$id" \
               --document-name AWS-RunShellScript \
               --parameters "$(jq -nc --arg c "$CMD" '{commands:[$c]}')" \
               --query Command.CommandId --output text)
-            for _ in $(seq 1 $tries); do
+            for _ in $(seq 1 $((budget_secs / 5))); do
               inv=$(aws ssm get-command-invocation --command-id "$cmd" \
                 --instance-id "$id" 2>/dev/null || echo '{}')
               st=$(jq -r '.Status // "Pending"' <<<"$inv")
@@ -187,7 +188,7 @@ jobs:
               Success) ;;
               # The poll gave up; the command did not. A promote rolls back on this.
               Pending|InProgress|Delayed)
-                echo "::error::$id: $ACTION still running after $((tries * 5))s — settle it with: aws ssm get-command-invocation --command-id $cmd --instance-id $id"
+                echo "::error::$id: $ACTION still running after ${budget_secs}s — settle it with: aws ssm get-command-invocation --command-id $cmd --instance-id $id"
                 return 1 ;;
               *) echo "::error::$id: $ACTION -> $st"; return 1 ;;
             esac
