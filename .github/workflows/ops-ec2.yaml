@@ -56,21 +56,23 @@ jobs:
           INSTANCE_ID: ${{ inputs.instance_id }}
           REF: ${{ inputs.ref }}
         run: |
-          # Validated here, before the tag step: a bad tag must not abort the
-          # run after the Role tag has already moved.
-          printf '%s' "$IMAGE_TAG" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$' \
+          # Validated here, before the tag step: a bad input must not abort the
+          # run after the Role tag has already moved. `[[ =~ ]]`, not grep: grep
+          # anchors per line, so a newline smuggles the rest past an anchored
+          # pattern and into the root shell on the box.
+          [[ "$IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$ ]] \
             || { echo "::error::invalid image tag: $IMAGE_TAG"; exit 1; }
           # $REF lands in FILES_URL; '.' and '/' are legal in a branch name, so
-          # '..' has to be rejected separately or the URL can traverse.
-          printf '%s' "$REF" | grep -Eq '^[A-Za-z0-9._/-]{1,255}$' \
+          # '..' needs rejecting separately or the URL can traverse. A case, not
+          # `[[ ]] &&`: a false && list is non-zero and would abort under -e.
+          [[ "$REF" =~ ^[A-Za-z0-9._/-]{1,255}$ ]] \
             || { echo "::error::invalid ref: $REF"; exit 1; }
-          printf '%s' "$REF" | grep -qv '\.\.' \
-            || { echo "::error::invalid ref: $REF"; exit 1; }
+          case "$REF" in *..*) echo "::error::invalid ref: $REF"; exit 1 ;; esac
           if [ "$ACTION" = promote ] && [ -z "$INSTANCE_ID" ]; then
             echo "::error::promote needs an explicit instance_id — its target is the new leader"; exit 1
           fi
           if [ -n "$INSTANCE_ID" ]; then
-            printf '%s' "$INSTANCE_ID" | grep -Eq '^i-[0-9a-f]{8,17}$' \
+            [[ "$INSTANCE_ID" =~ ^i-[0-9a-f]{8,17}$ ]] \
               || { echo "::error::invalid instance id: $INSTANCE_ID"; exit 1; }
             # Confirm it is one of ours before acting on it. Without this an
             # explicit instance_id reaches any instance in the account.
