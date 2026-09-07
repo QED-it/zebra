@@ -10,6 +10,7 @@ initial_testnet_peers = []
 # IDENTICAL on both nodes
 network_name = "ZSA1_1"
 network_magic = [0, 1, 0, 255]
+genesis_hash = "f41f61ddf9610ae40f519ad2e9e543e065ef0357eeecf5a4cc08a765d9505756"
 disable_pow = true
 # else the default testnet funding streams fail a startup address-count assert
 extend_funding_stream_addresses_as_required = true
