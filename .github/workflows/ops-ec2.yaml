@@ -171,8 +171,7 @@ jobs:
               --document-name AWS-RunShellScript \
               --parameters "$(jq -nc --arg c "$CMD" '{commands:[$c]}')" \
               --query Command.CommandId --output text) || cmd=""
-            # Inside `if`/`!` errexit is off; an empty id would poll for the
-            # whole budget and then print a settle command with no id in it.
+            # errexit is off inside `if`; an empty id would poll the whole budget.
             [ -n "$cmd" ] || { echo "::error::$id: send-command failed"; return 1; }
             for _ in $(seq 1 $((budget_secs / 5))); do
               inv=$(aws ssm get-command-invocation --command-id "$cmd" \
@@ -201,15 +200,12 @@ jobs:
           # only) will not stand down it still holds the tunnel, so roll the tag
           # back instead of giving one hostname two connectors. Untag the target
           # first: a rollback that dies partway then leaves no leader, not two.
-          # The message goes out before the tag calls so a failed call still
-          # leaves a readable trail, not just an AWS CLI error.
           if [ -n "$ALSO_ID" ] && ! send "$ALSO_ID"; then
             echo "::error::$ALSO_ID would not stand down; rolling the Role tag back to it"
             aws ec2 delete-tags --resources "$TARGET_ID" --tags Key=Role
             aws ec2 create-tags --resources "$ALSO_ID" --tags Key=Role,Value=leader
-            # Its apply may have run partway, or still be running, and taken the
-            # connector down before the tag came back. Only a fresh apply
-            # re-converges it; not done here since one may still be in flight.
+            # Its apply may have already dropped the connector; a fresh apply
+            # fixes that, but not here since one may still be in flight.
             echo "::error::Role tag rolled back to $ALSO_ID; once its command settles, run apply on it to make sure it holds the tunnel"
             exit 1
           fi
