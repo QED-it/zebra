@@ -27,6 +27,9 @@ env:
   RUST_LIB_BACKTRACE: 1
   RUST_LOG: info
   COLORBT_SHOW_HIDDEN: 1
+  # Mirror the cfgs in .cargo/config.toml: RUSTFLAGS/RUSTDOCFLAGS replace the
+  # config's rustflags rather than adding to them, compiling out NU7/ZSA code.
+  ZEBRA_CFGS: '--cfg zcash_unstable="nu7" --cfg feature="tx_v6"'
 
 jobs:
   changes:
@@ -118,6 +121,7 @@ jobs:
 
       - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 #v1.16.1
         with:
+          rustflags: '-D warnings ${{ env.ZEBRA_CFGS }}'
           # TODO: QED-it temp Rust 1.94 pin: stable for Zebra v4.2.0 CI; remove before upstream merge.
           toolchain: "1.94"
           components: clippy
@@ -182,6 +186,7 @@ jobs:
 
       - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 #v1.16.1
         with:
+          rustflags: '-D warnings ${{ env.ZEBRA_CFGS }}'
           toolchain: ${{ steps.msrv.outputs.version }}
           components: clippy
           cache-key: crate-build-msrv-${{ matrix.crate }}
