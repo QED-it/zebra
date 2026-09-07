@@ -165,12 +165,12 @@ jobs:
           fi
 
           send() {
-            local id=$1 cmd st inv
+            local id=$1 cmd st inv tries=48
             cmd=$(aws ssm send-command --instance-ids "$id" \
               --document-name AWS-RunShellScript \
               --parameters "$(jq -nc --arg c "$CMD" '{commands:[$c]}')" \
               --query Command.CommandId --output text)
-            for _ in $(seq 1 48); do
+            for _ in $(seq 1 $tries); do
               inv=$(aws ssm get-command-invocation --command-id "$cmd" \
                 --instance-id "$id" 2>/dev/null || echo '{}')
               st=$(jq -r '.Status // "Pending"' <<<"$inv")
@@ -183,7 +183,14 @@ jobs:
               jq -r '.StandardOutputContent // "", .StandardErrorContent // ""' <<<"$inv"
               echo '```'
             } | tee -a "$GITHUB_STEP_SUMMARY"
-            [ "$st" = Success ] || { echo "::error::$id: $ACTION -> $st"; return 1; }
+            case "$st" in
+              Success) ;;
+              # The poll gave up; the command did not. A promote rolls back on this.
+              Pending|InProgress|Delayed)
+                echo "::error::$id: $ACTION still running after $((tries * 5))s — settle it with: aws ssm get-command-invocation --command-id $cmd --instance-id $id"
+                return 1 ;;
+              *) echo "::error::$id: $ACTION -> $st"; return 1 ;;
+            esac
           }
 
           # The tag has already moved. If the outgoing leader ($ALSO_ID, promote
