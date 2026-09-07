@@ -56,21 +56,19 @@ jobs:
           INSTANCE_ID: ${{ inputs.instance_id }}
           REF: ${{ inputs.ref }}
         run: |
-          # Validated here, before the tag step: a bad tag must not abort the
-          # run after the Role tag has already moved.
-          printf '%s' "$IMAGE_TAG" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$' \
+          # Validate before the tag step, so a bad input never aborts a run after
+          # the tag moved. `[[ =~ ]]` not grep: grep anchors per line, newline bypasses it.
+          [[ "$IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$ ]] \
             || { echo "::error::invalid image tag: $IMAGE_TAG"; exit 1; }
-          # $REF lands in FILES_URL; '.' and '/' are legal in a branch name, so
-          # '..' has to be rejected separately or the URL can traverse.
-          printf '%s' "$REF" | grep -Eq '^[A-Za-z0-9._/-]{1,255}$' \
+          # $REF lands in FILES_URL; '..' must be rejected or the URL can traverse.
+          [[ "$REF" =~ ^[A-Za-z0-9._/-]{1,255}$ ]] \
             || { echo "::error::invalid ref: $REF"; exit 1; }
-          printf '%s' "$REF" | grep -qv '\.\.' \
-            || { echo "::error::invalid ref: $REF"; exit 1; }
+          case "$REF" in *..*) echo "::error::invalid ref: $REF"; exit 1 ;; esac
           if [ "$ACTION" = promote ] && [ -z "$INSTANCE_ID" ]; then
             echo "::error::promote needs an explicit instance_id — its target is the new leader"; exit 1
           fi
           if [ -n "$INSTANCE_ID" ]; then
-            printf '%s' "$INSTANCE_ID" | grep -Eq '^i-[0-9a-f]{8,17}$' \
+            [[ "$INSTANCE_ID" =~ ^i-[0-9a-f]{8,17}$ ]] \
               || { echo "::error::invalid instance id: $INSTANCE_ID"; exit 1; }
             # Confirm it is one of ours before acting on it. Without this an
             # explicit instance_id reaches any instance in the account.
@@ -92,10 +90,9 @@ jobs:
           echo "id=$ID" >> $GITHUB_OUTPUT
           echo "::notice::target $ID"
 
-      # promote/demote are tag moves, done here. The box never runs them; it
-      # only runs `apply` and matches whatever the tag now says. The old leader
-      # is applied to first and is a hard gate: if it fails, the new one is not
-      # brought up.
+      # promote/demote only move the tag; the box just runs `apply` and follows it.
+      # On promote the old leader is stood down first; if that fails, run step
+      # rolls the tag back.
       - id: tag
         if: contains(fromJSON('["promote","demote"]'), inputs.action)
         env:
@@ -163,12 +160,15 @@ jobs:
           fi
 
           send() {
-            local id=$1 cmd st inv
+            # 20 min: a cold ECR pull plus genesis retries outruns anything less.
+            local id=$1 cmd st inv budget_secs=1200
             cmd=$(aws ssm send-command --instance-ids "$id" \
               --document-name AWS-RunShellScript \
               --parameters "$(jq -nc --arg c "$CMD" '{commands:[$c]}')" \
-              --query Command.CommandId --output text)
-            for _ in $(seq 1 48); do
+              --query Command.CommandId --output text) || cmd=""
+            # errexit is off inside `if`; an empty id would poll the whole budget.
+            [ -n "$cmd" ] || { echo "::error::$id: send-command failed"; return 1; }
+            for _ in $(seq 1 $((budget_secs / 5))); do
               inv=$(aws ssm get-command-invocation --command-id "$cmd" \
                 --instance-id "$id" 2>/dev/null || echo '{}')
               st=$(jq -r '.Status // "Pending"' <<<"$inv")
@@ -181,14 +181,26 @@ jobs:
               jq -r '.StandardOutputContent // "", .StandardErrorContent // ""' <<<"$inv"
               echo '```'
             } | tee -a "$GITHUB_STEP_SUMMARY"
-            [ "$st" = Success ] || { echo "::error::$id: $ACTION -> $st"; return 1; }
+            case "$st" in
+              Success) ;;
+              # The poll gave up; the command did not. A promote rolls back on this.
+              Pending|InProgress|Delayed)
+                echo "::error::$id: $ACTION still running after ${budget_secs}s — settle it with: aws ssm get-command-invocation --command-id $cmd --instance-id $id"
+                return 1 ;;
+              *) echo "::error::$id: $ACTION -> $st"; return 1 ;;
+            esac
           }
 
-          RC=0
-          # $ALSO_ID is the outgoing leader on promote. If standing it down
-          # fails, stop: bringing the new one up would leave two connectors.
-          for I in $ALSO_ID; do
-            send "$I" || { echo "::error::failed to stand down $I; not promoting"; exit 1; }
-          done
-          for I in $TARGET_ID; do send "$I" || RC=1; done
-          exit $RC
+          # Tag already moved. If old leader ($ALSO_ID, promote only) won't stand
+          # down, roll the tag back rather than run two connectors. Untag target
+          # first so a half-done rollback leaves no leader, not two.
+          if [ -n "$ALSO_ID" ] && ! send "$ALSO_ID"; then
+            echo "::error::$ALSO_ID would not stand down; rolling the Role tag back to it"
+            aws ec2 delete-tags --resources "$TARGET_ID" --tags Key=Role
+            aws ec2 create-tags --resources "$ALSO_ID" --tags Key=Role,Value=leader
+            # Its apply may have already dropped the connector; a fresh apply
+            # fixes that, but not here since one may still be in flight.
+            echo "::error::Role tag rolled back to $ALSO_ID; once its command settles, run apply on it to make sure it holds the tunnel"
+            exit 1
+          fi
+          send "$TARGET_ID"
