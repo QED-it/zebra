@@ -1,0 +1,53 @@
+# IMAGE and CF_TUNNEL_TOKEN come from /opt/zebra/.env
+services:
+  zebra-testnet:
+    image: ${IMAGE}
+    container_name: zebra-testnet
+    restart: unless-stopped
+    # The image ENTRYPOINT hardcodes regtest-config.toml
+    entrypoint: ["target/release/zebrad", "-c", "/app/testnet-single-node-deploy/testnet-config.toml"]
+    environment:
+      # Only delta from the in-image config: the node is driven remotely, and
+      # without this zebrad reports itself ~4.1M blocks behind real Testnet and
+      # getblocktemplate refuses.
+      - ZEBRA_RPC__DEBUG_FORCE_FINISHED_SYNC=true
+    ports:
+      - "18232:18232" # RPC, unauthenticated
+      - "18233:18233" # P2P
+    logging:
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # Started and stopped only by leader.sh. The profile keeps a bare
+  # `docker compose up -d` from starting a second connector by accident;
+  # `unless-stopped` brings the leader's back after a reboot, and leader.sh
+  # stops it at boot on a box that is no longer the leader.
+  cloudflared:
+    profiles: [tunnel]
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    # Token via env, not argv: on the command line it shows up in `docker
+    # inspect` and the host process list.
+    environment:
+      - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
+    command: tunnel run
+
+  dozzle:
+    image: amir20/dozzle:latest
+    restart: unless-stopped
+    environment:
+      - DOZZLE_FILTER=name=zebra-testnet
+      - DOZZLE_NO_ANALYTICS=true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  logs-api:
+    image: python:3.12-slim
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /opt/zebra/logs-api.py:/app/logs-api.py:ro
+    command: ["python", "-u", "/app/logs-api.py"]
