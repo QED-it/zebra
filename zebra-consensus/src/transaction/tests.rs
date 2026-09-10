@@ -1290,6 +1290,66 @@ fn v6_coinbase_transaction_with_enable_zsa_flag_fails_validation() {
     );
 }
 
+/// Returns the first transaction carrying an issue bundle from the ZSA workflow blocks.
+#[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
+fn v6_transaction_with_issue_bundle() -> Transaction {
+    use zebra_test::vectors::ORCHARD_ZSA_WORKFLOW_BLOCKS;
+
+    ORCHARD_ZSA_WORKFLOW_BLOCKS
+        .iter()
+        .flat_map(|workflow_block| {
+            Block::zcash_deserialize(workflow_block.bytes)
+                .expect("workflow block should deserialize")
+                .transactions
+                .iter()
+                .map(|tx| tx.as_ref().clone())
+                .collect::<Vec<_>>()
+        })
+        .find(|tx| tx.orchard_zsa_issue_data().is_some())
+        .expect("workflow blocks must contain a transaction with an issue bundle")
+}
+
+/// An issue bundle signature that does not match the transaction's sighash must be rejected.
+///
+/// The signature commits to the sighash, so verifying it against any other value fails. This
+/// is what tampering with a transaction in flight produces: the issue bundle still parses, but
+/// no longer authorizes the transaction it now sits in.
+///
+/// The accepting case is covered end-to-end by `orchard_zsa::tests::check_orchard_zsa_workflow`,
+/// which runs these same blocks through the block verifier and would fail if a valid signature
+/// were rejected here.
+#[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
+#[test]
+fn v6_issue_bundle_signature_is_rejected_for_wrong_sighash() {
+    use ::orchard::issuance::Error as IssueBundleError;
+
+    let tx = v6_transaction_with_issue_bundle();
+    let wrong_sighash = SigHash([0x00; 32]);
+
+    assert_eq!(
+        check::issue_bundle_signature(&tx, &wrong_sighash),
+        Err(TransactionError::InvalidIssueBundleSignature(
+            IssueBundleError::InvalidIssueBundleSig
+        ))
+    );
+}
+
+/// A transaction without an issue bundle has no issuance signature to check.
+#[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
+#[test]
+fn transaction_without_issue_bundle_skips_issuance_signature_check() {
+    let tx = v5_transactions(Network::Mainnet.block_iter())
+        .next()
+        .expect("V5 tx");
+
+    assert!(tx.orchard_zsa_issue_data().is_none());
+
+    assert_eq!(
+        check::issue_bundle_signature(&tx, &SigHash([0x00; 32])),
+        Ok(())
+    );
+}
+
 #[tokio::test]
 async fn v5_transaction_is_rejected_before_nu5_activation() {
     let sapling = NetworkUpgrade::Sapling;
@@ -4109,7 +4169,6 @@ async fn block_with_garbage_orchard_proofs_is_rejected() {
         0,
         0,
         Arc::new(vec![spent_output]),
-        SigHash([0; 32]),
     )
     .unwrap();
 

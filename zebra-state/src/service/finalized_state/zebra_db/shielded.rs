@@ -556,11 +556,6 @@ impl DiskWriteBatch {
     #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
     /// Prepare a database batch containing `finalized.block`'s asset issuance
     /// and return it (without actually writing anything).
-    ///
-    /// # Errors
-    ///
-    /// - Returns an error if asset state changes cannot be calculated from the block's transactions
-    #[allow(clippy::unwrap_in_result)]
     pub fn prepare_issued_assets_batch(&mut self, zebra_db: &ZebraDb, finalized: &FinalizedBlock) {
         let mut batch = zebra_db.issued_assets_cf().with_batch_for_writing(self);
         let asset_changes = if let Some(asset_changes) = finalized.issued_asset_changes.as_ref() {
@@ -568,12 +563,16 @@ impl DiskWriteBatch {
         } else {
             // Recalculate changes from transactions if not provided.
             // This happens for Checkpoint Verified Blocks loaded during startup.
-            IssuedAssetChanges::validate_and_get_changes(
+            IssuedAssetChanges::validate_state_and_get_changes(
                 &finalized.block.transactions,
-                None, // No sighashes - uses trusted validation without signature checks
                 |asset_base| zebra_db.issued_asset(asset_base),
             )
-            .expect("valid issued assets changes")
+            .expect(
+                "issuance is valid because `issued_asset_changes` is only `None` for a \
+                 checkpoint-verified block, whose hash matches a hardcoded checkpoint, so its \
+                 contents are a prefix of the Zcash chain and its issuance has already been \
+                 accepted by the network",
+            )
         };
         // Add only the new states to the batch.
         for (asset_base, (_old_state, new_state)) in asset_changes.iter() {

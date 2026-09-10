@@ -23,7 +23,7 @@ use zebra_chain::{
         NetworkKind,
     },
     serialization::{DateTime32, ZcashDeserializeInto, ZcashSerialize},
-    transaction::{zip317, SigHash, UnminedTxId, VerifiedUnminedTx},
+    transaction::{zip317, UnminedTxId, VerifiedUnminedTx},
     work::difficulty::{CompactDifficulty, ExpandedDifficulty, U256},
 };
 use zebra_consensus::MAX_BLOCK_SIGOPS;
@@ -2337,7 +2337,6 @@ async fn gbt_with(net: Network, addr: ZcashAddress) {
         time: None,
         height: None,
         spent_outputs: std::sync::Arc::new(vec![]),
-        tx_sighash: SigHash([0; 32]),
     };
 
     let next_fake_tip_hash =

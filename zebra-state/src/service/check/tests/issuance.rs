@@ -72,9 +72,8 @@ fn check_burns_and_issuance() {
             .cloned()
             .unwrap_or_else(|| empty_chain.clone());
 
-        let issued_asset_changes_result = IssuedAssetChanges::validate_and_get_changes(
+        let issued_asset_changes_result = IssuedAssetChanges::validate_state_and_get_changes(
             &block.transactions,
-            None,
             |asset_base: &AssetBase| {
                 read::asset_state(Some(&chain), &finalized_state.db, asset_base)
             },

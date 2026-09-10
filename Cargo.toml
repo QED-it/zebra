@@ -387,7 +387,7 @@ halo2_poseidon = { version = "0.1.0", git = "https://github.com/QED-it/halo2", r
 sinsemilla = { git = "https://github.com/zcash/sinsemilla", rev = "aabb707e862bc3d7b803c77d14e5a771bcee3e8c" }
 zcash_note_encryption = { version = "0.4.1", git = "https://github.com/zcash/zcash_note_encryption", rev = "9f7e93d42cef839d02b9d75918117941d453f8cb" }
 sapling-crypto = { version = "0.7", git = "https://github.com/QED-it/sapling-crypto", rev = "e785faaa5eaf67bd2cb328fdd82a345df44e5754" }
-orchard = { version = "0.14.0", git = "https://github.com/QED-it/orchard", rev = "cf801a5d6701bc128e21678ba0034564af4a2aca" }
+orchard = { version = "0.14.0", git = "https://github.com/QED-it/orchard", rev = "bc3dea42b44a0afd70277d98b4a626ba12f6cda8" }
 zcash_primitives = { version = "0.28.0", git = "https://github.com/QED-it/librustzcash", rev = "c5c232db9c54eeb8bc1d0f4dc1b8a0e40f981bb0" }
 zcash_protocol = { version = "0.9.0", git = "https://github.com/QED-it/librustzcash", rev = "c5c232db9c54eeb8bc1d0f4dc1b8a0e40f981bb0" }
 zcash_address = { version = "0.12.0", git = "https://github.com/QED-it/librustzcash", rev = "c5c232db9c54eeb8bc1d0f4dc1b8a0e40f981bb0" }

@@ -19,6 +19,11 @@ use zebra_chain::{
 };
 use zebra_state::ValidateContextError;
 
+// `orchard` in this module refers to `zebra_chain::orchard`, so the `orchard` crate itself
+// needs an explicit path.
+#[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
+use ::orchard::issuance::Error as IssueBundleError;
+
 use crate::{block::MAX_BLOCK_SIGOPS, BoxError};
 
 #[cfg(any(test, feature = "proptest-impl"))]
@@ -249,6 +254,11 @@ pub enum TransactionError {
     #[error("Orchard proof has a non-canonical size")]
     OrchardProofSize,
 
+    #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
+    #[error("issue bundle authorization signature is invalid: {0}")]
+    #[cfg_attr(any(test, feature = "proptest-impl"), proptest(skip))]
+    InvalidIssueBundleSignature(IssueBundleError),
+
     #[error("unexpected error")]
     Other(String),
 }
@@ -370,6 +380,15 @@ impl TransactionError {
 
             #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
             CoinbaseHasEnableZSA => 100,
+
+            // A forged issuance signature cannot be produced by accident, so it is
+            // misbehaviour. Other issuance signature errors are not scored here: the only
+            // other one is `InvalidSighashKind`, which is currently unreachable because
+            // `zcash_primitives` rejects unknown sighash kinds while parsing. If ZIP-246 adds
+            // a second kind, a peer sending the other kind is using a format we do not accept
+            // yet, which is not by itself evidence of malice.
+            #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
+            InvalidIssueBundleSignature(IssueBundleError::InvalidIssueBundleSig) => 100,
 
             _other => 0,
         }
