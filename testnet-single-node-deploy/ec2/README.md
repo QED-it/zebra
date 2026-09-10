@@ -114,8 +114,8 @@ docker build -f testnet-single-node-deploy/dockerfile -t $REPO:latest . && docke
 Must be built from this branch: it carries the ZSA transaction format the node
 produces.
 
-**2. Launch** — Console → Launch Templates → `zebra-testnet` → *Launch instance
-from template*. First boot takes 2-3 min. It comes up without a connector until
+**2. Launch** — Console → Launch Templates → `zebra-testnet` → _Launch instance
+from template_. First boot takes 2-3 min. It comes up without a connector until
 the workflow tags it `Role=leader`.
 
 **3. Genesis + verify**
