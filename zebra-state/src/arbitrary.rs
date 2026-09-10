@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use zebra_chain::{
-    amount::Amount,
+    amount::{Amount, DeferredPoolBalanceChange},
     block::{self, Block},
     transaction::Transaction,
     transparent,
@@ -85,6 +85,7 @@ impl ContextuallyVerifiedBlock {
         ContextuallyVerifiedBlock::with_block_and_spent_utxos(
             block,
             zero_spent_utxos,
+            DeferredPoolBalanceChange::zero(),
             #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
             Default::default(),
         )
@@ -103,7 +104,6 @@ impl ContextuallyVerifiedBlock {
             new_outputs,
             transaction_hashes,
             transaction_sighashes,
-            deferred_pool_balance_change: _,
         } = block.into();
 
         Self {

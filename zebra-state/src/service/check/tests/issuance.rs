@@ -80,7 +80,7 @@ fn check_burns_and_issuance() {
             },
         );
 
-        let CheckpointVerifiedBlock(block) = CheckpointVerifiedBlock::new(block, None, None);
+        let CheckpointVerifiedBlock(block) = CheckpointVerifiedBlock::new(block, None);
 
         let commit_result =
             validate_and_commit_non_finalized(&finalized_state.db, &mut non_finalized_state, block);

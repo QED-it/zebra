@@ -153,7 +153,7 @@ impl Transaction {
         ),
     > + 'static {
         (
-            NetworkUpgrade::branch_id_strategy(),
+            NetworkUpgrade::nu5_branch_id_strategy(),
             any::<LockTime>(),
             any::<block::Height>(),
             transparent::Input::vec_strategy(&ledger_state, MAX_ARBITRARY_ITEMS),
@@ -793,7 +793,6 @@ impl<Flavor: orchard::ShieldedDataFlavor + 'static> Arbitrary for orchard::Shiel
             any::<orchard::shielded_data::Flags>(),
             any::<Amount>(),
             any::<orchard::tree::Root>(),
-            any::<Halo2Proof>(),
             vec(
                 any::<orchard::shielded_data::AuthorizedAction<Flavor>>(),
                 1..MAX_ARBITRARY_ITEMS,
@@ -802,6 +801,32 @@ impl<Flavor: orchard::ShieldedDataFlavor + 'static> Arbitrary for orchard::Shiel
             #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
             any::<Flavor::BurnType>(),
         )
+            .prop_flat_map(|props| {
+                #[cfg(not(all(zcash_unstable = "nu7", feature = "tx_v6")))]
+                let (flags, value_balance, shared_anchor, actions, binding_sig) = props;
+
+                #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
+                let (flags, value_balance, shared_anchor, actions, binding_sig, burn) = props;
+
+                // Since NU6.2, an Orchard proof must have the canonical length for its number of
+                // actions (`2272 * num_actions + 2720` bytes), otherwise it is rejected as
+                // non-canonical (GHSA-jfw5-j458-pfv6). The V5 txid is computed by round-tripping
+                // through `librustzcash`, which enforces this length, so a proof of any other
+                // size makes the round-trip (and thus `Transaction::hash`) fail. Generate a proof
+                // of exactly the expected length, which depends on the number of actions.
+                let proof_size =
+                    orchard::shielded_data::expected_proof_size::<Flavor>(actions.len());
+                (
+                    Just(flags),
+                    Just(value_balance),
+                    Just(shared_anchor),
+                    vec(any::<u8>(), proof_size).prop_map(Halo2Proof),
+                    Just(actions),
+                    Just(binding_sig),
+                    #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
+                    Just(burn),
+                )
+            })
             .prop_map(|props| {
                 #[cfg(not(all(zcash_unstable = "nu7", feature = "tx_v6")))]
                 let (flags, value_balance, shared_anchor, proof, actions, binding_sig) = props;
@@ -879,7 +904,10 @@ impl Arbitrary for Transaction {
             NetworkUpgrade::Blossom | NetworkUpgrade::Heartwood | NetworkUpgrade::Canopy => {
                 Self::v4_strategy(ledger_state)
             }
-            NetworkUpgrade::Nu5 | NetworkUpgrade::Nu6 | NetworkUpgrade::Nu6_1 => prop_oneof![
+            NetworkUpgrade::Nu5
+            | NetworkUpgrade::Nu6
+            | NetworkUpgrade::Nu6_1
+            | NetworkUpgrade::Nu6_2 => prop_oneof![
                 Self::v4_strategy(ledger_state.clone()),
                 Self::v5_strategy(ledger_state)
             ]
@@ -935,6 +963,7 @@ impl Arbitrary for VerifiedUnminedTx {
             any::<UnminedTx>(),
             any::<Amount<NonNegative>>(),
             any::<u32>(),
+            any::<u32>(),
             any::<(u16, u16)>().prop_map(|(unpaid_actions, conventional_actions)| {
                 (
                     unpaid_actions % conventional_actions.saturating_add(1),
@@ -951,6 +980,7 @@ impl Arbitrary for VerifiedUnminedTx {
                     transaction,
                     miner_fee,
                     sigops,
+                    p2sh_sigops,
                     (conventional_actions, mut unpaid_actions),
                     fee_weight_ratio,
                     time,
@@ -968,6 +998,7 @@ impl Arbitrary for VerifiedUnminedTx {
                         transaction,
                         miner_fee,
                         legacy_sigop_count: sigops,
+                        p2sh_sigop_count: p2sh_sigops,
                         conventional_actions,
                         unpaid_actions,
                         fee_weight_ratio,

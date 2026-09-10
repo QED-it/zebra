@@ -362,8 +362,15 @@ fn sanitize_transaction_version(
             BeforeOverwinter => 2,
             Overwinter => 3,
             Sapling | Blossom | Heartwood | Canopy => 4,
-            // FIXME: Use 6 for Nu7
-            Nu5 | Nu6 | Nu6_1 | Nu7 => 5,
+            Nu5 | Nu6 | Nu6_1 | Nu6_2 => 5,
+
+            // Without ZSA V6 support, NU7 transactions are limited to V5.
+            #[cfg(not(all(zcash_unstable = "nu7", feature = "tx_v6")))]
+            Nu7 => 5,
+
+            // With ZSA V6 support, NU7 also permits V6 transactions.
+            #[cfg(all(zcash_unstable = "nu7", feature = "tx_v6"))]
+            Nu7 => 6,
 
             #[cfg(zcash_unstable = "zfuture")]
             NetworkUpgrade::ZFuture => u8::MAX,

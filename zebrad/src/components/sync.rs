@@ -2,7 +2,14 @@
 //!
 //! It is used when Zebra is a long way behind the current chain tip.
 
-use std::{cmp::max, collections::HashSet, convert, pin::Pin, task::Poll, time::Duration};
+use std::{
+    cmp::max,
+    collections::{HashMap, HashSet},
+    convert,
+    pin::Pin,
+    task::Poll,
+    time::Duration,
+};
 
 use color_eyre::eyre::{eyre, Report};
 use futures::stream::{FuturesUnordered, StreamExt};
@@ -59,6 +66,17 @@ const FANOUT: usize = 3;
 /// We also hedge requests, so we may retry up to twice this many times. Hedged
 /// retries may be concurrent, inner retries are sequential.
 const BLOCK_DOWNLOAD_RETRY_LIMIT: usize = 3;
+
+/// Controls how many times the syncer will re-request a block whose download
+/// failed because no peer delivered it (a `NotFound`), before giving up and
+/// letting the normal tip re-walk handle it.
+///
+/// Without this re-request, a single missing block at the checkpoint frontier
+/// is dropped and never re-fetched, wedging the whole verify pipeline until the
+/// 8-minute `BLOCK_VERIFY_TIMEOUT` fires (#5709). Each attempt already goes
+/// through the tower-level `BLOCK_DOWNLOAD_RETRY_LIMIT` (and hedging), so this
+/// is a coarse, hash-scoped retry on top of an exhausted per-request retry.
+const MAX_BLOCK_REOBTAIN_RETRIES: u8 = 3;
 
 /// A lower bound on the user-specified checkpoint verification concurrency limit.
 ///
@@ -205,6 +223,11 @@ const FINAL_CHECKPOINT_BLOCK_VERIFY_TIMEOUT_LIMIT: HeightDiff = 100;
 /// previous sync runs.
 const SYNC_RESTART_DELAY: Duration = Duration::from_secs(67);
 
+/// In regtest, use a much shorter restart delay so that downstream nodes pick up
+/// newly-mined blocks quickly (e.g. after `generate(N)` in integration tests).
+/// The default 67-second delay exceeds the typical `sync_all` timeout of 60 seconds.
+const REGTEST_SYNC_RESTART_DELAY: Duration = Duration::from_secs(2);
+
 /// Controls how long we wait to retry a failed attempt to download
 /// and verify the genesis block.
 ///
@@ -342,6 +365,9 @@ where
     /// The configured full verification concurrency limit, after applying the minimum limit.
     full_verify_concurrency_limit: usize,
 
+    /// Whether the node is running on regtest. Used to apply a shorter sync restart delay.
+    is_regtest: bool,
+
     // Services
     //
     /// A network service which is used to perform ObtainTips and ExtendTips
@@ -382,6 +408,14 @@ where
 
     /// Sender for reporting peer addresses that advertised unexpectedly invalid transactions.
     misbehavior_sender: mpsc::Sender<(PeerSocketAddr, u32)>,
+
+    /// Blocks whose download failed with `NotFound` and should be re-requested on
+    /// the next sync round, instead of being silently dropped (#5709).
+    reobtain_hashes: IndexSet<block::Hash>,
+
+    /// Per-hash count of how many times a `NotFound` block has been re-requested,
+    /// bounded by [`MAX_BLOCK_REOBTAIN_RETRIES`].
+    block_reobtain_retries: HashMap<block::Hash, u8>,
 }
 
 /// Polls the network to determine whether further blocks are available and
@@ -487,7 +521,7 @@ where
         // We apply a timeout to the verifier to avoid hangs due to missing earlier blocks.
         let verifier = Timeout::new(verifier, BLOCK_VERIFY_TIMEOUT);
 
-        let (sync_status, recent_syncs) = SyncStatus::new();
+        let (sync_status, recent_syncs) = SyncStatus::new_for_network(&config.network.network);
 
         let (past_lookahead_limit_sender, past_lookahead_limit_receiver) = watch::channel(false);
         let past_lookahead_limit_receiver = zs::WatchReceiver::new(past_lookahead_limit_receiver);
@@ -509,6 +543,7 @@ where
             max_checkpoint_height,
             checkpoint_verify_concurrency_limit,
             full_verify_concurrency_limit,
+            is_regtest: config.network.network.is_regtest(),
             tip_network,
             downloads,
             state,
@@ -517,6 +552,8 @@ where
             recent_syncs,
             past_lookahead_limit_receiver,
             misbehavior_sender,
+            reobtain_hashes: IndexSet::new(),
+            block_reobtain_retries: HashMap::new(),
         };
 
         (new_syncer, sync_status)
@@ -536,12 +573,17 @@ where
 
             self.update_metrics();
 
+            let restart_delay = if self.is_regtest {
+                REGTEST_SYNC_RESTART_DELAY
+            } else {
+                SYNC_RESTART_DELAY
+            };
             info!(
-                timeout = ?SYNC_RESTART_DELAY,
+                timeout = ?restart_delay,
                 state_tip = ?self.latest_chain_tip.best_tip_height(),
                 "waiting to restart sync"
             );
-            sleep(SYNC_RESTART_DELAY).await;
+            sleep(restart_delay).await;
         }
     }
 
@@ -560,6 +602,9 @@ where
     #[instrument(skip(self))]
     async fn try_to_sync(&mut self) -> Result<(), Report> {
         self.prospective_tips = HashSet::new();
+
+        self.reobtain_hashes.clear();
+        self.block_reobtain_retries.clear();
 
         info!(
             state_tip = ?self.latest_chain_tip.best_tip_height(),
@@ -609,6 +654,9 @@ where
             // the syncer will reset itself.
             self.handle_block_response(rsp)?;
         }
+        // Re-request any blocks that just failed with `NotFound`, before pausing
+        // on the lookahead limit (#5709).
+        self.reobtain_missing_blocks().await;
         self.update_metrics();
 
         // Pause new downloads while the syncer or downloader are past their lookahead limits.
@@ -631,6 +679,10 @@ where
             let response = self.downloads.next().await.expect("downloads is nonempty");
 
             self.handle_block_response(response)?;
+            // A block that just failed with `NotFound` is what unblocks the
+            // verifier, so re-request it now rather than waiting for the pause
+            // loop to clear — which it cannot until this block arrives (#5709).
+            self.reobtain_missing_blocks().await;
             self.update_metrics();
         }
 
@@ -665,6 +717,28 @@ where
         self.update_metrics();
 
         Ok(extra_hashes)
+    }
+
+    /// Re-issues downloads for blocks that failed with `NotFound` (#5709).
+    ///
+    /// These are re-requested even while the download pipeline is past its
+    /// lookahead limit, because a missing low block is exactly what stops the
+    /// checkpoint verifier from advancing. Waiting for the lookahead pause to
+    /// clear would deadlock — the pause cannot clear until this block arrives.
+    /// The per-hash retry count is bounded by [`MAX_BLOCK_REOBTAIN_RETRIES`].
+    async fn reobtain_missing_blocks(&mut self) {
+        if self.reobtain_hashes.is_empty() {
+            return;
+        }
+
+        for hash in std::mem::take(&mut self.reobtain_hashes) {
+            // The block was removed from the in-flight set when its download
+            // failed, so this re-queues it. A residual duplicate/queue error is
+            // benign — it means the block is already being handled.
+            if let Err(error) = self.downloads.download_and_verify(hash).await {
+                trace!(?hash, ?error, "re-download of missing block not queued");
+            }
+        }
     }
 
     /// Given a block_locator list fan out request for subsequent hashes to
@@ -739,13 +813,28 @@ where
                     // out-of-order first hashes.
 
                     // We use the last hash for the tip, and we want to avoid bad
-                    // tips. So we discard the last hash. (We don't need to worry
-                    // about missed downloads, because we will pick them up again
-                    // in ExtendTips.)
-                    let hashes = match hashes.as_slice() {
-                        [] => continue,
-                        [rest @ .., _last] => rest,
+                    // tips from zcashd's quirk of appending an unrelated hash.
+                    // So we discard the last hash on mainnet/testnet.
+                    // (We don't need to worry about missed downloads, because we
+                    // will pick them up again in ExtendTips.)
+                    //
+                    // In regtest we only connect to Zebra nodes, not zcashd,
+                    // so we trust all hashes in the response and keep them all.
+                    // This is necessary when there are only a small number of
+                    // blocks to sync (e.g. 2 new blocks), where stripping the
+                    // last hash leaves only 1 unknown hash and rchunks_exact(2)
+                    // would discard the entire response.
+                    let hashes = if self.is_regtest {
+                        hashes.as_slice()
+                    } else {
+                        match hashes.as_slice() {
+                            [] => continue,
+                            [rest @ .., _last] => rest,
+                        }
                     };
+                    if hashes.is_empty() {
+                        continue;
+                    }
 
                     let mut first_unknown = None;
                     for (i, &hash) in hashes.iter().enumerate() {
@@ -1058,8 +1147,18 @@ where
             IndexSet::new()
         };
 
+        // Dispatch blocks with duplicate-tolerant error handling.
+        // DuplicateBlockQueuedForDownload is caught and skipped instead of
+        // propagating — this prevents dropping unprocessed hashes from the
+        // batch, which would create frontier gaps and stalls (#5709).
         for hash in hashes.into_iter() {
-            self.downloads.download_and_verify(hash).await?;
+            match self.downloads.download_and_verify(hash).await {
+                Ok(()) => {}
+                Err(BlockDownloadVerifyError::DuplicateBlockQueuedForDownload { .. }) => {
+                    debug!("block request was already queued, continuing");
+                }
+                Err(error) => return Err(error),
+            }
         }
 
         Ok(extra_hashes)
@@ -1108,6 +1207,9 @@ where
             Ok((height, hash)) => {
                 trace!(?height, ?hash, "verified and committed block to state");
 
+                // The block arrived, so forget any re-request bookkeeping for it.
+                self.block_reobtain_retries.remove(&hash);
+
                 return Ok(());
             }
 
@@ -1121,8 +1223,49 @@ where
                     .try_send((advertiser_addr, error.misbehavior_score()));
             }
 
+            Err(BlockDownloadVerifyError::AboveLookaheadHeightLimit {
+                advertiser_addr: Some(advertiser_addr),
+                ..
+            }) => {
+                let _ = self.misbehavior_sender.try_send((advertiser_addr, 100));
+            }
+
+            Err(BlockDownloadVerifyError::InvalidHeight {
+                advertiser_addr: Some(advertiser_addr),
+                ..
+            }) => {
+                let _ = self.misbehavior_sender.try_send((advertiser_addr, 100));
+            }
+
             Err(_) => {}
         };
+
+        // A block whose download failed because no peer delivered it (`NotFound`)
+        // is otherwise dropped here and never re-requested, which wedges the
+        // checkpoint frontier until the verify timeout (#5709). Re-queue it for
+        // the next sync round, bounded by `MAX_BLOCK_REOBTAIN_RETRIES`. Consensus
+        // failures (`Invalid`/`ValidationRequestError`) are deliberately excluded —
+        // re-downloading a block the network already rejected is pointless.
+        if let Err(BlockDownloadVerifyError::DownloadFailed { error, hash }) = &response {
+            if format!("{error:?}").contains("NotFound") {
+                let attempts = self.block_reobtain_retries.entry(*hash).or_insert(0);
+                if *attempts < MAX_BLOCK_REOBTAIN_RETRIES {
+                    *attempts += 1;
+                    self.reobtain_hashes.insert(*hash);
+                    debug!(
+                        ?hash,
+                        attempts = *attempts,
+                        "re-queueing missing block for re-download"
+                    );
+                } else {
+                    debug!(
+                        ?hash,
+                        "missing block exceeded re-download retries, dropping"
+                    );
+                    self.block_reobtain_retries.remove(hash);
+                }
+            }
+        }
 
         Self::handle_response(response)
     }
@@ -1206,6 +1349,22 @@ where
                     error = ?e,
                     "block height is behind the current state tip, \
                      assuming the syncer will eventually catch up to the state, continuing"
+                );
+                false
+            }
+            BlockDownloadVerifyError::AboveLookaheadHeightLimit { .. } => {
+                debug!(
+                    error = ?e,
+                    "block height is above the lookahead limit, \
+                     dropping the block and continuing sync"
+                );
+                false
+            }
+            BlockDownloadVerifyError::InvalidHeight { .. } => {
+                debug!(
+                    error = ?e,
+                    "block has no valid height, \
+                     dropping the block and continuing sync"
                 );
                 false
             }
