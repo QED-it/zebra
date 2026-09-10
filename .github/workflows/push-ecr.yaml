@@ -42,7 +42,9 @@ jobs:
       - name: Get Git tags and set image tags
         id: vars
         run: |
-          git fetch --tags
+          # --force: on a tag push actions/checkout already has the tag, and a
+          # plain fetch refuses to overwrite it, killing the step under bash -e.
+          git fetch --tags --force
           
           # Get exact match tag if it exists (will be empty if the current commit doesn't have a tag)
           GIT_TAG=$(git describe --exact-match --tags 2>/dev/null || echo "")
