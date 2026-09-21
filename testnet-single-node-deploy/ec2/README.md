@@ -6,7 +6,7 @@ created manually in the console; the box is driven by GitHub Actions over SSM.
 
 | File | On the box |
 | --- | --- |
-| `docker-compose.yml` | `/opt/zebra/` |
+| `docker-compose.yml` | `/opt/zebra/` — pins every service's image version |
 | `ops.sh`, `leader.sh`, `logs-api.py` | `/opt/zebra/` |
 | `zebra-leader.service` | `/etc/systemd/system/` |
 
@@ -138,9 +138,13 @@ ZCASH_NODE_ADDRESS=rpc.test-zsa.org ZCASH_NODE_PORT=443 ZCASH_NODE_PROTOCOL=http
 
 ## ops.sh
 
-`deploy <tag>` · `restart` · `start` · `stop` · `recreate` · `genesis` · `logs` ·
+`deploy` · `restart` · `start` · `stop` · `recreate` · `genesis` · `logs` ·
 `status` · `apply`. Everything that starts the node re-serves genesis.
 `promote`/`demote` are workflow actions, not box actions — see above.
+
+`deploy` takes no tag: image versions are pinned per service in
+`docker-compose.yml`, so it is `pull` + `up -d` of whatever that file says. The
+workflow reaches it through `deploy-files`, which copies the files then runs it.
 
 Normally driven by the ops workflow. To run an action by hand — the box has no
 inbound ports and no SSH key, so it goes over SSM:
@@ -149,7 +153,7 @@ inbound ports and no SSH key, so it goes over SSM:
 REGION=${AWS_REGION:-eu-central-1}
 aws ssm send-command --region "$REGION" --instance-ids <id> \
   --document-name AWS-RunShellScript \
-  --parameters 'commands=["bash /opt/zebra/ops.sh <action> [tag]"]'
+  --parameters 'commands=["bash /opt/zebra/ops.sh <action>"]'
 ```
 
 Output comes back separately:
@@ -161,7 +165,8 @@ aws ssm get-command-invocation --region "$REGION" \
 ```
 
 `deploy` refreshes the ECR login itself before pulling, since the box's
-boot-time token expires after 12h.
+boot-time token expires after 12h. The registry is read from
+`docker-compose.yml`, not `.env`.
 
 ## Changing a running box
 

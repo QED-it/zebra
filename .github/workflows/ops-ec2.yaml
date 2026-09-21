@@ -6,18 +6,15 @@ on:
       action:
         type: choice
         required: true
-        options: [status, logs, genesis, restart, recreate, start, stop, deploy, apply, promote, demote, deploy-files]
-      image_tag:
-        description: deploy only
-        default: latest
+        options: [status, logs, genesis, restart, recreate, start, stop, apply, promote, demote, deploy-files]
       instance_id:
         description: Target a specific instance. Empty targets the leader. Required for promote.
         default: ""
       ref:
-        description: deploy-files only — branch to pull the box files from
+        description: deploy-files only — branch to pull compose + scripts from
         default: zsa1
       confirm:
-        description: Required for stop/demote/restart/start/recreate/deploy — type the action name
+        description: Required for stop/demote/restart/start/recreate/deploy-files — type the action name
         default: ""
 
 permissions:
@@ -39,7 +36,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Guard destructive actions
-        if: contains(fromJSON('["stop","demote","restart","start","recreate","deploy"]'), inputs.action)
+        if: contains(fromJSON('["stop","demote","restart","start","recreate","deploy-files"]'), inputs.action)
         env:
           ACTION: ${{ inputs.action }}
           CONFIRM: ${{ inputs.confirm }}
@@ -52,14 +49,11 @@ jobs:
       - id: target
         env:
           ACTION: ${{ inputs.action }}
-          IMAGE_TAG: ${{ inputs.image_tag }}
           INSTANCE_ID: ${{ inputs.instance_id }}
           REF: ${{ inputs.ref }}
         run: |
           # Validate before the tag step, so a bad input never aborts a run after
           # the tag moved. `[[ =~ ]]` not grep: grep anchors per line, newline bypasses it.
-          [[ "$IMAGE_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$ ]] \
-            || { echo "::error::invalid image tag: $IMAGE_TAG"; exit 1; }
           # $REF lands in FILES_URL; '..' must be rejected or the URL can traverse.
           [[ "$REF" =~ ^[A-Za-z0-9._/-]{1,255}$ ]] \
             || { echo "::error::invalid ref: $REF"; exit 1; }
@@ -139,20 +133,18 @@ jobs:
       - id: run
         env:
           ACTION: ${{ inputs.action }}
-          IMAGE_TAG: ${{ inputs.image_tag }}
           REF: ${{ inputs.ref }}
           TARGET_ID: ${{ steps.target.outputs.id }}
           ALSO_ID: ${{ steps.tag.outputs.also }}
         run: |
           case "$ACTION" in
             promote|demote) OPS="apply" ;;
-            deploy)         OPS="deploy $IMAGE_TAG" ;;
             *)              OPS="$ACTION" ;;
           esac
 
-          # deploy-files copies the ec2/ files from branch $REF onto the box.
-          # Files only; nothing is restarted, so a compose change takes effect
-          # on the next recreate/restart rather than immediately.
+          # deploy-files copies the ec2/ files from branch $REF onto the box and
+          # applies them: image versions are pinned in docker-compose.yml, so
+          # pulling and re-upping is what rolls a new image out.
           if [ "$ACTION" = deploy-files ]; then
             echo "::notice::pulling from $FILES_URL"
             CMD="set -e

@@ -1,7 +1,8 @@
-# IMAGE and CF_TUNNEL_TOKEN come from /opt/zebra/.env
+# Image versions are pinned here. deploy-files applies them to the box.
+# CF_TUNNEL_TOKEN comes from /opt/zebra/.env, written by leader.sh.
 services:
   zebra-testnet:
-    image: ${IMAGE}
+    image: 496038263219.dkr.ecr.eu-central-1.amazonaws.com/dev-zebra-server:v5.2.0-ZSA
     container_name: zebra-testnet
     restart: unless-stopped
     # The image ENTRYPOINT hardcodes regtest-config.toml
@@ -25,7 +26,7 @@ services:
   # stops it at boot on a box that is no longer the leader.
   cloudflared:
     profiles: [tunnel]
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared:2026.9.1
     restart: unless-stopped
     # Token via env, not argv: on the command line it shows up in `docker
     # inspect` and the host process list.
@@ -34,7 +35,7 @@ services:
     command: tunnel run
 
   dozzle:
-    image: amir20/dozzle:latest
+    image: amir20/dozzle:v11.1.1
     restart: unless-stopped
     environment:
       - DOZZLE_FILTER=name=zebra-testnet
@@ -43,7 +44,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
   logs-api:
-    image: python:3.12-slim
+    image: python:3.12.14-slim
     restart: unless-stopped
     ports:
       - "8080:8080"
