@@ -32,12 +32,13 @@ role() { aws ec2 describe-tags --region "$REGION" \
   --query 'Tags[0].Value' --output text; }
 
 up() {
-  if running; then return 0; fi
+  if running; then echo "leader; cloudflared already up"; return 0; fi
   local t
   t=$(aws ssm get-parameter --region "$REGION" --name "$TOKEN_PARAM" \
     --with-decryption --query Parameter.Value --output text)
   grep -q '^CF_TUNNEL_TOKEN=' .env || { echo "no CF_TUNNEL_TOKEN= line in .env" >&2; return 1; }
   sed -i "s|^CF_TUNNEL_TOKEN=.*|CF_TUNNEL_TOKEN=$t|" .env
+  echo "leader; starting cloudflared"
   dc up -d cloudflared
 }
 
@@ -56,5 +57,6 @@ if [ "$ACTION" = status ]; then
 elif [ "$R" = leader ]; then
   up
 else
+  echo "not leader; ensuring cloudflared down"
   dc stop cloudflared >/dev/null
 fi
