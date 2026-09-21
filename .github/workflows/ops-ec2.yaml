@@ -158,7 +158,9 @@ jobs:
             chmod +x ops.sh leader.sh
             systemctl daemon-reload
             echo
-            md5sum docker-compose.yml ops.sh leader.sh logs-api.py /etc/systemd/system/zebra-leader.service"
+            md5sum docker-compose.yml ops.sh leader.sh logs-api.py /etc/systemd/system/zebra-leader.service
+            echo
+            bash /opt/zebra/ops.sh deploy"
           else
             CMD="bash /opt/zebra/ops.sh $OPS"
           fi
