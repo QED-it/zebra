@@ -127,6 +127,14 @@ jobs:
           fi
           echo "also=$ALSO" >> $GITHUB_OUTPUT
           echo "::notice::Role tag moved for $ACTION; applying to $TARGET_ID $ALSO"
+          { echo "### Role tag — $ACTION"
+            if [ "$ACTION" = demote ]; then
+              echo "removed \`Role=leader\` from \`$TARGET_ID\`"
+            else
+              echo "set \`Role=leader\` on \`$TARGET_ID\`"
+              if [ -n "$ALSO" ]; then echo "removed it from \`$ALSO\` (stood down first)"; fi
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - id: run
         env:
@@ -151,10 +159,14 @@ jobs:
             cd /opt/zebra
             for f in docker-compose.yml ops.sh leader.sh logs-api.py; do
               curl -fsSL \"$FILES_URL/\$f\" -o \$f
+              echo \"copied /opt/zebra/\$f\"
             done
             curl -fsSL \"$FILES_URL/zebra-leader.service\" -o /etc/systemd/system/zebra-leader.service
+            echo 'copied /etc/systemd/system/zebra-leader.service'
             chmod +x ops.sh leader.sh
-            systemctl daemon-reload"
+            systemctl daemon-reload
+            echo
+            md5sum docker-compose.yml ops.sh leader.sh logs-api.py /etc/systemd/system/zebra-leader.service"
           else
             CMD="bash /opt/zebra/ops.sh $OPS"
           fi

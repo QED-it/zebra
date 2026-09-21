@@ -7,13 +7,18 @@ ACTION="${1:?usage: ops.sh <action> [tag]}"; TAG="${2:-latest}"
 # State is ephemeral and the node has no peers, so genesis is re-injected after
 # every start. Idempotent: an already-committed block returns "rejected", HTTP 200.
 self_serve_genesis() {
-  local hex
+  local hex out
   hex=$(docker exec zebra-testnet cat /app/testnet-single-node-deploy/genesis.txt | tr -d '[:space:]')
-  curl -s --fail-with-body --retry 30 --retry-delay 2 --retry-connrefused --retry-all-errors \
+  out=$(curl -s --fail-with-body --retry 30 --retry-delay 2 --retry-connrefused --retry-all-errors \
     http://127.0.0.1:18232 -X POST -H 'Content-Type: application/json' \
-    -d "{\"jsonrpc\":\"1.0\",\"id\":\"ops\",\"method\":\"submitblock\",\"params\":[\"$hex\"]}" \
+    -d "{\"jsonrpc\":\"1.0\",\"id\":\"ops\",\"method\":\"submitblock\",\"params\":[\"$hex\"]}") \
     || { echo "submitblock failed" >&2; return 1; }
-  echo
+  echo "$out"
+  case "$out" in
+    *'"result":null'*)       echo "genesis: accepted, chain was empty" ;;
+    *'"result":"rejected"'*) echo "genesis: already present, nothing to do" ;;
+    *)                       echo "genesis: unexpected response" ;;
+  esac
 }
 
 case "$ACTION" in
