@@ -31,8 +31,12 @@ self_serve_genesis() {
 
 case "$ACTION" in
   deploy)     ecr_login
-              docker compose pull
+              docker compose --profile tunnel pull
               docker compose up -d
+              # Only re-up cloudflared if this box already runs one, so a
+              # follower never gains a connector from a deploy.
+              [ -z "$(docker compose --profile tunnel ps -q cloudflared)" ] \
+                || docker compose --profile tunnel up -d cloudflared
               self_serve_genesis ;;
   restart)    docker compose restart zebra-testnet; self_serve_genesis ;;
   start)      docker compose start zebra-testnet; self_serve_genesis ;;
