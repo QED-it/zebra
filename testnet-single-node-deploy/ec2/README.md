@@ -33,7 +33,8 @@ genesis, so it never approaches it.
 The launch template boots Amazon Linux 2023 (AMI resolved at launch) and
 `user_data` installs only `docker` plus the compose v2 CLI plugin, then writes
 the files above. `aws` and the SSM agent ship with AL2023. Everything else is a
-container image: zebrad from ECR, `cloudflared`, `dozzle`, `python:3.12-slim`.
+container image: zebrad from ECR, `cloudflared`, `dozzle`, `python` — every one
+pinned to a version in `docker-compose.yml`.
 
 ## Leader election
 
@@ -103,16 +104,17 @@ back empty and stays at height 0 until someone runs `ops.sh genesis`.
 
 ## End to end
 
-**1. Build and push** — CI `push-ecr.yaml` on merge, or:
+**1. Build and push** — CI `push-ecr.yaml` on a tag push, or:
 
 ```sh
 REPO=496038263219.dkr.ecr.eu-central-1.amazonaws.com/dev-zebra-server
+TAG=v5.2.0-ZSA
 aws ecr get-login-password --region "${AWS_REGION:-eu-central-1}" | docker login --username AWS --password-stdin ${REPO%%/*}
-docker build -f testnet-single-node-deploy/dockerfile -t $REPO:latest . && docker push $REPO:latest
+docker build -f testnet-single-node-deploy/dockerfile -t $REPO:$TAG . && docker push $REPO:$TAG
 ```
 
 Must be built from this branch: it carries the ZSA transaction format the node
-produces.
+produces. Pushing a tag does not deploy it — see _Rolling a new zebrad_.
 
 **2. Launch** — Console → Launch Templates → `zebra-testnet` → _Launch instance
 from template_. First boot takes 2-3 min. It comes up without a connector until
@@ -168,6 +170,20 @@ aws ssm get-command-invocation --region "$REGION" \
 boot-time token expires after 12h. The registry is read from
 `docker-compose.yml`, not `.env`.
 
+## Rolling a new zebrad
+
+Versions are pinned in `docker-compose.yml`, so shipping a build is two commits
+rather than a tag typed into the dispatch form:
+
+1. **Push the image** — push a `vX.Y.Z-ZSA` git tag, or run `push-ecr.yaml` by
+   hand with that version.
+2. **Bump the pin** — set `image:` on `zebra-testnet` to the new tag and merge
+   to `zsa1`.
+3. **Deploy** — ops workflow → `deploy-files`, `confirm=deploy-files`. It copies
+   the files at `ref` onto the box and runs `ops.sh sync`.
+
+Step 3 without step 2 is a no-op: nothing on the box reads `:latest` any more.
+
 ## Changing a running box
 
 `user_data` runs at first boot only:
@@ -175,7 +191,7 @@ boot-time token expires after 12h. The registry is read from
 ```sh
 aws ssm start-session --target <id>
 sudo vi /opt/zebra/docker-compose.yml
-sudo bash /opt/zebra/ops.sh recreate
+sudo bash /opt/zebra/ops.sh sync
 ```
 
 Relaunching from the template is the only way the box provably matches this
