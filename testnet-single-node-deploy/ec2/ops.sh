@@ -30,7 +30,7 @@ self_serve_genesis() {
 }
 
 case "$ACTION" in
-  deploy)     ecr_login
+  sync)       ecr_login
               docker compose --profile tunnel pull
               docker compose up -d
               # Only re-up cloudflared if this box already runs one, so a

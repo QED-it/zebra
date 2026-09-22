@@ -167,7 +167,7 @@ jobs:
             echo
             md5sum docker-compose.yml ops.sh leader.sh logs-api.py /etc/systemd/system/zebra-leader.service
             echo
-            bash /opt/zebra/ops.sh deploy"
+            bash /opt/zebra/ops.sh sync"
           else
             CMD="bash /opt/zebra/ops.sh $OPS"
           fi
