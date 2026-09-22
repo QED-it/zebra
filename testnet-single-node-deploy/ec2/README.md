@@ -16,7 +16,7 @@ zebrad reads the config baked into the image; override single keys with
 | URL | |
 | --- | --- |
 | `rpc.test-zsa.org` | JSON-RPC, POST only |
-| `logs.test-zsa.org` | JSON logs, `?limit=N` (max 500) |
+| `logs.test-zsa.org` | JSON logs, `?limit=N` (max 500); `/healthz` |
 | `dozzle.test-zsa.org` | log UI |
 
 All public and unauthenticated, and 18232/18233/8080 are open on the instance IP
