@@ -34,6 +34,8 @@ case "$ACTION" in
   sync)       ecr_login
               docker compose --profile tunnel pull
               docker compose up -d
+              # logs-api.py is bind-mounted: `up -d` cannot see it change.
+              docker compose restart logs-api
               # Only re-up cloudflared if this box already runs one, so a
               # follower never gains a connector from a deploy.
               [ -z "$(docker compose --profile tunnel ps -q cloudflared)" ] \
