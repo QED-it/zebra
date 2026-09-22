@@ -142,9 +142,9 @@ ZCASH_NODE_ADDRESS=rpc.test-zsa.org ZCASH_NODE_PORT=443 ZCASH_NODE_PROTOCOL=http
 `status` · `apply`. Everything that starts the node re-serves genesis.
 `promote`/`demote` are workflow actions, not box actions — see above.
 
-`sync` takes no tag: image versions are pinned per service in
-`docker-compose.yml`, so it is `pull` + `up -d` of whatever that file says. The
-workflow reaches it through `deploy-files`, which copies the files then runs it.
+`sync` takes no tag: versions are pinned per service in `docker-compose.yml`. It
+pulls zebra — the one tag re-pushed under its own name — and lets `up -d` fetch a
+sidecar only if its pin moved. `deploy-files` copies the files then runs it.
 
 Normally driven by the ops workflow. To run an action by hand — the box has no
 inbound ports and no SSH key, so it goes over SSM:

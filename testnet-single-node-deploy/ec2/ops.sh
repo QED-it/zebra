@@ -32,7 +32,8 @@ self_serve_genesis() {
 
 case "$ACTION" in
   sync)       ecr_login
-              docker compose --profile tunnel pull
+              # Only zebra's tag is re-pushed; `up -d` pulls a sidecar if its pin moved.
+              docker compose pull zebra-testnet
               docker compose up -d
               # logs-api.py is bind-mounted: `up -d` cannot see it change.
               docker compose restart logs-api
