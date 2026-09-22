@@ -71,14 +71,15 @@ The ops workflow owns the verbs:
 
 Two things keep a stale connector from coming back. `cloudflared` sits in the
 `tunnel` compose profile, so a bare `docker compose up -d` never starts one —
-only `leader.sh` does. And `restart: unless-stopped` revives the leader's
-connector after a reboot, which `apply` at boot undoes on a box that lost the tag
-while it was stopped.
+`leader.sh` starts it, and `ops.sh sync` only re-ups one already running, so a
+follower cannot gain a connector from a deploy. And `restart: unless-stopped`
+revives the leader's connector after a reboot, which `apply` at boot undoes on a
+box that lost the tag while it was stopped.
 
-Instance profile needs only `ec2:DescribeTags` and `ssm:GetParameter`+
-`kms:Decrypt` on the tunnel token — no write permissions at all. Enabling
+Instance profile needs `ec2:DescribeTags`, `ssm:GetParameter`+`kms:Decrypt` on
+the tunnel token, and ECR read for the pull — all reads, no writes. Enabling
 instance metadata tags on the launch template would drop `ec2:DescribeTags` too,
-making `is_leader` a plain IMDS read.
+making the Role lookup a plain IMDS read.
 
 **`Name=zebra-testnet`** is how ops finds the box. The IAM role scopes
 `ssm:SendCommand` by `ssm:resourceTag/Name` against `instance/*`, so that tag is
