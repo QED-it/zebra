@@ -2,7 +2,7 @@
 # CF_TUNNEL_TOKEN comes from /opt/zebra/.env, written by leader.sh.
 services:
   zebra-testnet:
-    image: 496038263219.dkr.ecr.eu-central-1.amazonaws.com/dev-zebra-server:v5.2.0-ZSA
+    image: 496038263219.dkr.ecr.eu-central-1.amazonaws.com/dev-zebra-server:v0.6.0-ZSA
     container_name: zebra-testnet
     restart: unless-stopped
     # The image ENTRYPOINT hardcodes regtest-config.toml
