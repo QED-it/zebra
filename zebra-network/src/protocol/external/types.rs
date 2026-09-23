@@ -122,7 +122,9 @@ impl Version {
             (Mainnet, Nu6_2) => 170_150,
             // TODO(NU6.2): these Nu7 protocol versions are provisional, bumped above Nu6_2's
             // 170_150. Update them when the real Nu7 values are specified.
-            (Testnet(params), Nu7) if params.is_default_testnet() || params.is_regtest() => 170_160,
+            // Not Regtest: this provisional value is above the current version, which
+            // panics in `min_remote_for_height` at NU7 activation. It uses the arm below.
+            (Testnet(params), Nu7) if params.is_default_testnet() => 170_160,
             (Mainnet, Nu7) => 170_170,
 
             // It should be fine to reject peers with earlier network protocol versions on custom testnets for now.
@@ -220,6 +222,31 @@ mod test {
     #[test]
     fn version_consistent_testnet() {
         version_consistent(&Network::new_default_testnet())
+    }
+
+    /// Check that `min_remote_for_height` does not shut down a Regtest node
+    /// when NU7 activates.
+    #[test]
+    fn regtest_survives_nu7_activation() {
+        let _init_guard = zebra_test::init();
+
+        let network = Network::new_regtest(
+            zebra_chain::parameters::testnet::ConfiguredActivationHeights {
+                nu5: Some(1),
+                nu6: Some(1),
+                nu7: Some(1),
+                ..Default::default()
+            }
+            .into(),
+        );
+        let nu7_height = Nu7
+            .activation_height(&network)
+            .expect("NU7 activation height was configured above");
+
+        assert!(
+            Version::min_remote_for_height(&network, nu7_height)
+                <= constants::CURRENT_NETWORK_PROTOCOL_VERSION
+        );
     }
 
     /// Check that the min_specified_for_upgrade and min_specified_for_height functions
