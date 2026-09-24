@@ -340,9 +340,10 @@ pub const TIMESTAMP_TRUNCATION_SECONDS: u32 = 30 * 60;
 ///
 /// This version of Zebra draws the current network protocol version from
 /// [ZIP-255](https://zips.z.cash/zip-0255).
-// TODO: Update this constant to the correct value after NU7 activation (see NU deployment ZIPs),
-pub const CURRENT_NETWORK_PROTOCOL_VERSION: Version = Version(170_150); // NU6.2 (Mainnet + Testnet).
-                                                                        // pub const CURRENT_NETWORK_PROTOCOL_VERSION: Version = Version(170_160); // NU7 Testnet.
+// TODO: The ZSA fork runs NU7 early, so it uses the provisional NU7 Testnet value.
+// Upstream NU6.3 releases give 170_160 to NU6.3 and 170_170 to NU7 Testnet; take theirs.
+// On configured testnets this is also the minimum peer version: upgrade nodes together.
+pub const CURRENT_NETWORK_PROTOCOL_VERSION: Version = Version(170_160); // NU7 Testnet.
                                                                         // pub const CURRENT_NETWORK_PROTOCOL_VERSION: Version = Version(170_170); // NU7 Mainnet.
 
 /// The default RTT estimate for peer responses.
