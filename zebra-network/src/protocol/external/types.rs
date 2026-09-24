@@ -222,6 +222,31 @@ mod test {
         version_consistent(&Network::new_default_testnet())
     }
 
+    /// Check that `min_remote_for_height` does not shut down a Regtest node
+    /// when NU7 activates.
+    #[test]
+    fn regtest_survives_nu7_activation() {
+        let _init_guard = zebra_test::init();
+
+        let network = Network::new_regtest(
+            zebra_chain::parameters::testnet::ConfiguredActivationHeights {
+                nu5: Some(1),
+                nu6: Some(1),
+                nu7: Some(1),
+                ..Default::default()
+            }
+            .into(),
+        );
+        let nu7_height = Nu7
+            .activation_height(&network)
+            .expect("NU7 activation height was configured above");
+
+        assert!(
+            Version::min_remote_for_height(&network, nu7_height)
+                <= constants::CURRENT_NETWORK_PROTOCOL_VERSION
+        );
+    }
+
     /// Check that the min_specified_for_upgrade and min_specified_for_height functions
     /// are consistent for `network`.
     fn version_consistent(network: &Network) {

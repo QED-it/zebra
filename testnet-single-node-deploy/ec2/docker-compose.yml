@@ -25,10 +25,10 @@ services:
         max-size: "50m"
         max-file: "5"
 
-  # Started and stopped only by leader.sh. The profile keeps a bare
-  # `docker compose up -d` from starting a second connector by accident;
-  # `unless-stopped` brings the leader's back after a reboot, and leader.sh
-  # stops it at boot on a box that is no longer the leader.
+  # leader.sh starts one; `ops.sh sync` re-ups only one already running. The
+  # profile keeps a bare `docker compose up -d` from starting a second
+  # connector by accident; `unless-stopped` brings the leader's back after a
+  # reboot, and leader.sh stops it at boot on a box no longer the leader.
   cloudflared:
     profiles: [tunnel]
     image: cloudflare/cloudflared:2026.9.1
