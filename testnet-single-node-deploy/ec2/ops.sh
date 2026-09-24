@@ -8,10 +8,11 @@ ACTION="${1:?usage: ops.sh <action>}"
 # every start. Idempotent: an already-committed block returns "rejected", HTTP 200.
 ecr_login() {
   local reg
-  reg=$(grep -oE '[0-9]+\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com' docker-compose.yml | head -1)
-  [ -n "$reg" ] || return 0
-  aws ecr get-login-password --region "${AWS_REGION:-eu-central-1}" \
-    | docker login --username AWS --password-stdin "$reg"
+  # No ECR image means nothing to log in to; `if` so errexit doesn't abort on it.
+  if reg=$(grep -m1 -oE '[0-9]+\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com' docker-compose.yml); then
+    aws ecr get-login-password --region "${AWS_REGION:-eu-central-1}" \
+      | docker login --username AWS --password-stdin "$reg"
+  fi
 }
 
 self_serve_genesis() {
@@ -31,8 +32,11 @@ self_serve_genesis() {
 
 case "$ACTION" in
   sync)       ecr_login
-              docker compose --profile tunnel pull
+              # Only zebra's tag is re-pushed; `up -d` pulls a sidecar if its pin moved.
+              docker compose pull zebra-testnet
               docker compose up -d
+              # logs-api.py is bind-mounted: `up -d` cannot see it change.
+              docker compose restart logs-api
               # Only re-up cloudflared if this box already runs one, so a
               # follower never gains a connector from a deploy.
               [ -z "$(docker compose --profile tunnel ps -q cloudflared)" ] \
