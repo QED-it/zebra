@@ -6,7 +6,7 @@ created manually in the console; the box is driven by GitHub Actions over SSM.
 
 | File | On the box |
 | --- | --- |
-| `docker-compose.yml` | `/opt/zebra/` |
+| `docker-compose.yml` | `/opt/zebra/` — pins every service's image version |
 | `ops.sh`, `leader.sh`, `logs-api.py` | `/opt/zebra/` |
 | `zebra-leader.service` | `/etc/systemd/system/` |
 
@@ -16,7 +16,7 @@ zebrad reads the config baked into the image; override single keys with
 | URL | |
 | --- | --- |
 | `rpc.test-zsa.org` | JSON-RPC, POST only |
-| `logs.test-zsa.org` | JSON logs, `?limit=N` (max 500) |
+| `logs.test-zsa.org` | JSON logs, `?limit=N` (max 500); `/healthz` |
 | `dozzle.test-zsa.org` | log UI |
 
 All public and unauthenticated, and 18232/18233/8080 are open on the instance IP
@@ -33,7 +33,8 @@ genesis, so it never approaches it.
 The launch template boots Amazon Linux 2023 (AMI resolved at launch) and
 `user_data` installs only `docker` plus the compose v2 CLI plugin, then writes
 the files above. `aws` and the SSM agent ship with AL2023. Everything else is a
-container image: zebrad from ECR, `cloudflared`, `dozzle`, `python:3.12-slim`.
+container image: zebrad from ECR, `cloudflared`, `dozzle`, `python` — every one
+pinned to a version in `docker-compose.yml`.
 
 ## Leader election
 
@@ -70,14 +71,15 @@ The ops workflow owns the verbs:
 
 Two things keep a stale connector from coming back. `cloudflared` sits in the
 `tunnel` compose profile, so a bare `docker compose up -d` never starts one —
-only `leader.sh` does. And `restart: unless-stopped` revives the leader's
-connector after a reboot, which `apply` at boot undoes on a box that lost the tag
-while it was stopped.
+`leader.sh` starts it, and `ops.sh sync` only re-ups one already running, so a
+follower cannot gain a connector from a deploy. And `restart: unless-stopped`
+revives the leader's connector after a reboot, which `apply` at boot undoes on a
+box that lost the tag while it was stopped.
 
-Instance profile needs only `ec2:DescribeTags` and `ssm:GetParameter`+
-`kms:Decrypt` on the tunnel token — no write permissions at all. Enabling
+Instance profile needs `ec2:DescribeTags`, `ssm:GetParameter`+`kms:Decrypt` on
+the tunnel token, and ECR read for the pull — all reads, no writes. Enabling
 instance metadata tags on the launch template would drop `ec2:DescribeTags` too,
-making `is_leader` a plain IMDS read.
+making the Role lookup a plain IMDS read.
 
 **`Name=zebra-testnet`** is how ops finds the box. The IAM role scopes
 `ssm:SendCommand` by `ssm:resourceTag/Name` against `instance/*`, so that tag is
@@ -97,22 +99,23 @@ curl -s http://127.0.0.1:18232 -X POST -H 'Content-Type: application/json' \
 ```
 
 State is ephemeral, so this repeats after every start — `ops.sh` calls it on
-`deploy`/`restart`/`start`/`recreate`. Idempotent (already-committed → HTTP 200
+`sync`/`restart`/`start`/`recreate`. Idempotent (already-committed → HTTP 200
 `"rejected"`). **Docker restarts do not trigger it**: after a crash the node comes
 back empty and stays at height 0 until someone runs `ops.sh genesis`.
 
 ## End to end
 
-**1. Build and push** — CI `push-ecr.yaml` on merge, or:
+**1. Build and push** — CI `push-ecr.yaml` on a tag push, or:
 
 ```sh
 REPO=496038263219.dkr.ecr.eu-central-1.amazonaws.com/dev-zebra-server
+TAG=v5.2.0-ZSA
 aws ecr get-login-password --region "${AWS_REGION:-eu-central-1}" | docker login --username AWS --password-stdin ${REPO%%/*}
-docker build -f testnet-single-node-deploy/dockerfile -t $REPO:latest . && docker push $REPO:latest
+docker build -f testnet-single-node-deploy/dockerfile -t $REPO:$TAG . && docker push $REPO:$TAG
 ```
 
 Must be built from this branch: it carries the ZSA transaction format the node
-produces.
+produces. Pushing a tag does not deploy it — see _Rolling a new zebrad_.
 
 **2. Launch** — Console → Launch Templates → `zebra-testnet` → _Launch instance
 from template_. First boot takes 2-3 min. It comes up without a connector until
@@ -138,9 +141,13 @@ ZCASH_NODE_ADDRESS=rpc.test-zsa.org ZCASH_NODE_PORT=443 ZCASH_NODE_PROTOCOL=http
 
 ## ops.sh
 
-`deploy <tag>` · `restart` · `start` · `stop` · `recreate` · `genesis` · `logs` ·
+`sync` · `restart` · `start` · `stop` · `recreate` · `genesis` · `logs` ·
 `status` · `apply`. Everything that starts the node re-serves genesis.
 `promote`/`demote` are workflow actions, not box actions — see above.
+
+`sync` takes no tag: versions are pinned per service in `docker-compose.yml`. It
+pulls zebra — the one tag re-pushed under its own name — and lets `up -d` fetch a
+sidecar only if its pin moved. `deploy-files` copies the files then runs it.
 
 Normally driven by the ops workflow. To run an action by hand — the box has no
 inbound ports and no SSH key, so it goes over SSM:
@@ -149,7 +156,7 @@ inbound ports and no SSH key, so it goes over SSM:
 REGION=${AWS_REGION:-eu-central-1}
 aws ssm send-command --region "$REGION" --instance-ids <id> \
   --document-name AWS-RunShellScript \
-  --parameters 'commands=["bash /opt/zebra/ops.sh <action> [tag]"]'
+  --parameters 'commands=["bash /opt/zebra/ops.sh <action>"]'
 ```
 
 Output comes back separately:
@@ -160,8 +167,23 @@ aws ssm get-command-invocation --region "$REGION" \
   --query '[Status,StandardOutputContent,StandardErrorContent]' --output text
 ```
 
-`deploy` refreshes the ECR login itself before pulling, since the box's
-boot-time token expires after 12h.
+`sync` refreshes the ECR login itself before pulling, since the box's
+boot-time token expires after 12h. The registry is read from
+`docker-compose.yml`, not `.env`.
+
+## Rolling a new zebrad
+
+Versions are pinned in `docker-compose.yml`, so shipping a build is two commits
+rather than a tag typed into the dispatch form:
+
+1. **Push the image** — push a `vX.Y.Z-ZSA` git tag, or run `push-ecr.yaml` by
+   hand with that version.
+2. **Bump the pin** — set `image:` on `zebra-testnet` to the new tag and merge
+   to `zsa1`.
+3. **Deploy** — ops workflow → `deploy-files`, `confirm=deploy-files`. It copies
+   the files at `ref` onto the box and runs `ops.sh sync`.
+
+Step 3 without step 2 is a no-op: nothing on the box reads `:latest` any more.
 
 ## Changing a running box
 
@@ -170,7 +192,7 @@ boot-time token expires after 12h.
 ```sh
 aws ssm start-session --target <id>
 sudo vi /opt/zebra/docker-compose.yml
-sudo bash /opt/zebra/ops.sh recreate
+sudo bash /opt/zebra/ops.sh sync
 ```
 
 Relaunching from the template is the only way the box provably matches this

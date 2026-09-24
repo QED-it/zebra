@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
-# /opt/zebra/ops.sh <action> [tag] — invoked by the ops GitHub Action over SSM.
+# /opt/zebra/ops.sh <action> — invoked by the ops GitHub Action over SSM.
 set -euo pipefail
 cd /opt/zebra; source .env
-ACTION="${1:?usage: ops.sh <action> [tag]}"; TAG="${2:-latest}"
+ACTION="${1:?usage: ops.sh <action>}"
 
 # State is ephemeral and the node has no peers, so genesis is re-injected after
 # every start. Idempotent: an already-committed block returns "rejected", HTTP 200.
+ecr_login() {
+  local reg
+  # No ECR image means nothing to log in to; `if` so errexit doesn't abort on it.
+  if reg=$(grep -m1 -oE '[0-9]+\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com' docker-compose.yml); then
+    aws ecr get-login-password --region "${AWS_REGION:-eu-central-1}" \
+      | docker login --username AWS --password-stdin "$reg"
+  fi
+}
+
 self_serve_genesis() {
   local hex out
   hex=$(docker exec zebra-testnet cat /app/testnet-single-node-deploy/genesis.txt | tr -d '[:space:]')
@@ -22,16 +31,16 @@ self_serve_genesis() {
 }
 
 case "$ACTION" in
-  deploy)     grep -q '^IMAGE=' .env || { echo "no IMAGE= line in .env" >&2; exit 1; }
-              [ -n "${IMAGE_REPO:-}" ] || { echo "no IMAGE_REPO= line in .env" >&2; exit 1; }
-              case "$IMAGE_REPO" in
-                *.dkr.ecr.*.amazonaws.com/*)
-                  aws ecr get-login-password --region "${AWS_REGION:-eu-central-1}" \
-                    | docker login --username AWS --password-stdin "${IMAGE_REPO%%/*}" ;;
-              esac
-              docker pull "$IMAGE_REPO:$TAG"
-              sed -i "s|^IMAGE=.*|IMAGE=$IMAGE_REPO:$TAG|" .env
-              docker compose up -d zebra-testnet
+  sync)       ecr_login
+              # Only zebra's tag is re-pushed; `up -d` pulls a sidecar if its pin moved.
+              docker compose pull zebra-testnet
+              docker compose up -d
+              # logs-api.py is bind-mounted: `up -d` cannot see it change.
+              docker compose restart logs-api
+              # Only re-up cloudflared if this box already runs one, so a
+              # follower never gains a connector from a deploy.
+              [ -z "$(docker compose --profile tunnel ps -q cloudflared)" ] \
+                || docker compose --profile tunnel up -d cloudflared
               self_serve_genesis ;;
   restart)    docker compose restart zebra-testnet; self_serve_genesis ;;
   start)      docker compose start zebra-testnet; self_serve_genesis ;;
