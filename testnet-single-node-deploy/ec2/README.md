@@ -26,7 +26,8 @@ too. `enable_cookie_auth = false`, so anyone reaching 18232 can `stop` or
 ## Hardware, and what's on the box
 
 Zebra asks for 2 CPU / 4 GB minimum (4 CPU / 16 GB recommended) and 300 GB disk.
-This runs on a `t3.medium` — 2 vCPU, 4 GB — with an 80 GB gp3 root. The disk
+This runs on an `m7i.large` — 2 vCPU, 8 GB, not burstable, since Postgres and
+the Zipherscan containers share the box — with a 250 GB gp3 root. The disk
 figure is for syncing Mainnet; this network is private, ephemeral and mined from
 genesis, so it never approaches it.
 
