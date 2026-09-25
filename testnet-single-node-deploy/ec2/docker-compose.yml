@@ -12,6 +12,11 @@ services:
       # without this zebrad reports itself ~4.1M blocks behind real Testnet and
       # getblocktemplate refuses.
       - ZEBRA_RPC__DEBUG_FORCE_FINISHED_SYNC=true
+      # State on disk so the indexer can open the RocksDB in secondary mode.
+      - ZEBRA_STATE__EPHEMERAL=false
+      - ZEBRA_STATE__CACHE_DIR=/var/cache/zebra
+    volumes:
+      - zebra-state:/var/cache/zebra
     ports:
       - "18232:18232" # RPC, unauthenticated
       - "18233:18233" # P2P
@@ -52,3 +57,104 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /opt/zebra/logs-api.py:/app/logs-api.py:ro
     command: ["python", "-u", "/app/logs-api.py"]
+
+  # --- Zipherscan explorer -------------------------------------------------
+  # Images are built from QED-it/zipherscan and pushed to ECR; nothing is built
+  # on the box. postgres and migrate read the schema from a cipherscan-rust
+  # clone, so both repos must be present — see cipherscan/README.md.
+
+  postgres:
+    image: postgres:16-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?set POSTGRES_ADMIN_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-zcash_explorer}
+      APP_DB_USER: ${DB_USER:-zcash_user}
+      APP_DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - /opt/zipherscan/docker/postgres/001-create-app-role.sh:/docker-entrypoint-initdb.d/001-create-app-role.sh:ro
+      - /opt/cipherscan-rust/schema/postgres.sql:/docker-entrypoint-initdb.d/002-cipherscan-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-zcash_user} -d ${DB_NAME:-zcash_explorer}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    image: postgres:16-bookworm
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: ${DB_NAME:-zcash_explorer}
+      PGUSER: postgres
+      PGPASSWORD: ${POSTGRES_ADMIN_PASSWORD:?set POSTGRES_ADMIN_PASSWORD}
+    volumes:
+      - /opt/cipherscan-rust:/workspace/cipherscan-rust:ro
+    command:
+      - bash
+      - -ceu
+      - |
+        # apply-migrations.sh lints each migration with python3, which the
+        # postgres image does not ship.
+        command -v python3 >/dev/null || { apt-get update -qq && apt-get install -y -qq python3 >/dev/null; }
+        export DATABASE_URL="postgresql://$${PGUSER}@$${PGHOST}:$${PGPORT}/$${PGDATABASE}"
+        bash /workspace/cipherscan-rust/deploy/apply-migrations.sh
+
+  api:
+    image: 496038263219.dkr.ecr.eu-central-1.amazonaws.com/dev-zipherscan-api:669a97b
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-zcash_explorer}
+      DB_USER: ${DB_USER:-zcash_user}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      API_CACHE_NAMESPACE: ${API_CACHE_NAMESPACE:-zsa1-1}
+      # The node in this same stack. 18232, not upstream's 8232.
+      ZEBRA_RPC_URL: http://zebra-testnet:18232
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+    volumes:
+      - api-cache:/var/cache/cipherscan
+
+  web:
+    image: 496038263219.dkr.ecr.eu-central-1.amazonaws.com/dev-zipherscan-web:669a97b-zsa
+    restart: unless-stopped
+    depends_on: [api]
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      NEXT_PUBLIC_NETWORK: testnet
+      NEXT_TELEMETRY_DISABLED: "1"
+      ZCASH_RPC_URL: http://zebra-testnet:18232
+      CIPHERSCAN_API_URL: http://api:3001
+      # Compiled into the browser bundle at build time; the image is built with
+      # this same value, so changing it here alone has no effect.
+      NEXT_PUBLIC_API_URL: https://cipherscan.test-zsa.org
+
+  indexer:
+    image: 496038263219.dkr.ecr.eu-central-1.amazonaws.com/dev-zipherscan-indexer:zsa-0edc9619
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    environment:
+      DATABASE_URL: postgres://${DB_USER:-zcash_user}:${DB_PASSWORD:?set DB_PASSWORD}@postgres:5432/${DB_NAME:-zcash_explorer}
+      ZEBRA_STATE_PATH: /var/cache/zebra/state/v27/zsa1_1
+      ZEBRA_RPC_URL: http://zebra-testnet:18232
+      NETWORK: testnet
+    volumes:
+      - zebra-state:/var/cache/zebra:ro
+
+volumes:
+  zebra-state:
+  postgres-data:
+  api-cache:
