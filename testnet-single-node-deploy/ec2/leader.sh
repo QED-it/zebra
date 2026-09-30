@@ -3,7 +3,7 @@
 #
 # Only one instance may run cloudflared. Every process holding the tunnel token
 # registers as another connector and Cloudflare load-balances across them, but
-# these nodes are not replicas — each has its own ephemeral chain, so two
+# these nodes are not replicas — each mines its own chain, so two
 # connectors means one hostname answering from two different chains.
 #
 # Role=leader marks the instance allowed to run it. The ops workflow writes that

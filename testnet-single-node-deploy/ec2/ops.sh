@@ -4,8 +4,8 @@ set -euo pipefail
 cd /opt/zebra; source .env
 ACTION="${1:?usage: ops.sh <action>}"
 
-# State is ephemeral and the node has no peers, so genesis is re-injected after
-# every start. Idempotent: an already-committed block returns "rejected", HTTP 200.
+# The node has no peers, so genesis must be submitted on an empty state volume.
+# Idempotent: an already-committed block returns "rejected", HTTP 200.
 ecr_login() {
   local reg
   # No ECR image means nothing to log in to; `if` so errexit doesn't abort on it.
