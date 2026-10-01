@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # /opt/zebra/ops.sh <action> — invoked by the ops GitHub Action over SSM.
 set -euo pipefail
-cd /opt/zebra; source .env
+cd /opt/zebra
+[ -z "$(tail -c1 .env)" ] || echo >> .env
+for v in POSTGRES_ADMIN_PASSWORD DB_PASSWORD; do
+  grep -q "^$v=" .env || echo "$v=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')" >> .env
+done
+source .env
 ACTION="${1:?usage: ops.sh <action>}"
 
 # The node has no peers, so genesis must be submitted on an empty state volume.
