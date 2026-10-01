@@ -98,9 +98,6 @@ services:
       - bash
       - -ceu
       - |
-        # apply-migrations.sh lints each migration with python3, which the
-        # postgres image does not ship.
-        command -v python3 >/dev/null || { apt-get update -qq && apt-get install -y -qq python3 >/dev/null; }
         export DATABASE_URL="postgresql://$${PGUSER}@$${PGHOST}:$${PGPORT}/$${PGDATABASE}"
         bash /workspace/cipherscan-rust/deploy/apply-migrations.sh
 
