@@ -8,7 +8,7 @@ for v in POSTGRES_ADMIN_PASSWORD DB_PASSWORD; do
 done
 source .env
 ACTION="${1:?usage: ops.sh <action>}"
-ZIPHERSCAN_REF=669a97b86d48b5211685b178c7b5779ae964a076
+ZIPHERSCAN_REF=daeb02171ce8830b7bf7f4ba443de348ba0abe26
 CIPHERSCAN_RUST_REF=0edc96193795f4e7e636012f9dd3f5dbf3fcd8a5
 
 # The node has no peers, so genesis must be submitted on an empty state volume.
