@@ -1,7 +1,8 @@
 # ZSA1_1 testnet on EC2
 
-Four containers on one box running `../testnet-config.toml` (`ZSA1_1`, magic
-`[0, 1, 0, 255]`, NU5/6/7 at height 1, no PoW, no peers). The launch template was
+One box running zebrad on `../testnet-config.toml` (`ZSA1_1`, magic
+`[0, 1, 0, 255]`, NU5/6/7 at height 1, no PoW, no peers), the Zipherscan
+explorer over it, and the log sidecars. The launch template was
 created manually in the console; the box is driven by GitHub Actions over SSM.
 
 | File | On the box |
@@ -18,6 +19,7 @@ zebrad reads the config baked into the image; override single keys with
 | `rpc.test-zsa.org` | JSON-RPC, POST only |
 | `logs.test-zsa.org` | JSON logs, `?limit=N` (max 500); `/healthz` |
 | `dozzle.test-zsa.org` | log UI |
+| `cipherscan.test-zsa.org` | Zipherscan explorer; `/api` is the api service |
 
 All public and unauthenticated, and 18232/18233/8080 are open on the instance IP
 too. `enable_cookie_auth = false`, so anyone reaching 18232 can `stop` or
@@ -26,22 +28,27 @@ too. `enable_cookie_auth = false`, so anyone reaching 18232 can `stop` or
 ## Hardware, and what's on the box
 
 Zebra asks for 2 CPU / 4 GB minimum (4 CPU / 16 GB recommended) and 300 GB disk.
-This runs on a `t3.medium` — 2 vCPU, 4 GB — with an 80 GB gp3 root. The disk
-figure is for syncing Mainnet; this network is private, ephemeral and mined from
-genesis, so it never approaches it.
+This runs on an `m7i.large` — 2 vCPU, 8 GB, not burstable, since Postgres and
+the Zipherscan containers share the box — with a 250 GB gp3 root. The disk
+figure is for syncing Mainnet; this network is private and mined from genesis,
+so it never approaches it.
 
 The launch template boots Amazon Linux 2023 (AMI resolved at launch) and
 `user_data` installs only `docker` plus the compose v2 CLI plugin, then writes
 the files above. `aws` and the SSM agent ship with AL2023. Everything else is a
-container image: zebrad from ECR, `cloudflared`, `dozzle`, `python` — every one
-pinned to a version in `docker-compose.yml`.
+container image: zebrad and the Zipherscan api, web and indexer from ECR,
+`postgres`, `cloudflared`, `dozzle`, `python` — every one pinned to a version in
+`docker-compose.yml`. The database schema, app-role script and migrations are
+the exception: `ops.sh sync` fetches `QED-it/zipherscan` and
+`Kenbak/cipherscan-rust` into `/opt` at the commits pinned in `ops.sh`, which
+must match the api and indexer images.
 
 ## Leader election
 
 A Cloudflare Tunnel has one token, and every `cloudflared` holding it registers
 as another connector — Cloudflare then round-robins the public hostnames across
-them. That is meant for replicas. These nodes are not replicas: state is
-ephemeral, so each has its own chain, and two connectors means one hostname
+them. That is meant for replicas. These nodes are not replicas: each mines
+its own chain from genesis with no peers, and two connectors means one hostname
 answering from two different chains. Hence exactly one instance may run
 `cloudflared`.
 
@@ -98,10 +105,10 @@ curl -s http://127.0.0.1:18232 -X POST -H 'Content-Type: application/json' \
   -d "{\"jsonrpc\":\"1.0\",\"id\":\"ops\",\"method\":\"submitblock\",\"params\":[\"$hex\"]}"
 ```
 
-State is ephemeral, so this repeats after every start — `ops.sh` calls it on
-`sync`/`restart`/`start`/`recreate`. Idempotent (already-committed → HTTP 200
-`"rejected"`). **Docker restarts do not trigger it**: after a crash the node comes
-back empty and stays at height 0 until someone runs `ops.sh genesis`.
+State lives in the `zebra-state` volume, so this is only needed on a box's first
+start; a crash, restart or reboot keeps the chain. `ops.sh` still calls it on
+`sync`/`restart`/`start`/`recreate`, since it is idempotent (already-committed →
+HTTP 200 `"rejected"`). Only a deleted volume brings the node back empty.
 
 ## End to end
 

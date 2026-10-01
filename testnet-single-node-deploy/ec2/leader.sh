@@ -3,7 +3,7 @@
 #
 # Only one instance may run cloudflared. Every process holding the tunnel token
 # registers as another connector and Cloudflare load-balances across them, but
-# these nodes are not replicas — each has its own ephemeral chain, so two
+# these nodes are not replicas — each mines its own chain, so two
 # connectors means one hostname answering from two different chains.
 #
 # Role=leader marks the instance allowed to run it. The ops workflow writes that
@@ -11,6 +11,10 @@
 # here writes the tag, so there is no shared state to race over.
 set -euo pipefail
 cd /opt/zebra
+[ -z "$(tail -c1 .env)" ] || echo >> .env
+for v in POSTGRES_ADMIN_PASSWORD DB_PASSWORD; do
+  grep -q "^$v=" .env || echo "$v=$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')" >> .env
+done
 REGION="${AWS_REGION:-eu-central-1}"
 TOKEN_PARAM=/zebra/zebra-testnet/cf-tunnel-token
 IMDS=http://169.254.169.254/latest
