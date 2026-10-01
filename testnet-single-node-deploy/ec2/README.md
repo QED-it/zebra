@@ -38,7 +38,10 @@ The launch template boots Amazon Linux 2023 (AMI resolved at launch) and
 the files above. `aws` and the SSM agent ship with AL2023. Everything else is a
 container image: zebrad and the Zipherscan api, web and indexer from ECR,
 `postgres`, `cloudflared`, `dozzle`, `python` — every one pinned to a version in
-`docker-compose.yml`.
+`docker-compose.yml`. The database schema, app-role script and migrations are
+the exception: `ops.sh sync` fetches `QED-it/zipherscan` and
+`Kenbak/cipherscan-rust` into `/opt` at the commits pinned in `ops.sh`, which
+must match the api and indexer images.
 
 ## Leader election
 

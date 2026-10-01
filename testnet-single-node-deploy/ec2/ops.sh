@@ -8,6 +8,8 @@ for v in POSTGRES_ADMIN_PASSWORD DB_PASSWORD; do
 done
 source .env
 ACTION="${1:?usage: ops.sh <action>}"
+ZIPHERSCAN_REF=669a97b86d48b5211685b178c7b5779ae964a076
+CIPHERSCAN_RUST_REF=0edc96193795f4e7e636012f9dd3f5dbf3fcd8a5
 
 # The node has no peers, so genesis must be submitted on an empty state volume.
 # Idempotent: an already-committed block returns "rejected", HTTP 200.
@@ -18,6 +20,15 @@ ecr_login() {
     aws ecr get-login-password --region "${AWS_REGION:-eu-central-1}" \
       | docker login --username AWS --password-stdin "$reg"
   fi
+}
+
+fetch_repo() {
+  local dir=$1 repo=$2 ref=$3
+  [ "$(cat "$dir/.ref" 2>/dev/null)" = "$ref" ] && return
+  rm -rf "$dir.new"; mkdir -p "$dir.new"
+  curl -fsSL "https://codeload.github.com/$repo/tar.gz/$ref" | tar -xz -C "$dir.new" --strip-components=1
+  echo "$ref" > "$dir.new/.ref"
+  rm -rf "$dir"; mv "$dir.new" "$dir"
 }
 
 self_serve_genesis() {
@@ -37,6 +48,8 @@ self_serve_genesis() {
 
 case "$ACTION" in
   sync)       ecr_login
+              fetch_repo /opt/zipherscan QED-it/zipherscan "$ZIPHERSCAN_REF"
+              fetch_repo /opt/cipherscan-rust Kenbak/cipherscan-rust "$CIPHERSCAN_RUST_REF"
               # Only zebra's tag is re-pushed; `up -d` pulls a sidecar if its pin moved.
               docker compose pull zebra-testnet
               docker compose up -d

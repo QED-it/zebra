@@ -59,9 +59,10 @@ services:
     command: ["python", "-u", "/app/logs-api.py"]
 
   # --- Zipherscan explorer -------------------------------------------------
-  # Images are built from QED-it/zipherscan and pushed to ECR; nothing is built
-  # on the box. postgres and migrate read the schema from a cipherscan-rust
-  # clone, so both repos must be present.
+  # api and web are built from QED-it/zipherscan, the indexer from
+  # Kenbak/cipherscan-rust; all pushed to ECR, nothing is built on the box.
+  # postgres and migrate read the schema and migrations from both repos, which
+  # `ops.sh sync` fetches into /opt at the commits pinned there.
 
   postgres:
     image: postgres:16-bookworm
