@@ -61,7 +61,7 @@ services:
   # --- Zipherscan explorer -------------------------------------------------
   # Images are built from QED-it/zipherscan and pushed to ECR; nothing is built
   # on the box. postgres and migrate read the schema from a cipherscan-rust
-  # clone, so both repos must be present — see cipherscan/README.md.
+  # clone, so both repos must be present.
 
   postgres:
     image: postgres:16-bookworm
